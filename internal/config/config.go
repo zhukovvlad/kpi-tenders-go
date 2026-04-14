@@ -6,6 +6,8 @@ import (
 	"github.com/ilyakaznacheev/cleanenv"
 )
 
+const minSecretLen = 32
+
 type Config struct {
 	AppEnv  string `env:"APP_ENV"  env-default:"local"`
 	AppPort string `env:"APP_PORT" env-default:"8080"`
@@ -38,5 +40,23 @@ func MustLoad() *Config {
 		panic(fmt.Sprintf("config: %s", err))
 	}
 
+	if err := cfg.validate(); err != nil {
+		panic(fmt.Sprintf("config: %s", err))
+	}
+
 	return &cfg
+}
+
+// validate checks that security-sensitive fields meet minimum requirements.
+func (c *Config) validate() error {
+	if len(c.JWTAccessSecret) < minSecretLen {
+		return fmt.Errorf("JWT_ACCESS_SECRET must be at least %d characters", minSecretLen)
+	}
+	if len(c.JWTRefreshSecret) < minSecretLen {
+		return fmt.Errorf("JWT_REFRESH_SECRET must be at least %d characters", minSecretLen)
+	}
+	if len(c.ServiceToken) < minSecretLen {
+		return fmt.Errorf("SERVICE_TOKEN must be at least %d characters", minSecretLen)
+	}
+	return nil
 }
