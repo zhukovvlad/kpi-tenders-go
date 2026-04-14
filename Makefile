@@ -33,14 +33,15 @@ migrate_up:
 migrate_down:
 	$(MIGRATE) down 1
 
-SQLC_VERSION ?= 1.30.0
-
 ## ── Code Generation ─────────────────────────────────
 
-.PHONY: sqlc
+.PHONY: sqlc gen-secrets
 
 sqlc:
-	docker run --rm -v "$(CURDIR):/src" -w /src sqlc/sqlc:$(SQLC_VERSION) generate
+	go tool sqlc generate
+
+gen-secrets:
+	go run ./scripts/gen-secrets
 
 ## ── Tests ───────────────────────────────────────────
 

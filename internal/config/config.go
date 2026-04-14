@@ -6,6 +6,8 @@ import (
 	"github.com/ilyakaznacheev/cleanenv"
 )
 
+const minSecretLen = 32
+
 type Config struct {
 	AppEnv  string `env:"APP_ENV"  env-default:"local"`
 	AppPort string `env:"APP_PORT" env-default:"8080"`
@@ -13,6 +15,10 @@ type Config struct {
 	DBURL string `env:"DB_URL" env-required:"true"`
 
 	RedisURL string `env:"REDIS_URL" env-default:"redis://localhost:6379/0"`
+
+	JWTAccessSecret  string `env:"JWT_ACCESS_SECRET"  env-required:"true"`
+	JWTRefreshSecret string `env:"JWT_REFRESH_SECRET" env-required:"true"`
+	ServiceToken     string `env:"SERVICE_TOKEN"      env-required:"true"`
 
 	S3Endpoint  string `env:"S3_ENDPOINT"   env-default:"localhost:9000"`
 	S3Region    string `env:"S3_REGION"     env-default:"us-east-1"`
@@ -34,5 +40,23 @@ func MustLoad() *Config {
 		panic(fmt.Sprintf("config: %s", err))
 	}
 
+	if err := cfg.validate(); err != nil {
+		panic(fmt.Sprintf("config: %s", err))
+	}
+
 	return &cfg
+}
+
+// validate checks that security-sensitive fields meet minimum requirements.
+func (c *Config) validate() error {
+	if len(c.JWTAccessSecret) < minSecretLen {
+		return fmt.Errorf("JWT_ACCESS_SECRET must be at least %d characters", minSecretLen)
+	}
+	if len(c.JWTRefreshSecret) < minSecretLen {
+		return fmt.Errorf("JWT_REFRESH_SECRET must be at least %d characters", minSecretLen)
+	}
+	if len(c.ServiceToken) < minSecretLen {
+		return fmt.Errorf("SERVICE_TOKEN must be at least %d characters", minSecretLen)
+	}
+	return nil
 }

@@ -21,6 +21,7 @@ type Server struct {
 	db              *pgxpool.Pool
 	router          *gin.Engine
 	documentService *service.DocumentService
+	authService     *service.AuthService
 }
 
 func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server {
@@ -32,6 +33,7 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 		repo:            repo,
 		db:              pool,
 		documentService: service.NewDocumentService(repo, log),
+		authService:     service.NewAuthService(repo, log, cfg.JWTAccessSecret, cfg.JWTRefreshSecret),
 	}
 
 	s.setupRouter()
@@ -66,6 +68,14 @@ func (s *Server) setupRouter() {
 	{
 		// Public routes (no auth)
 		v1.GET("/health", s.HealthCheck)
+
+		// Auth routes
+		auth := v1.Group("/auth")
+		{
+			auth.POST("/login", s.Login)
+			auth.POST("/refresh", s.RefreshTokens)
+			auth.POST("/logout", s.Logout)
+		}
 
 		// Protected routes
 		protected := v1.Group("")
