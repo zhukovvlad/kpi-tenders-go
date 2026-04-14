@@ -25,9 +25,18 @@ var (
 	ErrInvalidToken       = errors.New("invalid or expired token")
 )
 
-// dummyHash is a pre-computed bcrypt hash used to equalise timing when the
-// requested user does not exist, preventing user-enumeration via timing.
-var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy-timing-equaliser"), bcrypt.DefaultCost)
+// dummyHash is pre-computed once at startup with the same cost as real password
+// hashes. It is used to equalise response timing when the requested user does
+// not exist, preventing user-enumeration via timing side-channel.
+var dummyHash []byte
+
+func init() {
+	h, err := bcrypt.GenerateFromPassword([]byte("dummy-timing-equaliser"), bcrypt.DefaultCost)
+	if err != nil {
+		panic("auth: failed to generate dummy bcrypt hash: " + err.Error())
+	}
+	dummyHash = h
+}
 
 // Claims is the payload for access tokens.
 type Claims struct {
