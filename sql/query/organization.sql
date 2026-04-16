@@ -12,7 +12,7 @@ SELECT * FROM organizations WHERE inn = $1;
 -- name: UpdateOrganization :one
 UPDATE organizations
 SET name       = $2,
-    inn        = CASE WHEN $4::boolean THEN $3 ELSE inn END,
+    inn        = CASE WHEN sqlc.arg(set_inn)::boolean THEN $3 ELSE inn END,
     updated_at = now()
 WHERE id = $1
 RETURNING *;

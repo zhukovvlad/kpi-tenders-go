@@ -92,10 +92,10 @@ RETURNING id, name, inn, created_at, updated_at
 `
 
 type UpdateOrganizationParams struct {
-	ID      uuid.UUID   `json:"id"`
-	Name    string      `json:"name"`
-	Inn     pgtype.Text `json:"inn"`
-	Column4 bool        `json:"column_4"`
+	ID     uuid.UUID   `json:"id"`
+	Name   string      `json:"name"`
+	Inn    pgtype.Text `json:"inn"`
+	SetInn bool        `json:"set_inn"`
 }
 
 func (q *Queries) UpdateOrganization(ctx context.Context, arg UpdateOrganizationParams) (Organization, error) {
@@ -103,7 +103,7 @@ func (q *Queries) UpdateOrganization(ctx context.Context, arg UpdateOrganization
 		arg.ID,
 		arg.Name,
 		arg.Inn,
-		arg.Column4,
+		arg.SetInn,
 	)
 	var i Organization
 	err := row.Scan(

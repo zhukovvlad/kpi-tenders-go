@@ -142,10 +142,10 @@ func (s *OrganizationService) Update(ctx context.Context, id uuid.UUID, name str
 	}
 
 	org, err := s.repo.UpdateOrganization(ctx, repository.UpdateOrganizationParams{
-		ID:      id,
-		Name:    name,
-		Inn:     innVal,
-		Column4: setInn,
+		ID:     id,
+		Name:   name,
+		Inn:    innVal,
+		SetInn: setInn,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

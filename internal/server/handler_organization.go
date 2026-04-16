@@ -11,7 +11,7 @@ import (
 )
 
 type registerRequest struct {
-	OrgName  string `json:"org_name"  binding:"required"`
+	OrgName  string `json:"name"  binding:"required"`
 	INN      string `json:"inn"`
 	Email    string `json:"email"     binding:"required,email"`
 	Password string `json:"password"  binding:"required,min=8"`
@@ -23,7 +23,8 @@ type registerRequest struct {
 func (s *Server) RegisterOrganization(c *gin.Context) {
 	var req registerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		s.log.Debug("register: invalid request body", "err", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 
@@ -134,7 +135,8 @@ func (s *Server) UpdateOrganization(c *gin.Context) {
 
 	var req updateOrganizationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		s.log.Debug("update org: invalid request body", "err", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 
