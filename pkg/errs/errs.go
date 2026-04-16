@@ -21,7 +21,7 @@ const (
 //   - Code    — stable token for frontend switch/case logic.
 //   - Message — human-readable text safe to expose to the caller.
 //   - Err     — original cause kept for logging; intentionally omitted from
-//               JSON serialisation via the `json:"-"` tag.
+//     JSON serialisation via the `json:"-"` tag.
 type Error struct {
 	Code    Code   `json:"code"`
 	Message string `json:"message"`
