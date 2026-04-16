@@ -8,17 +8,17 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 
 	"go-kpi-tenders/internal/repository"
 )
 
 var (
-	ErrOrgNotFound      = errors.New("organization not found")
-	ErrEmailTaken       = errors.New("email already in use")
-	ErrINNTaken         = errors.New("INN already in use")
+	ErrOrgNotFound = errors.New("organization not found")
+	ErrEmailTaken  = errors.New("email already in use")
+	ErrINNTaken    = errors.New("INN already in use")
 )
 
 type OrganizationService struct {
