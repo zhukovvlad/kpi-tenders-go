@@ -175,6 +175,10 @@ func (s *Server) DeleteOrganization(c *gin.Context) {
 	}
 
 	if err := s.organizationService.Delete(c.Request.Context(), id); err != nil {
+		if errors.Is(err, service.ErrOrgNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "organization not found"})
+			return
+		}
 		s.log.Error("delete org: failed", "err", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		return
