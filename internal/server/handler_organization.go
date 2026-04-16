@@ -1,7 +1,6 @@
 package server
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -36,17 +35,7 @@ func (s *Server) RegisterOrganization(c *gin.Context) {
 		FullName: req.FullName,
 	})
 	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrInvalidINN):
-			c.JSON(http.StatusBadRequest, gin.H{"error": "INN must be exactly 10 digits"})
-		case errors.Is(err, service.ErrEmailTaken):
-			c.JSON(http.StatusConflict, gin.H{"error": "email already in use"})
-		case errors.Is(err, service.ErrINNTaken):
-			c.JSON(http.StatusConflict, gin.H{"error": "INN already in use"})
-		default:
-			s.log.Error("register: failed", "err", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-		}
+		s.respondWithError(c, err)
 		return
 	}
 
@@ -92,12 +81,7 @@ func (s *Server) GetOrganization(c *gin.Context) {
 
 	org, err := s.organizationService.GetByID(c.Request.Context(), id)
 	if err != nil {
-		if errors.Is(err, service.ErrOrgNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "organization not found"})
-			return
-		}
-		s.log.Error("get org: failed", "err", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		s.respondWithError(c, err)
 		return
 	}
 
@@ -142,17 +126,7 @@ func (s *Server) UpdateOrganization(c *gin.Context) {
 
 	org, err := s.organizationService.Update(c.Request.Context(), id, req.Name, req.INN)
 	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrInvalidINN):
-			c.JSON(http.StatusBadRequest, gin.H{"error": "INN must be exactly 10 digits"})
-		case errors.Is(err, service.ErrOrgNotFound):
-			c.JSON(http.StatusNotFound, gin.H{"error": "organization not found"})
-		case errors.Is(err, service.ErrINNTaken):
-			c.JSON(http.StatusConflict, gin.H{"error": "INN already in use"})
-		default:
-			s.log.Error("update org: failed", "err", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-		}
+		s.respondWithError(c, err)
 		return
 	}
 
@@ -184,12 +158,7 @@ func (s *Server) DeleteOrganization(c *gin.Context) {
 	}
 
 	if err := s.organizationService.Delete(c.Request.Context(), id); err != nil {
-		if errors.Is(err, service.ErrOrgNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "organization not found"})
-			return
-		}
-		s.log.Error("delete org: failed", "err", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		s.respondWithError(c, err)
 		return
 	}
 
