@@ -43,9 +43,10 @@ func (s *Server) respondWithError(c *gin.Context, err error) {
 		status, ok := codeToStatus[appErr.Code]
 		if !ok {
 			// Unknown code — never expose non-canonical codes to the client (#3).
+			// Log only code + safe message to avoid PII from the wrapped cause.
 			s.log.Error("request error: unknown code",
 				slog.String("code", string(appErr.Code)),
-				slog.String("err", appErr.Error()),
+				slog.String("message", appErr.Message),
 			)
 			c.JSON(http.StatusInternalServerError, errorResponse{
 				Error: errorBody{Code: errs.CodeInternalError, Message: "internal server error"},

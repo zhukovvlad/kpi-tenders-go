@@ -27,7 +27,7 @@ func (s *Server) GetDocument(c *gin.Context) {
 
 	doc, err := s.documentService.Get(c.Request.Context(), id)
 	if err != nil {
-		s.respondWithError(c, errs.New(errs.CodeNotFound, "document not found", err))
+		s.respondWithError(c, err)
 		return
 	}
 

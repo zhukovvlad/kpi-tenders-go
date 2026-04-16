@@ -1,6 +1,6 @@
 // Package errs defines structured application errors used across service and
-// handler layers.  Service methods return *Error values; handlers translate
-// them to HTTP responses without knowing any HTTP details themselves.
+// handler layers. Service methods return error values that may wrap *Error;
+// handlers use errors.As to extract *Error and translate it to an HTTP response.
 package errs
 
 import "fmt"
