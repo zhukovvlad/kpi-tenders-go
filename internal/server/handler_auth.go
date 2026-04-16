@@ -1,11 +1,9 @@
 package server
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5"
 
 	"go-kpi-tenders/internal/service"
 	"go-kpi-tenders/pkg/errs"
@@ -54,14 +52,10 @@ func (s *Server) RefreshTokens(c *gin.Context) {
 	}
 
 	// Re-fetch the user to pick up any role / org changes since the token was issued.
-	user, err := s.repo.GetUserByID(c.Request.Context(), claims.UserID)
+	user, err := s.authService.ResolveUserForRefresh(c.Request.Context(), claims.UserID)
 	if err != nil {
 		s.clearAuthCookies(c)
-		if errors.Is(err, pgx.ErrNoRows) {
-			s.respondWithError(c, errs.New(errs.CodeUnauthorized, "user not found", err))
-		} else {
-			s.respondWithError(c, errs.New(errs.CodeInternalError, "internal server error", err))
-		}
+		s.respondWithError(c, err)
 		return
 	}
 

@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -78,7 +79,8 @@ func (s *Server) respondWithError(c *gin.Context, err error) {
 	}
 
 	// Unrecognised error — never expose internal details to the caller.
-	s.log.Error("request error: unhandled", slog.String("err", err.Error()))
+	// Log only the type to avoid leaking PII that raw repository errors may carry.
+	s.log.Error("request error: unhandled", slog.String("type", fmt.Sprintf("%T", err)))
 	c.JSON(http.StatusInternalServerError, errorResponse{
 		Error: errorBody{Code: errs.CodeInternalError, Message: "internal server error"},
 	})

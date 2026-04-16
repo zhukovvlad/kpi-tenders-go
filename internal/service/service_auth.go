@@ -168,3 +168,18 @@ func (s *AuthService) ValidateRefreshToken(tokenStr string) (*RefreshClaims, err
 	}
 	return claims, nil
 }
+
+// ResolveUserForRefresh fetches the user record for an already-validated refresh
+// token. It is the single place that maps a missing user (deleted account) to the
+// same generic "invalid or expired token" message used by ValidateRefreshToken,
+// preventing information disclosure about whether the account still exists.
+func (s *AuthService) ResolveUserForRefresh(ctx context.Context, userID uuid.UUID) (repository.User, error) {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return repository.User{}, errs.New(errs.CodeUnauthorized, "invalid or expired token", err)
+		}
+		return repository.User{}, errs.New(errs.CodeInternalError, "internal server error", err)
+	}
+	return user, nil
+}
