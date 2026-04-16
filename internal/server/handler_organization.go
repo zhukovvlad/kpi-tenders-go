@@ -51,8 +51,15 @@ func (s *Server) RegisterOrganization(c *gin.Context) {
 
 	accessToken, refreshToken, err := s.authService.GenerateTokens(user.ID, org.ID, user.Role)
 	if err != nil {
+		// Org and user are already persisted — returning 500 here would make
+		// clients retry registration and hit uniqueness conflicts. Return 201
+		// and ask the client to sign in manually.
 		s.log.Error("register: token generation failed", "err", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		c.JSON(http.StatusCreated, gin.H{
+			"org_id":  org.ID,
+			"user_id": user.ID,
+			"warning": "registered successfully, please sign in",
+		})
 		return
 	}
 

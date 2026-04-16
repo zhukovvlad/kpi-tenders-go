@@ -84,19 +84,27 @@ func (q *Queries) GetOrganizationByINN(ctx context.Context, inn pgtype.Text) (Or
 
 const updateOrganization = `-- name: UpdateOrganization :one
 UPDATE organizations
-SET name = $2, inn = $3, updated_at = now()
+SET name       = $2,
+    inn        = CASE WHEN $4::boolean THEN $3 ELSE inn END,
+    updated_at = now()
 WHERE id = $1
 RETURNING id, name, inn, created_at, updated_at
 `
 
 type UpdateOrganizationParams struct {
-	ID   uuid.UUID   `json:"id"`
-	Name string      `json:"name"`
-	Inn  pgtype.Text `json:"inn"`
+	ID      uuid.UUID   `json:"id"`
+	Name    string      `json:"name"`
+	Inn     pgtype.Text `json:"inn"`
+	Column4 bool        `json:"column_4"`
 }
 
 func (q *Queries) UpdateOrganization(ctx context.Context, arg UpdateOrganizationParams) (Organization, error) {
-	row := q.db.QueryRow(ctx, updateOrganization, arg.ID, arg.Name, arg.Inn)
+	row := q.db.QueryRow(ctx, updateOrganization,
+		arg.ID,
+		arg.Name,
+		arg.Inn,
+		arg.Column4,
+	)
 	var i Organization
 	err := row.Scan(
 		&i.ID,
