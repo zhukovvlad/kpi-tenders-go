@@ -129,30 +129,23 @@ func (s *OrganizationService) GetByID(ctx context.Context, id uuid.UUID) (reposi
 
 // Update changes the name and/or INN of an organization.
 // inn == nil means "leave unchanged"; inn pointing to "" means "clear INN".
+// The update is performed atomically via a single SQL statement — no read-modify-write.
 func (s *OrganizationService) Update(ctx context.Context, id uuid.UUID, name string, inn *string) (repository.Organization, error) {
 	var innVal pgtype.Text
+	setInn := inn != nil
 	if inn != nil {
 		parsed, err := parseINN(*inn)
 		if err != nil {
 			return repository.Organization{}, err
 		}
 		innVal = parsed
-	} else {
-		// nil → load current value to keep it unchanged
-		current, err := s.repo.GetOrganizationByID(ctx, id)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return repository.Organization{}, ErrOrgNotFound
-			}
-			return repository.Organization{}, fmt.Errorf("get org for update: %w", err)
-		}
-		innVal = current.Inn
 	}
 
 	org, err := s.repo.UpdateOrganization(ctx, repository.UpdateOrganizationParams{
-		ID:   id,
-		Name: name,
-		Inn:  innVal,
+		ID:      id,
+		Name:    name,
+		Inn:     innVal,
+		Column4: setInn,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
