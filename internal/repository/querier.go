@@ -19,7 +19,7 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteDocument(ctx context.Context, id uuid.UUID) error
 	DeleteDocumentTask(ctx context.Context, id uuid.UUID) error
-	DeleteOrganization(ctx context.Context, id uuid.UUID) error
+	DeleteOrganization(ctx context.Context, id uuid.UUID) (int64, error)
 	GetDocument(ctx context.Context, id uuid.UUID) (Document, error)
 	GetDocumentTask(ctx context.Context, id uuid.UUID) (DocumentTask, error)
 	GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organization, error)

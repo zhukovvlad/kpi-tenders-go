@@ -15,5 +15,5 @@ SET name = $2, inn = $3, updated_at = now()
 WHERE id = $1
 RETURNING *;
 
--- name: DeleteOrganization :exec
+-- name: DeleteOrganization :execrows
 DELETE FROM organizations WHERE id = $1;

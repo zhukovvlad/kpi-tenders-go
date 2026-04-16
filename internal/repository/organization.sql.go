@@ -36,13 +36,16 @@ func (q *Queries) CreateOrganization(ctx context.Context, arg CreateOrganization
 	return i, err
 }
 
-const deleteOrganization = `-- name: DeleteOrganization :exec
+const deleteOrganization = `-- name: DeleteOrganization :execrows
 DELETE FROM organizations WHERE id = $1
 `
 
-func (q *Queries) DeleteOrganization(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteOrganization, id)
-	return err
+func (q *Queries) DeleteOrganization(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteOrganization, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getOrganizationByID = `-- name: GetOrganizationByID :one

@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
@@ -19,6 +22,9 @@ var (
 	ErrOrgNotFound = errors.New("organization not found")
 	ErrEmailTaken  = errors.New("email already in use")
 	ErrINNTaken    = errors.New("INN already in use")
+	ErrInvalidINN  = errors.New("INN must be exactly 10 digits")
+
+	innRegexp = regexp.MustCompile(`^\d{10}$`)
 )
 
 type OrganizationService struct {
@@ -33,10 +39,23 @@ func NewOrganizationService(repo *repository.Queries, db *pgxpool.Pool, log *slo
 
 type RegisterParams struct {
 	OrgName  string
-	INN      string // optional, pass "" to skip
+	INN      string // optional, pass "" to skip; if provided must be 10 digits
 	Email    string
 	Password string
 	FullName string
+}
+
+// parseINN trims and validates an INN string. Returns a valid pgtype.Text if
+// non-empty, pgtype.Text{} (NULL) if empty, or ErrInvalidINN if malformed.
+func parseINN(raw string) (pgtype.Text, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return pgtype.Text{}, nil
+	}
+	if !innRegexp.MatchString(s) {
+		return pgtype.Text{}, ErrInvalidINN
+	}
+	return pgtype.Text{String: s, Valid: true}, nil
 }
 
 // Register creates a new organization and its first admin user in a single
@@ -50,9 +69,9 @@ func (s *OrganizationService) Register(ctx context.Context, p RegisterParams) (r
 
 	qtx := s.repo.WithTx(tx)
 
-	inn := pgtype.Text{}
-	if p.INN != "" {
-		inn = pgtype.Text{String: p.INN, Valid: true}
+	inn, err := parseINN(p.INN)
+	if err != nil {
+		return repository.Organization{}, repository.User{}, err
 	}
 
 	org, err := qtx.CreateOrganization(ctx, repository.CreateOrganizationParams{
@@ -109,10 +128,25 @@ func (s *OrganizationService) GetByID(ctx context.Context, id uuid.UUID) (reposi
 }
 
 // Update changes the name and/or INN of an organization.
-func (s *OrganizationService) Update(ctx context.Context, id uuid.UUID, name, inn string) (repository.Organization, error) {
-	innVal := pgtype.Text{}
-	if inn != "" {
-		innVal = pgtype.Text{String: inn, Valid: true}
+// inn == nil means "leave unchanged"; inn pointing to "" means "clear INN".
+func (s *OrganizationService) Update(ctx context.Context, id uuid.UUID, name string, inn *string) (repository.Organization, error) {
+	var innVal pgtype.Text
+	if inn != nil {
+		parsed, err := parseINN(*inn)
+		if err != nil {
+			return repository.Organization{}, err
+		}
+		innVal = parsed
+	} else {
+		// nil → load current value to keep it unchanged
+		current, err := s.repo.GetOrganizationByID(ctx, id)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return repository.Organization{}, ErrOrgNotFound
+			}
+			return repository.Organization{}, fmt.Errorf("get org for update: %w", err)
+		}
+		innVal = current.Inn
 	}
 
 	org, err := s.repo.UpdateOrganization(ctx, repository.UpdateOrganizationParams{
@@ -133,34 +167,25 @@ func (s *OrganizationService) Update(ctx context.Context, id uuid.UUID, name, in
 }
 
 // Delete removes an organization and all its dependent records.
+// Returns ErrOrgNotFound when no row matched.
 func (s *OrganizationService) Delete(ctx context.Context, id uuid.UUID) error {
-	if err := s.repo.DeleteOrganization(ctx, id); err != nil {
+	rows, err := s.repo.DeleteOrganization(ctx, id)
+	if err != nil {
 		return fmt.Errorf("delete org: %w", err)
+	}
+	if rows == 0 {
+		return ErrOrgNotFound
 	}
 	return nil
 }
 
-// isUniqueViolation checks whether err is a PostgreSQL unique-constraint
-// violation for the given constraint name.
+// isUniqueViolation reports whether err is a PostgreSQL unique-violation (23505)
+// for the given constraint name. Uses pgconn.PgError.ConstraintName directly —
+// no fragile string matching against error messages.
 func isUniqueViolation(err error, constraint string) bool {
-	var pgErr interface{ SQLState() string }
+	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
-		// 23505 = unique_violation
-		if pgErr.SQLState() == "23505" {
-			return constraint == "" || contains(err.Error(), constraint)
-		}
+		return pgErr.Code == "23505" && (constraint == "" || pgErr.ConstraintName == constraint)
 	}
 	return false
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		func() bool {
-			for i := 0; i <= len(s)-len(substr); i++ {
-				if s[i:i+len(substr)] == substr {
-					return true
-				}
-			}
-			return false
-		}())
 }
