@@ -11,6 +11,42 @@ import (
 	"github.com/google/uuid"
 )
 
+const createUser = `-- name: CreateUser :one
+INSERT INTO users (organization_id, email, password_hash, full_name, role)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, organization_id, email, password_hash, full_name, role, created_at, updated_at
+`
+
+type CreateUserParams struct {
+	OrganizationID uuid.UUID `json:"organization_id"`
+	Email          string    `json:"email"`
+	PasswordHash   string    `json:"password_hash"`
+	FullName       string    `json:"full_name"`
+	Role           string    `json:"role"`
+}
+
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, createUser,
+		arg.OrganizationID,
+		arg.Email,
+		arg.PasswordHash,
+		arg.FullName,
+		arg.Role,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.FullName,
+		&i.Role,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT id, organization_id, email, password_hash, full_name, role, created_at, updated_at FROM users WHERE email = $1
 `
