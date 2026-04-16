@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -54,7 +55,12 @@ func (s *Server) RefreshTokens(c *gin.Context) {
 	// Re-fetch the user to pick up any role / org changes since the token was issued.
 	user, err := s.authService.ResolveUserForRefresh(c.Request.Context(), claims.UserID)
 	if err != nil {
-		s.clearAuthCookies(c)
+		// Only invalidate cookies for auth failures; keep them for transient DB errors
+		// so users are not logged out during infrastructure hiccups.
+		var appErr *errs.Error
+		if errors.As(err, &appErr) && appErr.Code == errs.CodeUnauthorized {
+			s.clearAuthCookies(c)
+		}
 		s.respondWithError(c, err)
 		return
 	}

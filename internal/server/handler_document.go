@@ -11,11 +11,11 @@ import (
 
 func (s *Server) CreateDocument(c *gin.Context) {
 	// TODO: implement via s.documentService
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"})
+	s.respondWithError(c, errs.New(errs.CodeNotImplemented, "not implemented", nil))
 }
 
 func (s *Server) ListDocuments(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"})
+	s.respondWithError(c, errs.New(errs.CodeNotImplemented, "not implemented", nil))
 }
 
 func (s *Server) GetDocument(c *gin.Context) {
@@ -35,31 +35,31 @@ func (s *Server) GetDocument(c *gin.Context) {
 }
 
 func (s *Server) UpdateDocumentStatus(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"})
+	s.respondWithError(c, errs.New(errs.CodeNotImplemented, "not implemented", nil))
 }
 
 func (s *Server) DeleteDocument(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"})
+	s.respondWithError(c, errs.New(errs.CodeNotImplemented, "not implemented", nil))
 }
 
 func (s *Server) CreateDocumentTask(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"})
+	s.respondWithError(c, errs.New(errs.CodeNotImplemented, "not implemented", nil))
 }
 
 func (s *Server) ListDocumentTasks(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"})
+	s.respondWithError(c, errs.New(errs.CodeNotImplemented, "not implemented", nil))
 }
 
 func (s *Server) GetDocumentTask(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"})
+	s.respondWithError(c, errs.New(errs.CodeNotImplemented, "not implemented", nil))
 }
 
 func (s *Server) UpdateDocumentTaskStatus(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"})
+	s.respondWithError(c, errs.New(errs.CodeNotImplemented, "not implemented", nil))
 }
 
 func (s *Server) DeleteDocumentTask(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"})
+	s.respondWithError(c, errs.New(errs.CodeNotImplemented, "not implemented", nil))
 }
 
 func parseUUID(raw string) (uuid.UUID, error) {

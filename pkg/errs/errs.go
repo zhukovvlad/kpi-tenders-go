@@ -15,6 +15,7 @@ const (
 	CodeValidationFailed Code = "validation_failed"
 	CodeUnauthorized     Code = "unauthorized"
 	CodeForbidden        Code = "forbidden"
+	CodeNotImplemented   Code = "not_implemented"
 )
 
 // Error is a structured application error.

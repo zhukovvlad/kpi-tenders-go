@@ -19,6 +19,7 @@ var codeToStatus = map[errs.Code]int{
 	errs.CodeUnauthorized:     http.StatusUnauthorized,
 	errs.CodeForbidden:        http.StatusForbidden,
 	errs.CodeInternalError:    http.StatusInternalServerError,
+	errs.CodeNotImplemented:   http.StatusNotImplemented,
 }
 
 // errorResponse is the envelope sent in every error response.

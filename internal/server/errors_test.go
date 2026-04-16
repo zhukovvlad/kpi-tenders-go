@@ -65,6 +65,13 @@ func TestRespondWithError(t *testing.T) {
 			wantMessage: "access denied",
 		},
 		{
+			name:        "not_implemented maps to 501",
+			err:         errs.New(errs.CodeNotImplemented, "not implemented", nil),
+			wantStatus:  http.StatusNotImplemented,
+			wantCode:    errs.CodeNotImplemented,
+			wantMessage: "not implemented",
+		},
+		{
 			name:        "internal_error maps to 500",
 			err:         errs.New(errs.CodeInternalError, "internal server error", errors.New("db timeout")),
 			wantStatus:  http.StatusInternalServerError,
