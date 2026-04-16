@@ -8,22 +8,29 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
 	CreateDocument(ctx context.Context, arg CreateDocumentParams) (Document, error)
 	// ── Document Tasks ──────────────────────────────────
 	CreateDocumentTask(ctx context.Context, arg CreateDocumentTaskParams) (DocumentTask, error)
+	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
+	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteDocument(ctx context.Context, id uuid.UUID) error
 	DeleteDocumentTask(ctx context.Context, id uuid.UUID) error
+	DeleteOrganization(ctx context.Context, id uuid.UUID) (int64, error)
 	GetDocument(ctx context.Context, id uuid.UUID) (Document, error)
 	GetDocumentTask(ctx context.Context, id uuid.UUID) (DocumentTask, error)
+	GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organization, error)
+	GetOrganizationByINN(ctx context.Context, inn pgtype.Text) (Organization, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	ListDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]Document, error)
 	ListTasksByDocument(ctx context.Context, documentID uuid.UUID) ([]DocumentTask, error)
 	UpdateDocumentStatus(ctx context.Context, arg UpdateDocumentStatusParams) (Document, error)
 	UpdateDocumentTaskStatus(ctx context.Context, arg UpdateDocumentTaskStatusParams) (DocumentTask, error)
+	UpdateOrganization(ctx context.Context, arg UpdateOrganizationParams) (Organization, error)
 }
 
 var _ Querier = (*Queries)(nil)

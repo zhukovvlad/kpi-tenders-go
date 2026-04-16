@@ -36,11 +36,11 @@ type DocumentTask struct {
 }
 
 type Organization struct {
-	ID        uuid.UUID `json:"id"`
-	Name      string    `json:"name"`
-	Bin       string    `json:"bin"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        uuid.UUID   `json:"id"`
+	Name      string      `json:"name"`
+	Inn       pgtype.Text `json:"inn"`
+	CreatedAt time.Time   `json:"created_at"`
+	UpdatedAt time.Time   `json:"updated_at"`
 }
 
 type Project struct {

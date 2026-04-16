@@ -7,7 +7,7 @@ CREATE EXTENSION IF NOT EXISTS "vector";
 CREATE TABLE organizations (
     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name        TEXT NOT NULL,
-    bin         TEXT NOT NULL UNIQUE,  -- БИН организации
+    inn         TEXT UNIQUE,           -- ИНН организации (10 цифр для юридических лиц)
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );

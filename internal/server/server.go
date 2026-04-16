@@ -15,25 +15,27 @@ import (
 )
 
 type Server struct {
-	cfg             *config.Config
-	log             *slog.Logger
-	repo            *repository.Queries
-	db              *pgxpool.Pool
-	router          *gin.Engine
-	documentService *service.DocumentService
-	authService     *service.AuthService
+	cfg                 *config.Config
+	log                 *slog.Logger
+	repo                *repository.Queries
+	db                  *pgxpool.Pool
+	router              *gin.Engine
+	documentService     *service.DocumentService
+	authService         *service.AuthService
+	organizationService *service.OrganizationService
 }
 
 func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server {
 	repo := repository.New(pool)
 
 	s := &Server{
-		cfg:             cfg,
-		log:             log,
-		repo:            repo,
-		db:              pool,
-		documentService: service.NewDocumentService(repo, log),
-		authService:     service.NewAuthService(repo, log, cfg.JWTAccessSecret, cfg.JWTRefreshSecret),
+		cfg:                 cfg,
+		log:                 log,
+		repo:                repo,
+		db:                  pool,
+		documentService:     service.NewDocumentService(repo, log),
+		authService:         service.NewAuthService(repo, log, cfg.JWTAccessSecret, cfg.JWTRefreshSecret),
+		organizationService: service.NewOrganizationService(repo, pool, log),
 	}
 
 	s.setupRouter()
@@ -72,6 +74,7 @@ func (s *Server) setupRouter() {
 		// Auth routes
 		auth := v1.Group("/auth")
 		{
+			auth.POST("/register", s.RegisterOrganization)
 			auth.POST("/login", s.Login)
 			auth.POST("/refresh", s.RefreshTokens)
 			auth.POST("/logout", s.Logout)
@@ -81,6 +84,13 @@ func (s *Server) setupRouter() {
 		protected := v1.Group("")
 		protected.Use(s.AuthMiddleware())
 		{
+			organizations := protected.Group("/organizations")
+			{
+				organizations.GET("/:id", s.GetOrganization)
+				organizations.PATCH("/:id", s.UpdateOrganization)
+				organizations.DELETE("/:id", s.DeleteOrganization)
+			}
+
 			documents := protected.Group("/documents")
 			{
 				documents.POST("", s.CreateDocument)
