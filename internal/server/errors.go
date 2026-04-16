@@ -37,7 +37,8 @@ type errorBody struct {
 //     HTTP status is chosen from codeToStatus (fallback: 500).
 //     Non-internal errors are logged at DEBUG level; internal errors at ERROR.
 //   - Any other error type produces a 500 with code "internal_error" and is
-//     logged at ERROR with the full error text.
+//     logged at ERROR with only the concrete Go type (%T); the error text is
+//     intentionally omitted to avoid PII leakage from raw repository errors.
 func (s *Server) respondWithError(c *gin.Context, err error) {
 	var appErr *errs.Error
 	if errors.As(err, &appErr) {
