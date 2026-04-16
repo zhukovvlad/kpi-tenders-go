@@ -5,6 +5,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+
+	"go-kpi-tenders/pkg/errs"
 )
 
 func (s *Server) CreateDocument(c *gin.Context) {
@@ -19,13 +21,13 @@ func (s *Server) ListDocuments(c *gin.Context) {
 func (s *Server) GetDocument(c *gin.Context) {
 	id, err := parseUUID(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid id", err))
 		return
 	}
 
 	doc, err := s.documentService.Get(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "document not found"})
+		s.respondWithError(c, errs.New(errs.CodeNotFound, "document not found", err))
 		return
 	}
 

@@ -16,6 +16,7 @@ var codeToStatus = map[errs.Code]int{
 	errs.CodeConflict:         http.StatusConflict,
 	errs.CodeValidationFailed: http.StatusBadRequest,
 	errs.CodeUnauthorized:     http.StatusUnauthorized,
+	errs.CodeForbidden:        http.StatusForbidden,
 	errs.CodeInternalError:    http.StatusInternalServerError,
 }
 
@@ -41,21 +42,34 @@ func (s *Server) respondWithError(c *gin.Context, err error) {
 	if errors.As(err, &appErr) {
 		status, ok := codeToStatus[appErr.Code]
 		if !ok {
-			status = http.StatusInternalServerError
+			// Unknown code — never expose non-canonical codes to the client (#3).
+			s.log.Error("request error: unknown code",
+				slog.String("code", string(appErr.Code)),
+				slog.String("err", appErr.Error()),
+			)
+			c.JSON(http.StatusInternalServerError, errorResponse{
+				Error: errorBody{Code: errs.CodeInternalError, Message: "internal server error"},
+			})
+			return
 		}
 
-		attrs := []any{
-			slog.String("code", string(appErr.Code)),
-			slog.String("message", appErr.Message),
-		}
-		if appErr.Err != nil {
-			attrs = append(attrs, slog.String("cause", appErr.Err.Error()))
-		}
-
+		// Only log the underlying cause for internal errors to avoid leaking
+		// PII that may be present in DB error details (e.g. unique-violation
+		// messages contain the conflicting value) (#4).
 		if appErr.Code == errs.CodeInternalError {
+			attrs := []any{
+				slog.String("code", string(appErr.Code)),
+				slog.String("message", appErr.Message),
+			}
+			if appErr.Err != nil {
+				attrs = append(attrs, slog.String("cause", appErr.Err.Error()))
+			}
 			s.log.Error("request error", attrs...)
 		} else {
-			s.log.Debug("request error", attrs...)
+			s.log.Debug("request error",
+				slog.String("code", string(appErr.Code)),
+				slog.String("message", appErr.Message),
+			)
 		}
 
 		c.JSON(status, errorResponse{Error: errorBody{Code: appErr.Code, Message: appErr.Message}})

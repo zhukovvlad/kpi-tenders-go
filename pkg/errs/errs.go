@@ -14,6 +14,7 @@ const (
 	CodeConflict         Code = "conflict"
 	CodeValidationFailed Code = "validation_failed"
 	CodeUnauthorized     Code = "unauthorized"
+	CodeForbidden        Code = "forbidden"
 )
 
 // Error is a structured application error.

@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"go-kpi-tenders/internal/service"
+	"go-kpi-tenders/pkg/errs"
 )
 
 type registerRequest struct {
@@ -23,7 +24,7 @@ func (s *Server) RegisterOrganization(c *gin.Context) {
 	var req registerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		s.log.Debug("register: invalid request body", "err", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
 		return
 	}
 
@@ -70,12 +71,12 @@ func (s *Server) GetOrganization(c *gin.Context) {
 
 	id, err := parseUUID(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid id", err))
 		return
 	}
 
 	if id != orgID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		s.respondWithError(c, errs.New(errs.CodeForbidden, "forbidden", nil))
 		return
 	}
 
@@ -102,25 +103,25 @@ func (s *Server) UpdateOrganization(c *gin.Context) {
 	}
 
 	if role, _ := c.Get("role"); role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "admin role required"})
+		s.respondWithError(c, errs.New(errs.CodeForbidden, "admin role required", nil))
 		return
 	}
 
 	id, err := parseUUID(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid id", err))
 		return
 	}
 
 	if id != orgID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		s.respondWithError(c, errs.New(errs.CodeForbidden, "forbidden", nil))
 		return
 	}
 
 	var req updateOrganizationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		s.log.Debug("update org: invalid request body", "err", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
 		return
 	}
 
@@ -142,18 +143,18 @@ func (s *Server) DeleteOrganization(c *gin.Context) {
 	}
 
 	if role, _ := c.Get("role"); role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "admin role required"})
+		s.respondWithError(c, errs.New(errs.CodeForbidden, "admin role required", nil))
 		return
 	}
 
 	id, err := parseUUID(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid id", err))
 		return
 	}
 
 	if id != orgID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		s.respondWithError(c, errs.New(errs.CodeForbidden, "forbidden", nil))
 		return
 	}
 
@@ -171,12 +172,12 @@ func (s *Server) DeleteOrganization(c *gin.Context) {
 func orgIDFromContext(c *gin.Context) (uuid.UUID, bool) {
 	val, exists := c.Get("orgID")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, errorResponse{Error: errorBody{Code: errs.CodeUnauthorized, Message: "unauthorized"}})
 		return uuid.UUID{}, false
 	}
 	id, ok := val.(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, errorResponse{Error: errorBody{Code: errs.CodeUnauthorized, Message: "unauthorized"}})
 		return uuid.UUID{}, false
 	}
 	return id, true
