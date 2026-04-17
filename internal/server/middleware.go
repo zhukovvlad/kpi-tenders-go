@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"go-kpi-tenders/pkg/errs"
 )
 
 // AuthMiddleware validates the access_token HttpOnly cookie and populates
@@ -15,14 +17,14 @@ func (s *Server) AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenStr, err := c.Cookie("access_token")
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing access token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, errorResponse{Error: errorBody{Code: errs.CodeUnauthorized, Message: "missing access token"}})
 			return
 		}
 
 		claims, err := s.authService.ValidateAccessToken(tokenStr)
 		if err != nil {
 			s.log.Warn("auth middleware: invalid token", slog.String("err", err.Error()))
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, errorResponse{Error: errorBody{Code: errs.CodeUnauthorized, Message: "invalid or expired token"}})
 			return
 		}
 
@@ -40,7 +42,7 @@ func (s *Server) ServiceBearerAuth() gin.HandlerFunc {
 		authHeader := c.GetHeader("Authorization")
 		token, ok := strings.CutPrefix(authHeader, "Bearer ")
 		if !ok || token == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing or malformed service token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, errorResponse{Error: errorBody{Code: errs.CodeUnauthorized, Message: "missing or malformed service token"}})
 			return
 		}
 
@@ -48,7 +50,7 @@ func (s *Server) ServiceBearerAuth() gin.HandlerFunc {
 			s.log.Warn("service auth: invalid token attempt",
 				slog.String("remote_addr", c.ClientIP()),
 			)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid service token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, errorResponse{Error: errorBody{Code: errs.CodeUnauthorized, Message: "invalid service token"}})
 			return
 		}
 

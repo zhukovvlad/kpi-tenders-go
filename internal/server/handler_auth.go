@@ -5,9 +5,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5"
 
 	"go-kpi-tenders/internal/service"
+	"go-kpi-tenders/pkg/errs"
 )
 
 type loginRequest struct {
@@ -21,18 +21,13 @@ func (s *Server) Login(c *gin.Context) {
 	var req loginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		s.log.Debug("login: invalid request payload", "err", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request payload"})
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request payload", err))
 		return
 	}
 
 	accessToken, refreshToken, err := s.authService.Login(c.Request.Context(), req.Email, req.Password)
 	if err != nil {
-		if errors.Is(err, service.ErrInvalidCredentials) {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid email or password"})
-			return
-		}
-		s.log.Error("login: token generation failed", "err", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		s.respondWithError(c, err)
 		return
 	}
 
@@ -46,34 +41,33 @@ func (s *Server) Login(c *gin.Context) {
 func (s *Server) RefreshTokens(c *gin.Context) {
 	refreshToken, err := c.Cookie("refresh_token")
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing refresh token"})
+		s.respondWithError(c, errs.New(errs.CodeUnauthorized, "missing refresh token", err))
 		return
 	}
 
 	claims, err := s.authService.ValidateRefreshToken(refreshToken)
 	if err != nil {
 		s.clearAuthCookies(c)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired refresh token"})
+		s.respondWithError(c, err)
 		return
 	}
 
 	// Re-fetch the user to pick up any role / org changes since the token was issued.
-	user, err := s.repo.GetUserByID(c.Request.Context(), claims.UserID)
+	user, err := s.authService.ResolveUserForRefresh(c.Request.Context(), claims.UserID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		// Only invalidate cookies for auth failures; keep them for transient DB errors
+		// so users are not logged out during infrastructure hiccups.
+		var appErr *errs.Error
+		if errors.As(err, &appErr) && appErr.Code == errs.CodeUnauthorized {
 			s.clearAuthCookies(c)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
-			return
 		}
-		s.log.Error("refresh: repository error", "err", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		s.respondWithError(c, err)
 		return
 	}
 
 	newAccess, newRefresh, err := s.authService.GenerateTokens(user.ID, user.OrganizationID, user.Role)
 	if err != nil {
-		s.log.Error("refresh: token generation failed", "err", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		s.respondWithError(c, err)
 		return
 	}
 

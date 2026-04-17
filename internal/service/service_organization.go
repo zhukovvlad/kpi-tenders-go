@@ -3,29 +3,22 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 
+	"go-kpi-tenders/internal/pgutil"
 	"go-kpi-tenders/internal/repository"
+	"go-kpi-tenders/pkg/errs"
 )
 
-var (
-	ErrOrgNotFound = errors.New("organization not found")
-	ErrEmailTaken  = errors.New("email already in use")
-	ErrINNTaken    = errors.New("INN already in use")
-	ErrInvalidINN  = errors.New("INN must be exactly 10 digits")
-
-	innRegexp = regexp.MustCompile(`^\d{10}$`)
-)
+var innRegexp = regexp.MustCompile(`^\d{10}$`)
 
 type OrganizationService struct {
 	repo *repository.Queries
@@ -46,14 +39,14 @@ type RegisterParams struct {
 }
 
 // parseINN trims and validates an INN string. Returns a valid pgtype.Text if
-// non-empty, pgtype.Text{} (NULL) if empty, or ErrInvalidINN if malformed.
+// non-empty, pgtype.Text{} (NULL) if empty, or a validation error if malformed.
 func parseINN(raw string) (pgtype.Text, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
 		return pgtype.Text{}, nil
 	}
 	if !innRegexp.MatchString(s) {
-		return pgtype.Text{}, ErrInvalidINN
+		return pgtype.Text{}, errs.New(errs.CodeValidationFailed, "INN must be exactly 10 digits", nil)
 	}
 	return pgtype.Text{String: s, Valid: true}, nil
 }
@@ -63,7 +56,7 @@ func parseINN(raw string) (pgtype.Text, error) {
 func (s *OrganizationService) Register(ctx context.Context, p RegisterParams) (repository.Organization, repository.User, error) {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
-		return repository.Organization{}, repository.User{}, fmt.Errorf("begin tx: %w", err)
+		return repository.Organization{}, repository.User{}, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
@@ -79,15 +72,15 @@ func (s *OrganizationService) Register(ctx context.Context, p RegisterParams) (r
 		Inn:  inn,
 	})
 	if err != nil {
-		if isUniqueViolation(err, "organizations_inn_key") {
-			return repository.Organization{}, repository.User{}, ErrINNTaken
+		if pgutil.IsUniqueViolation(err, "organizations_inn_key") {
+			return repository.Organization{}, repository.User{}, errs.New(errs.CodeConflict, "INN already in use", err)
 		}
-		return repository.Organization{}, repository.User{}, fmt.Errorf("create org: %w", err)
+		return repository.Organization{}, repository.User{}, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(p.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return repository.Organization{}, repository.User{}, fmt.Errorf("hash password: %w", err)
+		return repository.Organization{}, repository.User{}, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
 
 	user, err := qtx.CreateUser(ctx, repository.CreateUserParams{
@@ -98,14 +91,14 @@ func (s *OrganizationService) Register(ctx context.Context, p RegisterParams) (r
 		Role:           "admin",
 	})
 	if err != nil {
-		if isUniqueViolation(err, "users_email_key") {
-			return repository.Organization{}, repository.User{}, ErrEmailTaken
+		if pgutil.IsUniqueViolation(err, "users_email_key") {
+			return repository.Organization{}, repository.User{}, errs.New(errs.CodeConflict, "email already in use", err)
 		}
-		return repository.Organization{}, repository.User{}, fmt.Errorf("create user: %w", err)
+		return repository.Organization{}, repository.User{}, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return repository.Organization{}, repository.User{}, fmt.Errorf("commit tx: %w", err)
+		return repository.Organization{}, repository.User{}, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
 
 	s.log.Info("organization registered",
@@ -120,9 +113,9 @@ func (s *OrganizationService) GetByID(ctx context.Context, id uuid.UUID) (reposi
 	org, err := s.repo.GetOrganizationByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return repository.Organization{}, ErrOrgNotFound
+			return repository.Organization{}, errs.New(errs.CodeNotFound, "organization not found", err)
 		}
-		return repository.Organization{}, fmt.Errorf("get org: %w", err)
+		return repository.Organization{}, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
 	return org, nil
 }
@@ -149,36 +142,25 @@ func (s *OrganizationService) Update(ctx context.Context, id uuid.UUID, name str
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return repository.Organization{}, ErrOrgNotFound
+			return repository.Organization{}, errs.New(errs.CodeNotFound, "organization not found", err)
 		}
-		if isUniqueViolation(err, "organizations_inn_key") {
-			return repository.Organization{}, ErrINNTaken
+		if pgutil.IsUniqueViolation(err, "organizations_inn_key") {
+			return repository.Organization{}, errs.New(errs.CodeConflict, "INN already in use", err)
 		}
-		return repository.Organization{}, fmt.Errorf("update org: %w", err)
+		return repository.Organization{}, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
 	return org, nil
 }
 
 // Delete removes an organization and all its dependent records.
-// Returns ErrOrgNotFound when no row matched.
+// Returns a not_found error when no row matched.
 func (s *OrganizationService) Delete(ctx context.Context, id uuid.UUID) error {
 	rows, err := s.repo.DeleteOrganization(ctx, id)
 	if err != nil {
-		return fmt.Errorf("delete org: %w", err)
+		return errs.New(errs.CodeInternalError, "internal server error", err)
 	}
 	if rows == 0 {
-		return ErrOrgNotFound
+		return errs.New(errs.CodeNotFound, "organization not found", nil)
 	}
 	return nil
-}
-
-// isUniqueViolation reports whether err is a PostgreSQL unique-violation (23505)
-// for the given constraint name. Uses pgconn.PgError.ConstraintName directly —
-// no fragile string matching against error messages.
-func isUniqueViolation(err error, constraint string) bool {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "23505" && (constraint == "" || pgErr.ConstraintName == constraint)
-	}
-	return false
 }

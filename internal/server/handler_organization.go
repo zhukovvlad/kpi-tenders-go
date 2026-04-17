@@ -1,13 +1,13 @@
 package server
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"go-kpi-tenders/internal/service"
+	"go-kpi-tenders/pkg/errs"
 )
 
 type registerRequest struct {
@@ -24,7 +24,7 @@ func (s *Server) RegisterOrganization(c *gin.Context) {
 	var req registerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		s.log.Debug("register: invalid request body", "err", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
 		return
 	}
 
@@ -36,17 +36,7 @@ func (s *Server) RegisterOrganization(c *gin.Context) {
 		FullName: req.FullName,
 	})
 	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrInvalidINN):
-			c.JSON(http.StatusBadRequest, gin.H{"error": "INN must be exactly 10 digits"})
-		case errors.Is(err, service.ErrEmailTaken):
-			c.JSON(http.StatusConflict, gin.H{"error": "email already in use"})
-		case errors.Is(err, service.ErrINNTaken):
-			c.JSON(http.StatusConflict, gin.H{"error": "INN already in use"})
-		default:
-			s.log.Error("register: failed", "err", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-		}
+		s.respondWithError(c, err)
 		return
 	}
 
@@ -81,23 +71,18 @@ func (s *Server) GetOrganization(c *gin.Context) {
 
 	id, err := parseUUID(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid id", err))
 		return
 	}
 
 	if id != orgID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		s.respondWithError(c, errs.New(errs.CodeForbidden, "forbidden", nil))
 		return
 	}
 
 	org, err := s.organizationService.GetByID(c.Request.Context(), id)
 	if err != nil {
-		if errors.Is(err, service.ErrOrgNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "organization not found"})
-			return
-		}
-		s.log.Error("get org: failed", "err", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		s.respondWithError(c, err)
 		return
 	}
 
@@ -118,41 +103,31 @@ func (s *Server) UpdateOrganization(c *gin.Context) {
 	}
 
 	if role, _ := c.Get("role"); role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "admin role required"})
+		s.respondWithError(c, errs.New(errs.CodeForbidden, "admin role required", nil))
 		return
 	}
 
 	id, err := parseUUID(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid id", err))
 		return
 	}
 
 	if id != orgID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		s.respondWithError(c, errs.New(errs.CodeForbidden, "forbidden", nil))
 		return
 	}
 
 	var req updateOrganizationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		s.log.Debug("update org: invalid request body", "err", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
 		return
 	}
 
 	org, err := s.organizationService.Update(c.Request.Context(), id, req.Name, req.INN)
 	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrInvalidINN):
-			c.JSON(http.StatusBadRequest, gin.H{"error": "INN must be exactly 10 digits"})
-		case errors.Is(err, service.ErrOrgNotFound):
-			c.JSON(http.StatusNotFound, gin.H{"error": "organization not found"})
-		case errors.Is(err, service.ErrINNTaken):
-			c.JSON(http.StatusConflict, gin.H{"error": "INN already in use"})
-		default:
-			s.log.Error("update org: failed", "err", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-		}
+		s.respondWithError(c, err)
 		return
 	}
 
@@ -168,28 +143,23 @@ func (s *Server) DeleteOrganization(c *gin.Context) {
 	}
 
 	if role, _ := c.Get("role"); role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "admin role required"})
+		s.respondWithError(c, errs.New(errs.CodeForbidden, "admin role required", nil))
 		return
 	}
 
 	id, err := parseUUID(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid id", err))
 		return
 	}
 
 	if id != orgID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		s.respondWithError(c, errs.New(errs.CodeForbidden, "forbidden", nil))
 		return
 	}
 
 	if err := s.organizationService.Delete(c.Request.Context(), id); err != nil {
-		if errors.Is(err, service.ErrOrgNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "organization not found"})
-			return
-		}
-		s.log.Error("delete org: failed", "err", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		s.respondWithError(c, err)
 		return
 	}
 
@@ -202,12 +172,12 @@ func (s *Server) DeleteOrganization(c *gin.Context) {
 func orgIDFromContext(c *gin.Context) (uuid.UUID, bool) {
 	val, exists := c.Get("orgID")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, errorResponse{Error: errorBody{Code: errs.CodeUnauthorized, Message: "unauthorized"}})
 		return uuid.UUID{}, false
 	}
 	id, ok := val.(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, errorResponse{Error: errorBody{Code: errs.CodeUnauthorized, Message: "unauthorized"}})
 		return uuid.UUID{}, false
 	}
 	return id, true

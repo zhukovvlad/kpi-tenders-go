@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -13,16 +12,12 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"go-kpi-tenders/internal/repository"
+	"go-kpi-tenders/pkg/errs"
 )
 
 const (
 	AccessTokenTTL  = 15 * time.Minute
 	RefreshTokenTTL = 30 * 24 * time.Hour
-)
-
-var (
-	ErrInvalidCredentials = errors.New("invalid email or password")
-	ErrInvalidToken       = errors.New("invalid or expired token")
 )
 
 // dummyHash is pre-computed once at startup with the same cost as real password
@@ -70,9 +65,9 @@ func NewAuthService(repo *repository.Queries, log *slog.Logger, accessSecret, re
 }
 
 // Login verifies credentials and returns a signed access/refresh token pair.
-// Returns ErrInvalidCredentials on auth failure (same message for missing user
-// and wrong password to prevent user enumeration).
-// Returns a wrapped internal error on unexpected repository failures.
+// Returns CodeUnauthorized on auth failure (same message for missing user and
+// wrong password to prevent user enumeration).
+// Returns CodeInternalError on unexpected repository failures.
 func (s *AuthService) Login(ctx context.Context, email, password string) (accessToken, refreshToken string, err error) {
 	user, repoErr := s.repo.GetUserByEmail(ctx, email)
 	if repoErr != nil {
@@ -81,15 +76,15 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (access
 			// cannot enumerate existing emails by measuring latency.
 			_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 			s.log.Warn("login: invalid credentials")
-			return "", "", ErrInvalidCredentials
+			return "", "", errs.New(errs.CodeUnauthorized, "invalid email or password", nil)
 		}
 		s.log.Error("login: repository error", slog.String("err", repoErr.Error()))
-		return "", "", fmt.Errorf("login: %w", repoErr)
+		return "", "", errs.New(errs.CodeInternalError, "internal server error", repoErr)
 	}
 
 	if err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
 		s.log.Warn("login: invalid credentials")
-		return "", "", ErrInvalidCredentials
+		return "", "", errs.New(errs.CodeUnauthorized, "invalid email or password", nil)
 	}
 
 	return s.GenerateTokens(user.ID, user.OrganizationID, user.Role)
@@ -110,7 +105,7 @@ func (s *AuthService) GenerateTokens(userID, orgID uuid.UUID, role string) (acce
 	}
 	accessToken, err = jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString(s.accessSecret)
 	if err != nil {
-		return "", "", fmt.Errorf("sign access token: %w", err)
+		return "", "", errs.New(errs.CodeInternalError, "internal server error", err)
 	}
 
 	refreshClaims := RefreshClaims{
@@ -122,7 +117,7 @@ func (s *AuthService) GenerateTokens(userID, orgID uuid.UUID, role string) (acce
 	}
 	refreshToken, err = jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims).SignedString(s.refreshSecret)
 	if err != nil {
-		return "", "", fmt.Errorf("sign refresh token: %w", err)
+		return "", "", errs.New(errs.CodeInternalError, "internal server error", err)
 	}
 
 	return accessToken, refreshToken, nil
@@ -135,18 +130,18 @@ func (s *AuthService) ValidateAccessToken(tokenStr string) (*Claims, error) {
 		&Claims{},
 		func(t *jwt.Token) (any, error) {
 			if t.Method.Alg() != jwt.SigningMethodHS256.Alg() {
-				return nil, ErrInvalidToken
+				return nil, errs.New(errs.CodeUnauthorized, "invalid or expired token", nil)
 			}
 			return s.accessSecret, nil
 		},
 		jwt.WithExpirationRequired(),
 	)
 	if err != nil || !token.Valid {
-		return nil, ErrInvalidToken
+		return nil, errs.New(errs.CodeUnauthorized, "invalid or expired token", nil)
 	}
 	claims, ok := token.Claims.(*Claims)
 	if !ok {
-		return nil, ErrInvalidToken
+		return nil, errs.New(errs.CodeUnauthorized, "invalid or expired token", nil)
 	}
 	return claims, nil
 }
@@ -158,18 +153,33 @@ func (s *AuthService) ValidateRefreshToken(tokenStr string) (*RefreshClaims, err
 		&RefreshClaims{},
 		func(t *jwt.Token) (any, error) {
 			if t.Method.Alg() != jwt.SigningMethodHS256.Alg() {
-				return nil, ErrInvalidToken
+				return nil, errs.New(errs.CodeUnauthorized, "invalid or expired token", nil)
 			}
 			return s.refreshSecret, nil
 		},
 		jwt.WithExpirationRequired(),
 	)
 	if err != nil || !token.Valid {
-		return nil, ErrInvalidToken
+		return nil, errs.New(errs.CodeUnauthorized, "invalid or expired token", nil)
 	}
 	claims, ok := token.Claims.(*RefreshClaims)
 	if !ok {
-		return nil, ErrInvalidToken
+		return nil, errs.New(errs.CodeUnauthorized, "invalid or expired token", nil)
 	}
 	return claims, nil
+}
+
+// ResolveUserForRefresh fetches the user record for an already-validated refresh
+// token. It is the single place that maps a missing user (deleted account) to the
+// same generic "invalid or expired token" message used by ValidateRefreshToken,
+// preventing information disclosure about whether the account still exists.
+func (s *AuthService) ResolveUserForRefresh(ctx context.Context, userID uuid.UUID) (repository.User, error) {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return repository.User{}, errs.New(errs.CodeUnauthorized, "invalid or expired token", err)
+		}
+		return repository.User{}, errs.New(errs.CodeInternalError, "internal server error", err)
+	}
+	return user, nil
 }
