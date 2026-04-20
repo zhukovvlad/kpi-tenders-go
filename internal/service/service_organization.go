@@ -99,7 +99,11 @@ func (s *OrganizationService) Register(ctx context.Context, p RegisterParams) (r
 	})
 
 	if txErr != nil {
-		return repository.Organization{}, repository.User{}, txErr
+		var appErr *errs.Error
+		if errors.As(txErr, &appErr) {
+			return repository.Organization{}, repository.User{}, txErr
+		}
+		return repository.Organization{}, repository.User{}, errs.New(errs.CodeInternalError, "internal server error", txErr)
 	}
 
 	s.log.Info("organization registered",

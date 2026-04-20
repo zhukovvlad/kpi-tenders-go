@@ -37,7 +37,8 @@ func createTestOrg(t *testing.T, ctx context.Context) repository.Organization {
 func createTestUser(t *testing.T, ctx context.Context, orgID uuid.UUID) repository.User {
 	t.Helper()
 	q := repository.New(testPool)
-	hash, _ := bcrypt.GenerateFromPassword([]byte("test"), bcrypt.MinCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte("test"), bcrypt.MinCost)
+	require.NoError(t, err)
 	user, err := q.CreateUser(ctx, repository.CreateUserParams{
 		OrganizationID: orgID,
 		Email:          fmt.Sprintf("user-%s@test.com", uuid.New()),
@@ -133,7 +134,8 @@ func TestRepository_CreateUser_DuplicateEmail(t *testing.T) {
 	ctx := context.Background()
 	q := repository.New(testPool)
 	org := createTestOrg(t, ctx)
-	hash, _ := bcrypt.GenerateFromPassword([]byte("test"), bcrypt.MinCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte("test"), bcrypt.MinCost)
+	require.NoError(t, err)
 
 	email := fmt.Sprintf("dup-%s@test.com", uuid.New())
 	params := repository.CreateUserParams{

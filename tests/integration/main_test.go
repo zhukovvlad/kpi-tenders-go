@@ -23,10 +23,14 @@ import (
 var testPool *pgxpool.Pool
 
 func TestMain(m *testing.M) {
+	os.Exit(runTests(m))
+}
+
+func runTests(m *testing.M) int {
 	ctx := context.Background()
 
-	pgContainer, err := tcpostgres.RunContainer(ctx,
-		testcontainers.WithImage("pgvector/pgvector:pg16"),
+	pgContainer, err := tcpostgres.Run(ctx,
+		"pgvector/pgvector:pg16",
 		tcpostgres.WithDatabase("kpi_test"),
 		tcpostgres.WithUsername("test"),
 		tcpostgres.WithPassword("test"),
@@ -38,7 +42,7 @@ func TestMain(m *testing.M) {
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start postgres container: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	defer func() {
 		if err := pgContainer.Terminate(ctx); err != nil {
@@ -49,23 +53,23 @@ func TestMain(m *testing.M) {
 	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to get connection string: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create pool: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	defer pool.Close()
 
 	if err := applyMigrations(ctx, pool); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to apply migrations: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	testPool = pool
-	os.Exit(m.Run())
+	return m.Run()
 }
 
 // applyMigrations reads all *.up.sql files from sql/migrations/ in filename

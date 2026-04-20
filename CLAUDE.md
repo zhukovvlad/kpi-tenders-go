@@ -12,8 +12,9 @@ cmd/api/main.go               — точка входа, graceful shutdown
 internal/config/              — конфигурация (cleanenv + .env)
 internal/server/              — HTTP-слой: Server struct, роутер, middleware, хендлеры
 internal/service/             — бизнес-логика
-internal/repository/          — SQLC-генерируемый слой БД + Store interface
-internal/repository/mock/     — MockStore для unit-тестов сервисов
+internal/repository/          — SQLC-генерируемый слой БД (сгенерирован sqlc)
+internal/store/               — Store interface + SQLStore (transaction support)
+internal/store/mock/          — MockStore для unit-тестов сервисов
 internal/pgutil/              — утилиты PostgreSQL (IsUniqueViolation)
 pkg/errs/                     — структурированные ошибки приложения
 pkg/logging/                  — slog-логгер
@@ -32,7 +33,7 @@ tests/integration/            — интеграционные тесты (build
 ```go
 type Server struct {
     cfg   *config.Config; log *slog.Logger
-    store repository.Store  // nil when pool == nil (tests without DB)
+    store store.Store  // nil when pool == nil (tests without DB)
     router *gin.Engine
     authService, documentService, organizationService ...
 }
@@ -42,11 +43,11 @@ type Server struct {
 
 ### Store / Repository pattern
 
-`repository.Store` = `repository.Querier` + `ExecTx(ctx, fn func(Querier) error) error`.
+`store.Store` = `repository.Querier` + `ExecTx(ctx, fn func(Querier) error) error`.
 
-- **Сервисы с транзакциями** (OrganizationService) принимают `repository.Store`.
+- **Сервисы с транзакциями** (OrganizationService) принимают `store.Store`.
 - **Сервисы без транзакций** (AuthService, DocumentService) принимают `repository.Querier`.
-- `SQLStore` — production-реализация поверх `*pgxpool.Pool`.
+- `store.SQLStore` — production-реализация поверх `*pgxpool.Pool`.
 - `mock.MockStore` — testify-mock для unit-тестов; `ExecTx` вызывает `fn(m)` если не настроена ошибка.
 
 ### Ошибки
