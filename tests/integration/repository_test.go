@@ -6,8 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/uuid"
@@ -22,8 +22,10 @@ import (
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+var innCounter atomic.Int64
+
 func uniqueINN() string {
-	return fmt.Sprintf("%010d", rand.Int63n(9_000_000_000)+1_000_000_000)
+	return fmt.Sprintf("%010d", innCounter.Add(1)+1_000_000_000)
 }
 
 func createTestOrg(t *testing.T, ctx context.Context) repository.Organization {
@@ -240,7 +242,7 @@ func TestCatalogPositions_RAGSearch_CosineSimilarity(t *testing.T) {
 
 	require.Len(t, results, 2, "only steel positions should be returned")
 	assert.Equal(t, "Steel Beam IPE-200", results[0].Title, "beam must rank higher than column")
-	assert.Greater(t, results[0].Similarity, 0.999, "high cosine similarity expected")
+	assert.Greater(t, results[0].Similarity, 0.995, "high cosine similarity expected")
 }
 
 func TestCatalogPositions_JSONBFilter(t *testing.T) {

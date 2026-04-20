@@ -95,12 +95,18 @@ func applyMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	sort.Strings(upFiles)
 
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquiring migration connection: %w", err)
+	}
+	defer conn.Release()
+
 	for _, path := range upFiles {
 		sql, err := os.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("reading %s: %w", path, err)
 		}
-		if _, err := pool.Exec(ctx, string(sql)); err != nil {
+		if _, err := conn.Conn().PgConn().Exec(ctx, string(sql)).ReadAll(); err != nil {
 			return fmt.Errorf("applying %s: %w", filepath.Base(path), err)
 		}
 	}

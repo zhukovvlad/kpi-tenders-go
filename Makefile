@@ -45,22 +45,18 @@ gen-secrets:
 
 ## ── Tests ───────────────────────────────────────────
 
-.PHONY: test test-unit test-integration test-full mock
+.PHONY: test test-unit test-integration mock
 
-# Fast: unit tests only (no Docker required).
-test:
-	go test -v -race -count=1 ./...
-
-# Alias that excludes integration package explicitly.
+# Unit tests only (no Docker required).
 test-unit:
-	go test -v -race -count=1 ./internal/... ./cmd/...
+	go test -v -race -count=1 ./internal/... ./cmd/... ./pkg/...
 
-# Requires Docker (testcontainers spins up pgvector/pgvector:pg16).
+# Integration tests — requires Docker (testcontainers spins up pgvector/pgvector:pg16).
 test-integration:
 	go test -v -race -tags integration -timeout 120s -count=1 ./tests/integration/...
 
 # Run everything: unit + integration.
-test-full: test-unit test-integration
+test: test-unit test-integration
 
 # Regenerate MockStore from the Store interface via mockery.
 mock:

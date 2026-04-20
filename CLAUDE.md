@@ -7,7 +7,7 @@
 
 ## Layout
 
-```
+```text
 cmd/api/main.go               — точка входа, graceful shutdown
 internal/config/              — конфигурация (cleanenv + .env)
 internal/server/              — HTTP-слой: Server struct, роутер, middleware, хендлеры
@@ -77,7 +77,7 @@ type Server struct {
 
 ### Реализовано
 
-```
+```text
 POST   /api/v1/auth/register
 POST   /api/v1/auth/login
 POST   /api/v1/auth/refresh
@@ -94,7 +94,7 @@ GET/PATCH/DELETE /api/v1/tasks/:id      (status update)
 
 ### Заглушки / TODO
 
-```
+```text
 /internal/worker/*  — ServiceBearerAuth подключён, нужен PATCH /internal/worker/tasks/{id}/status
 ```
 
@@ -120,7 +120,7 @@ GET/PATCH/DELETE /api/v1/tasks/:id      (status update)
 ## Стратегия тестирования
 
 ### Unit-тесты (без Docker)
-```
+```text
 internal/service/service_auth_test.go         — AuthService: login, timing, JWT
 internal/service/service_organization_test.go — OrganizationService: register, conflicts
 internal/server/errors_test.go                — respondWithError маппинг
@@ -137,7 +137,7 @@ svc := service.NewOrganizationService(ms, log)
 ```
 
 ### Интеграционные тесты (требует Docker)
-```
+```text
 tests/integration/main_test.go        — TestMain: testcontainers pgvector/pgvector:pg16 + миграции
 tests/integration/repository_test.go  — CRUD + RAG cosine search по catalog_positions
 ```
