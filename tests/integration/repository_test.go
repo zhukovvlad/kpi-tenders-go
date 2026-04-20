@@ -143,7 +143,7 @@ func TestRepository_CreateUser_DuplicateEmail(t *testing.T) {
 		PasswordHash: string(hash), FullName: "User", Role: "member",
 	}
 
-	_, err := q.CreateUser(ctx, params)
+	_, err = q.CreateUser(ctx, params)
 	require.NoError(t, err)
 
 	_, err = q.CreateUser(ctx, params)
