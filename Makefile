@@ -45,10 +45,29 @@ gen-secrets:
 
 ## ── Tests ───────────────────────────────────────────
 
-.PHONY: test
+.PHONY: test test-unit test-integration mock
 
-test:
-	go test -v ./...
+# Unit tests only (no Docker required).
+test-unit:
+	go test -v -race -count=1 ./internal/... ./cmd/... ./pkg/...
+
+# Integration tests — requires Docker (testcontainers spins up pgvector/pgvector:pg16).
+test-integration:
+	go test -v -race -tags integration -timeout 120s -count=1 ./tests/integration/...
+
+# Run everything: unit + integration.
+test: test-unit test-integration
+
+# Regenerate MockStore from the Store interface via mockery.
+# NOTE: after regeneration, restore the hand-written ExecTx method in
+# internal/store/mock/mock_store.go (see file header for details).
+mock:
+	go run github.com/vektra/mockery/v2@v2.46.3 \
+		--dir=internal/store \
+		--name=Store \
+		--output=internal/store/mock \
+		--outpkg=mock \
+		--filename=mock_store.go
 
 ## ── Run ─────────────────────────────────────────────
 

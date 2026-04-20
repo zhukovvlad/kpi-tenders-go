@@ -10,15 +10,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"go-kpi-tenders/internal/config"
-	"go-kpi-tenders/internal/repository"
 	"go-kpi-tenders/internal/service"
+	"go-kpi-tenders/internal/store"
 )
 
 type Server struct {
 	cfg                 *config.Config
 	log                 *slog.Logger
-	repo                *repository.Queries
-	db                  *pgxpool.Pool
+	store               store.Store
 	router              *gin.Engine
 	documentService     *service.DocumentService
 	authService         *service.AuthService
@@ -26,20 +25,26 @@ type Server struct {
 }
 
 func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server {
-	repo := repository.New(pool)
-
-	s := &Server{
-		cfg:                 cfg,
-		log:                 log,
-		repo:                repo,
-		db:                  pool,
-		documentService:     service.NewDocumentService(repo, log),
-		authService:         service.NewAuthService(repo, log, cfg.JWTAccessSecret, cfg.JWTRefreshSecret),
-		organizationService: service.NewOrganizationService(repo, pool, log),
+	// pool may be nil in unit tests that only exercise routing/middleware.
+	// In that case services receive a nil querier/store, which is safe as long
+	// as no handler that reaches the service layer is called in those tests.
+	// In production pool is always non-nil (enforced by cmd/api/main.go).
+	var db store.Store
+	if pool != nil {
+		db = store.New(pool)
 	}
 
-	s.setupRouter()
-	return s
+	srv := &Server{
+		cfg:                 cfg,
+		log:                 log,
+		store:               db,
+		documentService:     service.NewDocumentService(db, log),
+		authService:         service.NewAuthService(db, log, cfg.JWTAccessSecret, cfg.JWTRefreshSecret),
+		organizationService: service.NewOrganizationService(db, log),
+	}
+
+	srv.setupRouter()
+	return srv
 }
 
 func (s *Server) setupRouter() {

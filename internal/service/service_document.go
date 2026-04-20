@@ -13,11 +13,11 @@ import (
 )
 
 type DocumentService struct {
-	repo *repository.Queries
+	repo repository.Querier
 	log  *slog.Logger
 }
 
-func NewDocumentService(repo *repository.Queries, log *slog.Logger) *DocumentService {
+func NewDocumentService(repo repository.Querier, log *slog.Logger) *DocumentService {
 	return &DocumentService{repo: repo, log: log}
 }
 
