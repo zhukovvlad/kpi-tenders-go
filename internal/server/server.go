@@ -15,13 +15,14 @@ import (
 )
 
 type Server struct {
-	cfg                 *config.Config
-	log                 *slog.Logger
-	store               store.Store
-	router              *gin.Engine
-	documentService     *service.DocumentService
-	authService         *service.AuthService
-	organizationService *service.OrganizationService
+	cfg                     *config.Config
+	log                     *slog.Logger
+	store                   store.Store
+	router                  *gin.Engine
+	authService             *service.AuthService
+	organizationService     *service.OrganizationService
+	constructionSiteService *service.ConstructionSiteService
+	documentService         *service.DocumentService
 }
 
 func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server {
@@ -35,12 +36,13 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 	}
 
 	srv := &Server{
-		cfg:                 cfg,
-		log:                 log,
-		store:               db,
-		documentService:     service.NewDocumentService(db, log),
-		authService:         service.NewAuthService(db, log, cfg.JWTAccessSecret, cfg.JWTRefreshSecret),
-		organizationService: service.NewOrganizationService(db, log),
+		cfg:                     cfg,
+		log:                     log,
+		store:                   db,
+		authService:             service.NewAuthService(db, log, cfg.JWTAccessSecret, cfg.JWTRefreshSecret),
+		organizationService:     service.NewOrganizationService(db, log),
+		constructionSiteService: service.NewConstructionSiteService(db, log),
+		documentService:         service.NewDocumentService(db, log),
 	}
 
 	srv.setupRouter()
@@ -96,12 +98,20 @@ func (s *Server) setupRouter() {
 				organizations.DELETE("/:id", s.DeleteOrganization)
 			}
 
+			sites := protected.Group("/sites")
+			{
+				sites.POST("", s.CreateConstructionSite)
+				sites.GET("", s.ListConstructionSites)
+				sites.GET("/:id", s.GetConstructionSite)
+				sites.PATCH("/:id", s.UpdateConstructionSite)
+				sites.DELETE("/:id", s.DeleteConstructionSite)
+			}
+
 			documents := protected.Group("/documents")
 			{
 				documents.POST("", s.CreateDocument)
 				documents.GET("", s.ListDocuments)
 				documents.GET("/:id", s.GetDocument)
-				documents.PATCH("/:id/status", s.UpdateDocumentStatus)
 				documents.DELETE("/:id", s.DeleteDocument)
 			}
 

@@ -182,3 +182,19 @@ func orgIDFromContext(c *gin.Context) (uuid.UUID, bool) {
 	}
 	return id, true
 }
+
+// userIDFromContext extracts the userID set by AuthMiddleware, responding with
+// 401 and returning false if it is missing.
+func userIDFromContext(c *gin.Context) (uuid.UUID, bool) {
+	val, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, errorResponse{Error: errorBody{Code: errs.CodeUnauthorized, Message: "unauthorized"}})
+		return uuid.UUID{}, false
+	}
+	id, ok := val.(uuid.UUID)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, errorResponse{Error: errorBody{Code: errs.CodeUnauthorized, Message: "unauthorized"}})
+		return uuid.UUID{}, false
+	}
+	return id, true
+}

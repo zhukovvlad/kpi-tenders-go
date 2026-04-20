@@ -1,6 +1,6 @@
 -- name: CreateDocument :one
-INSERT INTO documents (organization_id, project_id, title, file_path, status, uploaded_by)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO documents (organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
 -- name: GetDocument :one
@@ -11,10 +11,10 @@ SELECT * FROM documents
 WHERE organization_id = $1
 ORDER BY created_at DESC;
 
--- name: UpdateDocumentStatus :one
-UPDATE documents SET status = $2, updated_at = now()
-WHERE id = $1
-RETURNING *;
+-- name: ListDocumentsBySite :many
+SELECT * FROM documents
+WHERE site_id = $1
+ORDER BY created_at DESC;
 
 -- name: DeleteDocument :exec
 DELETE FROM documents WHERE id = $1;
@@ -22,8 +22,8 @@ DELETE FROM documents WHERE id = $1;
 -- ── Document Tasks ──────────────────────────────────
 
 -- name: CreateDocumentTask :one
-INSERT INTO document_tasks (document_id, assigned_to, title, description, status, due_date)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO document_tasks (document_id, module_name)
+VALUES ($1, $2)
 RETURNING *;
 
 -- name: GetDocumentTask :one

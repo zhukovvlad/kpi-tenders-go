@@ -36,6 +36,11 @@ func (m *MockStore) ExecTx(ctx context.Context, fn func(q repository.Querier) er
 	return fn(m)
 }
 
+func (m *MockStore) CreateConstructionSite(ctx context.Context, arg repository.CreateConstructionSiteParams) (repository.ConstructionSite, error) {
+	args := m.Called(ctx, arg)
+	return args.Get(0).(repository.ConstructionSite), args.Error(1)
+}
+
 func (m *MockStore) CreateDocument(ctx context.Context, arg repository.CreateDocumentParams) (repository.Document, error) {
 	args := m.Called(ctx, arg)
 	return args.Get(0).(repository.Document), args.Error(1)
@@ -56,6 +61,11 @@ func (m *MockStore) CreateUser(ctx context.Context, arg repository.CreateUserPar
 	return args.Get(0).(repository.User), args.Error(1)
 }
 
+func (m *MockStore) DeleteConstructionSite(ctx context.Context, id uuid.UUID) (int64, error) {
+	args := m.Called(ctx, id)
+	return args.Get(0).(int64), args.Error(1)
+}
+
 func (m *MockStore) DeleteDocument(ctx context.Context, id uuid.UUID) error {
 	return m.Called(ctx, id).Error(0)
 }
@@ -67,6 +77,11 @@ func (m *MockStore) DeleteDocumentTask(ctx context.Context, id uuid.UUID) error 
 func (m *MockStore) DeleteOrganization(ctx context.Context, id uuid.UUID) (int64, error) {
 	args := m.Called(ctx, id)
 	return args.Get(0).(int64), args.Error(1)
+}
+
+func (m *MockStore) GetConstructionSite(ctx context.Context, id uuid.UUID) (repository.ConstructionSite, error) {
+	args := m.Called(ctx, id)
+	return args.Get(0).(repository.ConstructionSite), args.Error(1)
 }
 
 func (m *MockStore) GetDocument(ctx context.Context, id uuid.UUID) (repository.Document, error) {
@@ -99,8 +114,18 @@ func (m *MockStore) GetUserByID(ctx context.Context, id uuid.UUID) (repository.U
 	return args.Get(0).(repository.User), args.Error(1)
 }
 
+func (m *MockStore) ListConstructionSitesByOrganization(ctx context.Context, organizationID uuid.UUID) ([]repository.ConstructionSite, error) {
+	args := m.Called(ctx, organizationID)
+	return args.Get(0).([]repository.ConstructionSite), args.Error(1)
+}
+
 func (m *MockStore) ListDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]repository.Document, error) {
 	args := m.Called(ctx, organizationID)
+	return args.Get(0).([]repository.Document), args.Error(1)
+}
+
+func (m *MockStore) ListDocumentsBySite(ctx context.Context, siteID pgtype.UUID) ([]repository.Document, error) {
+	args := m.Called(ctx, siteID)
 	return args.Get(0).([]repository.Document), args.Error(1)
 }
 
@@ -109,9 +134,9 @@ func (m *MockStore) ListTasksByDocument(ctx context.Context, documentID uuid.UUI
 	return args.Get(0).([]repository.DocumentTask), args.Error(1)
 }
 
-func (m *MockStore) UpdateDocumentStatus(ctx context.Context, arg repository.UpdateDocumentStatusParams) (repository.Document, error) {
+func (m *MockStore) UpdateConstructionSite(ctx context.Context, arg repository.UpdateConstructionSiteParams) (repository.ConstructionSite, error) {
 	args := m.Called(ctx, arg)
-	return args.Get(0).(repository.Document), args.Error(1)
+	return args.Get(0).(repository.ConstructionSite), args.Error(1)
 }
 
 func (m *MockStore) UpdateDocumentTaskStatus(ctx context.Context, arg repository.UpdateDocumentTaskStatusParams) (repository.DocumentTask, error) {

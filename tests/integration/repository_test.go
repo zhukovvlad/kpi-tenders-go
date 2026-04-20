@@ -4,9 +4,7 @@ package integration
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -57,10 +55,9 @@ func createTestDocument(t *testing.T, ctx context.Context, orgID, userID uuid.UU
 	q := repository.New(testPool)
 	doc, err := q.CreateDocument(ctx, repository.CreateDocumentParams{
 		OrganizationID: orgID,
-		Title:          "Test Doc " + uuid.New().String(),
-		FilePath:       "/test/doc.pdf",
-		Status:         "pending",
 		UploadedBy:     userID,
+		FileName:       "test-doc-" + uuid.New().String() + ".pdf",
+		StoragePath:    "test-bucket/docs/" + uuid.New().String() + ".pdf",
 	})
 	require.NoError(t, err)
 	return doc
@@ -80,6 +77,7 @@ func TestRepository_CreateOrganization(t *testing.T) {
 	assert.NotEqual(t, uuid.Nil, org.ID)
 	assert.Equal(t, "Acme Corp", org.Name)
 	assert.False(t, org.Inn.Valid)
+	assert.True(t, org.IsActive)
 }
 
 func TestRepository_CreateOrganization_WithINN(t *testing.T) {
@@ -153,115 +151,114 @@ func TestRepository_CreateUser_DuplicateEmail(t *testing.T) {
 	assert.True(t, pgutil.IsUniqueViolation(err, "users_email_key"))
 }
 
-// ── RAG: catalog_positions vector search ─────────────────────────────────────
+// ── Construction site tests ───────────────────────────────────────────────────
 
-type catalogPosition struct {
-	Title      string
-	Embedding  []float32
-	Parameters map[string]any
-}
-
-func insertCatalogPosition(t *testing.T, ctx context.Context, docID uuid.UUID, p catalogPosition) uuid.UUID {
-	t.Helper()
-
-	paramsJSON, err := json.Marshal(p.Parameters)
-	require.NoError(t, err)
-
-	// Build the vector literal: [f1,f2,...]
-	vec := fmt.Sprintf("%v", p.Embedding)
-	// fmt gives [a b c] → need [a,b,c]
-	vecStr := strings.Replace(vec, " ", ",", -1)
-
-	const q = `
-		INSERT INTO catalog_positions (document_id, title, embedding, parameters)
-		VALUES ($1, $2, $3::vector, $4)
-		RETURNING id`
-
-	var id uuid.UUID
-	err = testPool.QueryRow(ctx, q, docID, p.Title, vecStr, paramsJSON).Scan(&id)
-	require.NoError(t, err)
-	return id
-}
-
-func TestCatalogPositions_RAGSearch_CosineSimilarity(t *testing.T) {
+func TestRepository_CreateConstructionSite(t *testing.T) {
 	ctx := context.Background()
-
+	q := repository.New(testPool)
 	org := createTestOrg(t, ctx)
 	user := createTestUser(t, ctx, org.ID)
-	doc := createTestDocument(t, ctx, org.ID, user.ID)
 
-	positions := []catalogPosition{
-		{
-			Title:      "Steel Beam IPE-200",
-			Embedding:  []float32{0.9, 0.1, 0.1},
-			Parameters: map[string]any{"material": "steel", "type": "beam", "size": "IPE-200"},
-		},
-		{
-			Title:      "Concrete B25",
-			Embedding:  []float32{0.1, 0.9, 0.1},
-			Parameters: map[string]any{"material": "concrete", "grade": "B25"},
-		},
-		{
-			Title:      "Steel Column HEA-200",
-			Embedding:  []float32{0.85, 0.15, 0.1},
-			Parameters: map[string]any{"material": "steel", "type": "column", "size": "HEA-200"},
-		},
-	}
-	for _, p := range positions {
-		insertCatalogPosition(t, ctx, doc.ID, p)
-	}
+	site, err := q.CreateConstructionSite(ctx, repository.CreateConstructionSiteParams{
+		OrganizationID: org.ID,
+		Name:           "ЖК Верейская",
+		Status:         "active",
+		CreatedBy:      pgtype.UUID{Bytes: user.ID, Valid: true},
+	})
 
-	// Query vector closest to "Steel Beam" (0.9, 0.1, 0.1).
-	// Only steel items should pass the JSONB filter.
-	const searchSQL = `
-		SELECT title, 1 - (embedding <=> $1::vector) AS similarity
-		FROM catalog_positions
-		WHERE document_id = $2
-		  AND parameters @> $3::jsonb
-		ORDER BY embedding <=> $1::vector
-		LIMIT $4`
-
-	queryVec := "[0.88,0.12,0.10]"
-	filterJSON := `{"material": "steel"}`
-
-	rows, err := testPool.Query(ctx, searchSQL, queryVec, doc.ID, filterJSON, 10)
 	require.NoError(t, err)
-	defer rows.Close()
-
-	type result struct {
-		Title      string
-		Similarity float64
-	}
-	var results []result
-	for rows.Next() {
-		var r result
-		require.NoError(t, rows.Scan(&r.Title, &r.Similarity))
-		results = append(results, r)
-	}
-	require.NoError(t, rows.Err())
-
-	require.Len(t, results, 2, "only steel positions should be returned")
-	assert.Equal(t, "Steel Beam IPE-200", results[0].Title, "beam must rank higher than column")
-	assert.Greater(t, results[0].Similarity, 0.995, "high cosine similarity expected")
+	assert.NotEqual(t, uuid.Nil, site.ID)
+	assert.Equal(t, "ЖК Верейская", site.Name)
+	assert.Equal(t, "active", site.Status)
+	assert.False(t, site.ParentID.Valid)
 }
 
-func TestCatalogPositions_JSONBFilter(t *testing.T) {
+func TestRepository_CreateConstructionSite_WithParent(t *testing.T) {
 	ctx := context.Background()
-
+	q := repository.New(testPool)
 	org := createTestOrg(t, ctx)
-	user := createTestUser(t, ctx, org.ID)
-	doc := createTestDocument(t, ctx, org.ID, user.ID)
 
-	for _, p := range []catalogPosition{
-		{Title: "Wood Beam", Embedding: []float32{0.5, 0.5, 0.0}, Parameters: map[string]any{"material": "wood"}},
-		{Title: "Brick Wall", Embedding: []float32{0.3, 0.6, 0.1}, Parameters: map[string]any{"material": "brick"}},
-	} {
-		insertCatalogPosition(t, ctx, doc.ID, p)
+	parent, err := q.CreateConstructionSite(ctx, repository.CreateConstructionSiteParams{
+		OrganizationID: org.ID,
+		Name:           "ЖК Верейская",
+		Status:         "active",
+	})
+	require.NoError(t, err)
+
+	child, err := q.CreateConstructionSite(ctx, repository.CreateConstructionSiteParams{
+		OrganizationID: org.ID,
+		ParentID:       pgtype.UUID{Bytes: parent.ID, Valid: true},
+		Name:           "1-я очередь",
+		Status:         "active",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, parent.ID, uuid.UUID(child.ParentID.Bytes))
+}
+
+func TestRepository_ListConstructionSitesByOrganization(t *testing.T) {
+	ctx := context.Background()
+	q := repository.New(testPool)
+	org := createTestOrg(t, ctx)
+
+	for i := range 3 {
+		_, err := q.CreateConstructionSite(ctx, repository.CreateConstructionSiteParams{
+			OrganizationID: org.ID,
+			Name:           fmt.Sprintf("Site %d", i),
+			Status:         "active",
+		})
+		require.NoError(t, err)
 	}
 
-	// Filter should return zero steel results from this document.
-	const q = `SELECT count(*) FROM catalog_positions WHERE document_id = $1 AND parameters @> '{"material":"steel"}'::jsonb`
-	var count int
-	require.NoError(t, testPool.QueryRow(ctx, q, doc.ID).Scan(&count))
-	assert.Equal(t, 0, count)
+	sites, err := q.ListConstructionSitesByOrganization(ctx, org.ID)
+	require.NoError(t, err)
+	assert.Len(t, sites, 3)
+}
+
+// ── Document tests ────────────────────────────────────────────────────────────
+
+func TestRepository_CreateDocument(t *testing.T) {
+	ctx := context.Background()
+	q := repository.New(testPool)
+	org := createTestOrg(t, ctx)
+	user := createTestUser(t, ctx, org.ID)
+
+	doc, err := q.CreateDocument(ctx, repository.CreateDocumentParams{
+		OrganizationID: org.ID,
+		UploadedBy:     user.ID,
+		FileName:       "tender.pdf",
+		StoragePath:    "docs/tender.pdf",
+		MimeType:       pgtype.Text{String: "application/pdf", Valid: true},
+	})
+
+	require.NoError(t, err)
+	assert.NotEqual(t, uuid.Nil, doc.ID)
+	assert.Equal(t, "tender.pdf", doc.FileName)
+	assert.Equal(t, "application/pdf", doc.MimeType.String)
+	assert.False(t, doc.SiteID.Valid)
+}
+
+func TestRepository_ListDocumentsBySite(t *testing.T) {
+	ctx := context.Background()
+	q := repository.New(testPool)
+	org := createTestOrg(t, ctx)
+	user := createTestUser(t, ctx, org.ID)
+	site, err := q.CreateConstructionSite(ctx, repository.CreateConstructionSiteParams{
+		OrganizationID: org.ID, Name: "Test Site", Status: "active",
+	})
+	require.NoError(t, err)
+
+	for range 2 {
+		_, err := q.CreateDocument(ctx, repository.CreateDocumentParams{
+			OrganizationID: org.ID,
+			SiteID:         pgtype.UUID{Bytes: site.ID, Valid: true},
+			UploadedBy:     user.ID,
+			FileName:       "doc-" + uuid.New().String() + ".pdf",
+			StoragePath:    "docs/" + uuid.New().String(),
+		})
+		require.NoError(t, err)
+	}
+
+	docs, err := q.ListDocumentsBySite(ctx, pgtype.UUID{Bytes: site.ID, Valid: true})
+	require.NoError(t, err)
+	assert.Len(t, docs, 2)
 }
