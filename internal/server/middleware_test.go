@@ -60,21 +60,24 @@ func TestAuthMiddleware_ValidToken_PassesThrough(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	s := newTestServerWithJWT()
 
+	// Register a dedicated no-op route so the test only depends on middleware
+	// behaviour and not on any business handler logic.
+	s.Router().GET("/test/auth-ping", s.AuthMiddleware(), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
 	userID := uuid.New()
 	orgID := uuid.New()
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
 
-	// Request a *different* org's resource so handler returns 403 before
-	// reaching the nil service layer — proves middleware accepted the token.
-	otherOrg := uuid.New()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/organizations/"+otherOrg.String(), nil)
+	req := httptest.NewRequest(http.MethodGet, "/test/auth-ping", nil)
 	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
 
 	w := httptest.NewRecorder()
 	s.Router().ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 func TestAuthMiddleware_MissingToken_Returns401(t *testing.T) {

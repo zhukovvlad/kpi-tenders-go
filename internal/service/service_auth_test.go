@@ -1,5 +1,3 @@
-//go:build !integration
-
 package service
 
 import (
@@ -76,7 +74,8 @@ func TestAuthService_Login_UserNotFound_ReturnsUnauthorized(t *testing.T) {
 func TestAuthService_Login_TimingEqualization(t *testing.T) {
 	ctx := context.Background()
 
-	hashForExistingUser, _ := bcrypt.GenerateFromPassword([]byte("correct"), bcrypt.MinCost)
+	hashForExistingUser, err := bcrypt.GenerateFromPassword([]byte("correct"), bcrypt.MinCost)
+	require.NoError(t, err)
 	existingUser := repository.User{
 		ID:           uuid.New(),
 		Email:        "user@example.com",
