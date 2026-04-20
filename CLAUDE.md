@@ -48,7 +48,7 @@ type Server struct {
 - **Сервисы с транзакциями** (OrganizationService) принимают `store.Store`.
 - **Сервисы без транзакций** (AuthService, DocumentService) принимают `repository.Querier`.
 - `store.SQLStore` — production-реализация поверх `*pgxpool.Pool`.
-- `mock.MockStore` — testify-mock для unit-тестов; `ExecTx` вызывает `fn(m)` если не настроена ошибка.
+- `mock.MockStore` — testify-mock для unit-тестов; `ExecTx` hand-written: вызывает `fn(m)` для propagation ошибок из транзакции.
 
 ### Ошибки
 
@@ -150,10 +150,9 @@ Build tag: `//go:build integration` — не запускаются при `go t
 make up               # поднять инфраструктуру (DB, Redis, S3)
 make migrate_up       # применить миграции
 make sqlc             # регенерировать repository из SQL
-make test             # unit-тесты (без Docker)
-make test-unit        # unit-тесты explicit
-make test-integration # интеграционные (нужен Docker)
-make test-full        # всё вместе
+make test             # unit + integration (нужен Docker)
+make test-unit        # unit-тесты: ./internal/... ./cmd/... ./pkg/... (без Docker)
+make test-integration # интеграционные: ./tests/integration/... (нужен Docker)
 make mock             # регенерировать MockStore через mockery
 make run              # запустить сервер
 make gen-secrets      # сгенерировать JWT/service секреты

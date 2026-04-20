@@ -25,6 +25,10 @@ type Server struct {
 }
 
 func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server {
+	// pool may be nil in unit tests that only exercise routing/middleware.
+	// In that case services receive a nil querier/store, which is safe as long
+	// as no handler that reaches the service layer is called in those tests.
+	// In production pool is always non-nil (enforced by cmd/api/main.go).
 	var db store.Store
 	if pool != nil {
 		db = store.New(pool)

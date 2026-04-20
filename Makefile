@@ -59,6 +59,8 @@ test-integration:
 test: test-unit test-integration
 
 # Regenerate MockStore from the Store interface via mockery.
+# NOTE: after regeneration, restore the hand-written ExecTx method in
+# internal/store/mock/mock_store.go (see file header for details).
 mock:
 	go run github.com/vektra/mockery/v2@v2.46.3 \
 		--dir=internal/store \
