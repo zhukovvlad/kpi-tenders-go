@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -71,7 +72,7 @@ func TestAuthMiddleware_ValidToken_PassesThrough(t *testing.T) {
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodGet, "/test/auth-ping", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test/auth-ping", nil)
 	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
 
 	w := httptest.NewRecorder()
@@ -84,7 +85,7 @@ func TestAuthMiddleware_MissingToken_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	s := newTestServerWithJWT()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/documents", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/documents", nil)
 	w := httptest.NewRecorder()
 	s.Router().ServeHTTP(w, req)
 
@@ -95,7 +96,7 @@ func TestAuthMiddleware_InvalidToken_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	s := newTestServerWithJWT()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/documents", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/documents", nil)
 	req.AddCookie(&http.Cookie{Name: "access_token", Value: "not.a.valid.jwt"})
 
 	w := httptest.NewRecorder()
@@ -109,7 +110,7 @@ func TestAuthMiddleware_ExpiredToken_Returns401(t *testing.T) {
 	s := newTestServerWithJWT()
 
 	expired := generateExpiredToken(t, testJWTAccessSecret)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/documents", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/documents", nil)
 	req.AddCookie(&http.Cookie{Name: "access_token", Value: expired})
 
 	w := httptest.NewRecorder()
@@ -132,7 +133,7 @@ func TestAuthMiddleware_WrongSigningKey_Returns401(t *testing.T) {
 	tok, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte("completely-different-secret-here!"))
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/documents", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/documents", nil)
 	req.AddCookie(&http.Cookie{Name: "access_token", Value: tok})
 
 	w := httptest.NewRecorder()
@@ -147,7 +148,7 @@ func TestServiceBearerAuth_ValidToken_Returns200(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	s := newTestServerWithJWT()
 
-	req := httptest.NewRequest(http.MethodGet, "/internal/worker/ping", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/internal/worker/ping", nil)
 	req.Header.Set("Authorization", "Bearer "+testServiceToken)
 
 	w := httptest.NewRecorder()
@@ -160,7 +161,7 @@ func TestServiceBearerAuth_MissingHeader_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	s := newTestServerWithJWT()
 
-	req := httptest.NewRequest(http.MethodGet, "/internal/worker/ping", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/internal/worker/ping", nil)
 	w := httptest.NewRecorder()
 	s.Router().ServeHTTP(w, req)
 
@@ -171,7 +172,7 @@ func TestServiceBearerAuth_WrongToken_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	s := newTestServerWithJWT()
 
-	req := httptest.NewRequest(http.MethodGet, "/internal/worker/ping", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/internal/worker/ping", nil)
 	req.Header.Set("Authorization", "Bearer wrong-token")
 
 	w := httptest.NewRecorder()
@@ -184,7 +185,7 @@ func TestServiceBearerAuth_MalformedHeader_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	s := newTestServerWithJWT()
 
-	req := httptest.NewRequest(http.MethodGet, "/internal/worker/ping", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/internal/worker/ping", nil)
 	req.Header.Set("Authorization", "Token "+testServiceToken) // wrong scheme
 
 	w := httptest.NewRecorder()
