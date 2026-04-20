@@ -45,10 +45,31 @@ gen-secrets:
 
 ## ── Tests ───────────────────────────────────────────
 
-.PHONY: test
+.PHONY: test test-unit test-integration test-full mock
 
+# Fast: unit tests only (no Docker required).
 test:
-	go test -v ./...
+	go test -v -race -count=1 ./...
+
+# Alias that excludes integration package explicitly.
+test-unit:
+	go test -v -race -count=1 ./internal/... ./cmd/...
+
+# Requires Docker (testcontainers spins up pgvector/pgvector:pg16).
+test-integration:
+	go test -v -race -tags integration -timeout 120s -count=1 ./tests/integration/...
+
+# Run everything: unit + integration.
+test-full: test-unit test-integration
+
+# Regenerate MockStore from the Store interface via mockery.
+mock:
+	go run github.com/vektra/mockery/v2@v2.46.3 \
+		--dir=internal/store \
+		--name=Store \
+		--output=internal/store/mock \
+		--outpkg=mock \
+		--filename=mock_store.go
 
 ## ── Run ─────────────────────────────────────────────
 

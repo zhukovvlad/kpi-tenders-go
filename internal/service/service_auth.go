@@ -49,13 +49,13 @@ type RefreshClaims struct {
 
 // AuthService handles authentication logic.
 type AuthService struct {
-	repo          *repository.Queries
+	repo          repository.Querier
 	log           *slog.Logger
 	accessSecret  []byte
 	refreshSecret []byte
 }
 
-func NewAuthService(repo *repository.Queries, log *slog.Logger, accessSecret, refreshSecret string) *AuthService {
+func NewAuthService(repo repository.Querier, log *slog.Logger, accessSecret, refreshSecret string) *AuthService {
 	return &AuthService{
 		repo:          repo,
 		log:           log,

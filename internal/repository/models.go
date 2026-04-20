@@ -9,7 +9,17 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/pgvector/pgvector-go"
 )
+
+type CatalogPosition struct {
+	ID         uuid.UUID       `json:"id"`
+	DocumentID uuid.UUID       `json:"document_id"`
+	Title      string          `json:"title"`
+	Embedding  pgvector.Vector `json:"embedding"`
+	Parameters []byte          `json:"parameters"`
+	CreatedAt  time.Time       `json:"created_at"`
+}
 
 type Document struct {
 	ID             uuid.UUID   `json:"id"`

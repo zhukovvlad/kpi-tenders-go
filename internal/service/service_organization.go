@@ -10,24 +10,23 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 
 	"go-kpi-tenders/internal/pgutil"
 	"go-kpi-tenders/internal/repository"
+	"go-kpi-tenders/internal/store"
 	"go-kpi-tenders/pkg/errs"
 )
 
 var innRegexp = regexp.MustCompile(`^\d{10}$`)
 
 type OrganizationService struct {
-	repo *repository.Queries
-	db   *pgxpool.Pool
-	log  *slog.Logger
+	store store.Store
+	log   *slog.Logger
 }
 
-func NewOrganizationService(repo *repository.Queries, db *pgxpool.Pool, log *slog.Logger) *OrganizationService {
-	return &OrganizationService{repo: repo, db: db, log: log}
+func NewOrganizationService(s store.Store, log *slog.Logger) *OrganizationService {
+	return &OrganizationService{store: s, log: log}
 }
 
 type RegisterParams struct {
@@ -52,30 +51,12 @@ func parseINN(raw string) (pgtype.Text, error) {
 }
 
 // Register creates a new organization and its first admin user in a single
-// transaction. On success it returns the created org and user records.
+// transaction. bcrypt is run before the transaction to avoid holding a
+// DB connection open during the expensive hash computation.
 func (s *OrganizationService) Register(ctx context.Context, p RegisterParams) (repository.Organization, repository.User, error) {
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return repository.Organization{}, repository.User{}, errs.New(errs.CodeInternalError, "internal server error", err)
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
-
-	qtx := s.repo.WithTx(tx)
-
 	inn, err := parseINN(p.INN)
 	if err != nil {
 		return repository.Organization{}, repository.User{}, err
-	}
-
-	org, err := qtx.CreateOrganization(ctx, repository.CreateOrganizationParams{
-		Name: p.OrgName,
-		Inn:  inn,
-	})
-	if err != nil {
-		if pgutil.IsUniqueViolation(err, "organizations_inn_key") {
-			return repository.Organization{}, repository.User{}, errs.New(errs.CodeConflict, "INN already in use", err)
-		}
-		return repository.Organization{}, repository.User{}, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(p.Password), bcrypt.DefaultCost)
@@ -83,22 +64,42 @@ func (s *OrganizationService) Register(ctx context.Context, p RegisterParams) (r
 		return repository.Organization{}, repository.User{}, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
 
-	user, err := qtx.CreateUser(ctx, repository.CreateUserParams{
-		OrganizationID: org.ID,
-		Email:          p.Email,
-		PasswordHash:   string(hash),
-		FullName:       p.FullName,
-		Role:           "admin",
-	})
-	if err != nil {
-		if pgutil.IsUniqueViolation(err, "users_email_key") {
-			return repository.Organization{}, repository.User{}, errs.New(errs.CodeConflict, "email already in use", err)
-		}
-		return repository.Organization{}, repository.User{}, errs.New(errs.CodeInternalError, "internal server error", err)
-	}
+	var org repository.Organization
+	var user repository.User
 
-	if err := tx.Commit(ctx); err != nil {
-		return repository.Organization{}, repository.User{}, errs.New(errs.CodeInternalError, "internal server error", err)
+	txErr := s.store.ExecTx(ctx, func(q repository.Querier) error {
+		var txErr error
+
+		org, txErr = q.CreateOrganization(ctx, repository.CreateOrganizationParams{
+			Name: p.OrgName,
+			Inn:  inn,
+		})
+		if txErr != nil {
+			if pgutil.IsUniqueViolation(txErr, "organizations_inn_key") {
+				return errs.New(errs.CodeConflict, "INN already in use", txErr)
+			}
+			return errs.New(errs.CodeInternalError, "internal server error", txErr)
+		}
+
+		user, txErr = q.CreateUser(ctx, repository.CreateUserParams{
+			OrganizationID: org.ID,
+			Email:          p.Email,
+			PasswordHash:   string(hash),
+			FullName:       p.FullName,
+			Role:           "admin",
+		})
+		if txErr != nil {
+			if pgutil.IsUniqueViolation(txErr, "users_email_key") {
+				return errs.New(errs.CodeConflict, "email already in use", txErr)
+			}
+			return errs.New(errs.CodeInternalError, "internal server error", txErr)
+		}
+
+		return nil
+	})
+
+	if txErr != nil {
+		return repository.Organization{}, repository.User{}, txErr
 	}
 
 	s.log.Info("organization registered",
@@ -110,7 +111,7 @@ func (s *OrganizationService) Register(ctx context.Context, p RegisterParams) (r
 
 // GetByID returns an organization by its primary key.
 func (s *OrganizationService) GetByID(ctx context.Context, id uuid.UUID) (repository.Organization, error) {
-	org, err := s.repo.GetOrganizationByID(ctx, id)
+	org, err := s.store.GetOrganizationByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return repository.Organization{}, errs.New(errs.CodeNotFound, "organization not found", err)
@@ -122,7 +123,6 @@ func (s *OrganizationService) GetByID(ctx context.Context, id uuid.UUID) (reposi
 
 // Update changes the name and/or INN of an organization.
 // inn == nil means "leave unchanged"; inn pointing to "" means "clear INN".
-// The update is performed atomically via a single SQL statement — no read-modify-write.
 func (s *OrganizationService) Update(ctx context.Context, id uuid.UUID, name string, inn *string) (repository.Organization, error) {
 	var innVal pgtype.Text
 	setInn := inn != nil
@@ -134,7 +134,7 @@ func (s *OrganizationService) Update(ctx context.Context, id uuid.UUID, name str
 		innVal = parsed
 	}
 
-	org, err := s.repo.UpdateOrganization(ctx, repository.UpdateOrganizationParams{
+	org, err := s.store.UpdateOrganization(ctx, repository.UpdateOrganizationParams{
 		ID:     id,
 		Name:   name,
 		Inn:    innVal,
@@ -153,9 +153,8 @@ func (s *OrganizationService) Update(ctx context.Context, id uuid.UUID, name str
 }
 
 // Delete removes an organization and all its dependent records.
-// Returns a not_found error when no row matched.
 func (s *OrganizationService) Delete(ctx context.Context, id uuid.UUID) error {
-	rows, err := s.repo.DeleteOrganization(ctx, id)
+	rows, err := s.store.DeleteOrganization(ctx, id)
 	if err != nil {
 		return errs.New(errs.CodeInternalError, "internal server error", err)
 	}
