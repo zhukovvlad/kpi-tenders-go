@@ -258,7 +258,10 @@ func TestRepository_ListDocumentsBySite(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	docs, err := q.ListDocumentsBySite(ctx, pgtype.UUID{Bytes: site.ID, Valid: true})
+	docs, err := q.ListDocumentsBySite(ctx, repository.ListDocumentsBySiteParams{
+		OrganizationID: org.ID,
+		SiteID:         pgtype.UUID{Bytes: site.ID, Valid: true},
+	})
 	require.NoError(t, err)
 	assert.Len(t, docs, 2)
 }

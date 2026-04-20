@@ -4,7 +4,8 @@ VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
 -- name: GetConstructionSite :one
-SELECT * FROM construction_sites WHERE id = $1;
+SELECT * FROM construction_sites
+WHERE id = $1 AND organization_id = $2;
 
 -- name: ListConstructionSitesByOrganization :many
 SELECT * FROM construction_sites
@@ -13,11 +14,11 @@ ORDER BY created_at DESC;
 
 -- name: UpdateConstructionSite :one
 UPDATE construction_sites
-SET name       = $2,
-    status     = $3,
+SET name       = $3,
+    status     = $4,
     updated_at = now()
-WHERE id = $1
+WHERE id = $1 AND organization_id = $2
 RETURNING *;
 
 -- name: DeleteConstructionSite :execrows
-DELETE FROM construction_sites WHERE id = $1;
+DELETE FROM construction_sites WHERE id = $1 AND organization_id = $2;

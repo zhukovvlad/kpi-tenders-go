@@ -18,11 +18,11 @@ type createConstructionSiteRequest struct {
 }
 
 func (s *Server) CreateConstructionSite(c *gin.Context) {
-	orgID, ok := orgIDFromContext(c)
+	orgID, ok := s.orgIDFromContext(c)
 	if !ok {
 		return
 	}
-	userID, ok := userIDFromContext(c)
+	userID, ok := s.userIDFromContext(c)
 	if !ok {
 		return
 	}
@@ -64,7 +64,7 @@ func (s *Server) CreateConstructionSite(c *gin.Context) {
 }
 
 func (s *Server) ListConstructionSites(c *gin.Context) {
-	orgID, ok := orgIDFromContext(c)
+	orgID, ok := s.orgIDFromContext(c)
 	if !ok {
 		return
 	}
@@ -79,13 +79,18 @@ func (s *Server) ListConstructionSites(c *gin.Context) {
 }
 
 func (s *Server) GetConstructionSite(c *gin.Context) {
+	orgID, ok := s.orgIDFromContext(c)
+	if !ok {
+		return
+	}
+
 	id, err := parseUUID(c.Param("id"))
 	if err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid id", err))
 		return
 	}
 
-	site, err := s.constructionSiteService.Get(c.Request.Context(), id)
+	site, err := s.constructionSiteService.Get(c.Request.Context(), id, orgID)
 	if err != nil {
 		s.respondWithError(c, err)
 		return
@@ -100,6 +105,11 @@ type updateConstructionSiteRequest struct {
 }
 
 func (s *Server) UpdateConstructionSite(c *gin.Context) {
+	orgID, ok := s.orgIDFromContext(c)
+	if !ok {
+		return
+	}
+
 	id, err := parseUUID(c.Param("id"))
 	if err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid id", err))
@@ -113,9 +123,10 @@ func (s *Server) UpdateConstructionSite(c *gin.Context) {
 	}
 
 	site, err := s.constructionSiteService.Update(c.Request.Context(), repository.UpdateConstructionSiteParams{
-		ID:     id,
-		Name:   req.Name,
-		Status: req.Status,
+		ID:             id,
+		OrganizationID: orgID,
+		Name:           req.Name,
+		Status:         req.Status,
 	})
 	if err != nil {
 		s.respondWithError(c, err)
@@ -126,13 +137,18 @@ func (s *Server) UpdateConstructionSite(c *gin.Context) {
 }
 
 func (s *Server) DeleteConstructionSite(c *gin.Context) {
+	orgID, ok := s.orgIDFromContext(c)
+	if !ok {
+		return
+	}
+
 	id, err := parseUUID(c.Param("id"))
 	if err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid id", err))
 		return
 	}
 
-	if err := s.constructionSiteService.Delete(c.Request.Context(), id); err != nil {
+	if err := s.constructionSiteService.Delete(c.Request.Context(), id, orgID); err != nil {
 		s.respondWithError(c, err)
 		return
 	}

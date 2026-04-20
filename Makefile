@@ -62,7 +62,7 @@ test: test-unit test-integration
 # NOTE: after regeneration, restore the hand-written ExecTx method in
 # internal/store/mock/mock_store.go (see file header for details).
 mock:
-	go run github.com/vektra/mockery/v2@v2.46.3 \
+	go run github.com/vektra/mockery/v2@latest \
 		--dir=internal/store \
 		--name=Store \
 		--output=internal/store/mock \

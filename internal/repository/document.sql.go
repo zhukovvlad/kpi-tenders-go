@@ -87,30 +87,54 @@ func (q *Queries) CreateDocumentTask(ctx context.Context, arg CreateDocumentTask
 	return i, err
 }
 
-const deleteDocument = `-- name: DeleteDocument :exec
-DELETE FROM documents WHERE id = $1
+const deleteDocument = `-- name: DeleteDocument :execrows
+DELETE FROM documents WHERE id = $1 AND organization_id = $2
 `
 
-func (q *Queries) DeleteDocument(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteDocument, id)
-	return err
+type DeleteDocumentParams struct {
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
 }
 
-const deleteDocumentTask = `-- name: DeleteDocumentTask :exec
-DELETE FROM document_tasks WHERE id = $1
+func (q *Queries) DeleteDocument(ctx context.Context, arg DeleteDocumentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteDocument, arg.ID, arg.OrganizationID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteDocumentTask = `-- name: DeleteDocumentTask :execrows
+DELETE FROM document_tasks
+WHERE document_tasks.id = $1
+  AND document_tasks.document_id IN (SELECT documents.id FROM documents WHERE documents.organization_id = $2)
 `
 
-func (q *Queries) DeleteDocumentTask(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteDocumentTask, id)
-	return err
+type DeleteDocumentTaskParams struct {
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+}
+
+func (q *Queries) DeleteDocumentTask(ctx context.Context, arg DeleteDocumentTaskParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteDocumentTask, arg.ID, arg.OrganizationID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getDocument = `-- name: GetDocument :one
-SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at FROM documents WHERE id = $1
+SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at FROM documents
+WHERE id = $1 AND organization_id = $2
 `
 
-func (q *Queries) GetDocument(ctx context.Context, id uuid.UUID) (Document, error) {
-	row := q.db.QueryRow(ctx, getDocument, id)
+type GetDocumentParams struct {
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+}
+
+func (q *Queries) GetDocument(ctx context.Context, arg GetDocumentParams) (Document, error) {
+	row := q.db.QueryRow(ctx, getDocument, arg.ID, arg.OrganizationID)
 	var i Document
 	err := row.Scan(
 		&i.ID,
@@ -129,11 +153,20 @@ func (q *Queries) GetDocument(ctx context.Context, id uuid.UUID) (Document, erro
 }
 
 const getDocumentTask = `-- name: GetDocumentTask :one
-SELECT id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at FROM document_tasks WHERE id = $1
+SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id,
+       dt.result_payload, dt.error_message, dt.created_at, dt.updated_at
+FROM document_tasks AS dt
+JOIN documents AS d ON d.id = dt.document_id
+WHERE dt.id = $1 AND d.organization_id = $2
 `
 
-func (q *Queries) GetDocumentTask(ctx context.Context, id uuid.UUID) (DocumentTask, error) {
-	row := q.db.QueryRow(ctx, getDocumentTask, id)
+type GetDocumentTaskParams struct {
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+}
+
+func (q *Queries) GetDocumentTask(ctx context.Context, arg GetDocumentTaskParams) (DocumentTask, error) {
+	row := q.db.QueryRow(ctx, getDocumentTask, arg.ID, arg.OrganizationID)
 	var i DocumentTask
 	err := row.Scan(
 		&i.ID,
@@ -189,12 +222,17 @@ func (q *Queries) ListDocumentsByOrganization(ctx context.Context, organizationI
 
 const listDocumentsBySite = `-- name: ListDocumentsBySite :many
 SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at FROM documents
-WHERE site_id = $1
+WHERE organization_id = $1 AND site_id = $2
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListDocumentsBySite(ctx context.Context, siteID pgtype.UUID) ([]Document, error) {
-	rows, err := q.db.Query(ctx, listDocumentsBySite, siteID)
+type ListDocumentsBySiteParams struct {
+	OrganizationID uuid.UUID   `json:"organization_id"`
+	SiteID         pgtype.UUID `json:"site_id"`
+}
+
+func (q *Queries) ListDocumentsBySite(ctx context.Context, arg ListDocumentsBySiteParams) ([]Document, error) {
+	rows, err := q.db.Query(ctx, listDocumentsBySite, arg.OrganizationID, arg.SiteID)
 	if err != nil {
 		return nil, err
 	}

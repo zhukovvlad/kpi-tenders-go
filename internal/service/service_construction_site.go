@@ -29,8 +29,11 @@ func (s *ConstructionSiteService) Create(ctx context.Context, params repository.
 	return site, nil
 }
 
-func (s *ConstructionSiteService) Get(ctx context.Context, id uuid.UUID) (repository.ConstructionSite, error) {
-	site, err := s.repo.GetConstructionSite(ctx, id)
+func (s *ConstructionSiteService) Get(ctx context.Context, id, orgID uuid.UUID) (repository.ConstructionSite, error) {
+	site, err := s.repo.GetConstructionSite(ctx, repository.GetConstructionSiteParams{
+		ID:             id,
+		OrganizationID: orgID,
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return repository.ConstructionSite{}, errs.New(errs.CodeNotFound, "construction site not found", err)
@@ -59,8 +62,11 @@ func (s *ConstructionSiteService) Update(ctx context.Context, params repository.
 	return site, nil
 }
 
-func (s *ConstructionSiteService) Delete(ctx context.Context, id uuid.UUID) error {
-	rows, err := s.repo.DeleteConstructionSite(ctx, id)
+func (s *ConstructionSiteService) Delete(ctx context.Context, id, orgID uuid.UUID) error {
+	rows, err := s.repo.DeleteConstructionSite(ctx, repository.DeleteConstructionSiteParams{
+		ID:             id,
+		OrganizationID: orgID,
+	})
 	if err != nil {
 		return errs.New(errs.CodeInternalError, "internal server error", err)
 	}

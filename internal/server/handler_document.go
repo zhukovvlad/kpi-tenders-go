@@ -21,11 +21,11 @@ type createDocumentRequest struct {
 }
 
 func (s *Server) CreateDocument(c *gin.Context) {
-	orgID, ok := orgIDFromContext(c)
+	orgID, ok := s.orgIDFromContext(c)
 	if !ok {
 		return
 	}
-	userID, ok := userIDFromContext(c)
+	userID, ok := s.userIDFromContext(c)
 	if !ok {
 		return
 	}
@@ -79,7 +79,7 @@ func (s *Server) CreateDocument(c *gin.Context) {
 }
 
 func (s *Server) ListDocuments(c *gin.Context) {
-	orgID, ok := orgIDFromContext(c)
+	orgID, ok := s.orgIDFromContext(c)
 	if !ok {
 		return
 	}
@@ -90,7 +90,7 @@ func (s *Server) ListDocuments(c *gin.Context) {
 			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid site_id", err))
 			return
 		}
-		docs, err := s.documentService.ListBySite(c.Request.Context(), siteID)
+		docs, err := s.documentService.ListBySite(c.Request.Context(), orgID, siteID)
 		if err != nil {
 			s.respondWithError(c, err)
 			return
@@ -108,13 +108,18 @@ func (s *Server) ListDocuments(c *gin.Context) {
 }
 
 func (s *Server) GetDocument(c *gin.Context) {
+	orgID, ok := s.orgIDFromContext(c)
+	if !ok {
+		return
+	}
+
 	id, err := parseUUID(c.Param("id"))
 	if err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid id", err))
 		return
 	}
 
-	doc, err := s.documentService.Get(c.Request.Context(), id)
+	doc, err := s.documentService.Get(c.Request.Context(), id, orgID)
 	if err != nil {
 		s.respondWithError(c, err)
 		return
@@ -124,13 +129,18 @@ func (s *Server) GetDocument(c *gin.Context) {
 }
 
 func (s *Server) DeleteDocument(c *gin.Context) {
+	orgID, ok := s.orgIDFromContext(c)
+	if !ok {
+		return
+	}
+
 	id, err := parseUUID(c.Param("id"))
 	if err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid id", err))
 		return
 	}
 
-	if err := s.documentService.Delete(c.Request.Context(), id); err != nil {
+	if err := s.documentService.Delete(c.Request.Context(), id, orgID); err != nil {
 		s.respondWithError(c, err)
 		return
 	}
@@ -193,13 +203,18 @@ func (s *Server) ListDocumentTasks(c *gin.Context) {
 }
 
 func (s *Server) GetDocumentTask(c *gin.Context) {
+	orgID, ok := s.orgIDFromContext(c)
+	if !ok {
+		return
+	}
+
 	id, err := parseUUID(c.Param("id"))
 	if err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid id", err))
 		return
 	}
 
-	task, err := s.documentService.GetTask(c.Request.Context(), id)
+	task, err := s.documentService.GetTask(c.Request.Context(), id, orgID)
 	if err != nil {
 		s.respondWithError(c, err)
 		return
@@ -238,13 +253,18 @@ func (s *Server) UpdateDocumentTaskStatus(c *gin.Context) {
 }
 
 func (s *Server) DeleteDocumentTask(c *gin.Context) {
+	orgID, ok := s.orgIDFromContext(c)
+	if !ok {
+		return
+	}
+
 	id, err := parseUUID(c.Param("id"))
 	if err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid id", err))
 		return
 	}
 
-	if err := s.documentService.DeleteTask(c.Request.Context(), id); err != nil {
+	if err := s.documentService.DeleteTask(c.Request.Context(), id, orgID); err != nil {
 		s.respondWithError(c, err)
 		return
 	}

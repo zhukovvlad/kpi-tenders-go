@@ -64,7 +64,7 @@ func (s *Server) RegisterOrganization(c *gin.Context) {
 // GetOrganization handles GET /api/v1/organizations/:id.
 // Users can only fetch their own organization.
 func (s *Server) GetOrganization(c *gin.Context) {
-	orgID, ok := orgIDFromContext(c)
+	orgID, ok := s.orgIDFromContext(c)
 	if !ok {
 		return
 	}
@@ -97,7 +97,7 @@ type updateOrganizationRequest struct {
 // UpdateOrganization handles PATCH /api/v1/organizations/:id.
 // Only admin users can update their own organization.
 func (s *Server) UpdateOrganization(c *gin.Context) {
-	orgID, ok := orgIDFromContext(c)
+	orgID, ok := s.orgIDFromContext(c)
 	if !ok {
 		return
 	}
@@ -137,7 +137,7 @@ func (s *Server) UpdateOrganization(c *gin.Context) {
 // DeleteOrganization handles DELETE /api/v1/organizations/:id.
 // Only admin users can delete their own organization (cascades to all data).
 func (s *Server) DeleteOrganization(c *gin.Context) {
-	orgID, ok := orgIDFromContext(c)
+	orgID, ok := s.orgIDFromContext(c)
 	if !ok {
 		return
 	}
@@ -169,15 +169,15 @@ func (s *Server) DeleteOrganization(c *gin.Context) {
 
 // orgIDFromContext extracts the orgID set by AuthMiddleware, responding with
 // 401 and returning false if it is missing.
-func orgIDFromContext(c *gin.Context) (uuid.UUID, bool) {
+func (s *Server) orgIDFromContext(c *gin.Context) (uuid.UUID, bool) {
 	val, exists := c.Get("orgID")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, errorResponse{Error: errorBody{Code: errs.CodeUnauthorized, Message: "unauthorized"}})
+		s.respondWithError(c, errs.New(errs.CodeUnauthorized, "unauthorized", nil))
 		return uuid.UUID{}, false
 	}
 	id, ok := val.(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, errorResponse{Error: errorBody{Code: errs.CodeUnauthorized, Message: "unauthorized"}})
+		s.respondWithError(c, errs.New(errs.CodeUnauthorized, "unauthorized", nil))
 		return uuid.UUID{}, false
 	}
 	return id, true
@@ -185,15 +185,15 @@ func orgIDFromContext(c *gin.Context) (uuid.UUID, bool) {
 
 // userIDFromContext extracts the userID set by AuthMiddleware, responding with
 // 401 and returning false if it is missing.
-func userIDFromContext(c *gin.Context) (uuid.UUID, bool) {
+func (s *Server) userIDFromContext(c *gin.Context) (uuid.UUID, bool) {
 	val, exists := c.Get("userID")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, errorResponse{Error: errorBody{Code: errs.CodeUnauthorized, Message: "unauthorized"}})
+		s.respondWithError(c, errs.New(errs.CodeUnauthorized, "unauthorized", nil))
 		return uuid.UUID{}, false
 	}
 	id, ok := val.(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, errorResponse{Error: errorBody{Code: errs.CodeUnauthorized, Message: "unauthorized"}})
+		s.respondWithError(c, errs.New(errs.CodeUnauthorized, "unauthorized", nil))
 		return uuid.UUID{}, false
 	}
 	return id, true

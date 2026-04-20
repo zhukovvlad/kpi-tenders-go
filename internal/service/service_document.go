@@ -30,8 +30,11 @@ func (s *DocumentService) Create(ctx context.Context, params repository.CreateDo
 	return doc, nil
 }
 
-func (s *DocumentService) Get(ctx context.Context, id uuid.UUID) (repository.Document, error) {
-	doc, err := s.repo.GetDocument(ctx, id)
+func (s *DocumentService) Get(ctx context.Context, id, orgID uuid.UUID) (repository.Document, error) {
+	doc, err := s.repo.GetDocument(ctx, repository.GetDocumentParams{
+		ID:             id,
+		OrganizationID: orgID,
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return repository.Document{}, errs.New(errs.CodeNotFound, "document not found", err)
@@ -49,17 +52,27 @@ func (s *DocumentService) ListByOrganization(ctx context.Context, orgID uuid.UUI
 	return docs, nil
 }
 
-func (s *DocumentService) ListBySite(ctx context.Context, siteID uuid.UUID) ([]repository.Document, error) {
-	docs, err := s.repo.ListDocumentsBySite(ctx, pgtype.UUID{Bytes: siteID, Valid: true})
+func (s *DocumentService) ListBySite(ctx context.Context, orgID, siteID uuid.UUID) ([]repository.Document, error) {
+	docs, err := s.repo.ListDocumentsBySite(ctx, repository.ListDocumentsBySiteParams{
+		OrganizationID: orgID,
+		SiteID:         pgtype.UUID{Bytes: siteID, Valid: true},
+	})
 	if err != nil {
 		return nil, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
 	return docs, nil
 }
 
-func (s *DocumentService) Delete(ctx context.Context, id uuid.UUID) error {
-	if err := s.repo.DeleteDocument(ctx, id); err != nil {
+func (s *DocumentService) Delete(ctx context.Context, id, orgID uuid.UUID) error {
+	rows, err := s.repo.DeleteDocument(ctx, repository.DeleteDocumentParams{
+		ID:             id,
+		OrganizationID: orgID,
+	})
+	if err != nil {
 		return errs.New(errs.CodeInternalError, "internal server error", err)
+	}
+	if rows == 0 {
+		return errs.New(errs.CodeNotFound, "document not found", nil)
 	}
 	return nil
 }
@@ -74,8 +87,11 @@ func (s *DocumentService) CreateTask(ctx context.Context, params repository.Crea
 	return task, nil
 }
 
-func (s *DocumentService) GetTask(ctx context.Context, id uuid.UUID) (repository.DocumentTask, error) {
-	task, err := s.repo.GetDocumentTask(ctx, id)
+func (s *DocumentService) GetTask(ctx context.Context, id, orgID uuid.UUID) (repository.DocumentTask, error) {
+	task, err := s.repo.GetDocumentTask(ctx, repository.GetDocumentTaskParams{
+		ID:             id,
+		OrganizationID: orgID,
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return repository.DocumentTask{}, errs.New(errs.CodeNotFound, "task not found", err)
@@ -104,9 +120,16 @@ func (s *DocumentService) UpdateTaskStatus(ctx context.Context, params repositor
 	return task, nil
 }
 
-func (s *DocumentService) DeleteTask(ctx context.Context, id uuid.UUID) error {
-	if err := s.repo.DeleteDocumentTask(ctx, id); err != nil {
+func (s *DocumentService) DeleteTask(ctx context.Context, id, orgID uuid.UUID) error {
+	rows, err := s.repo.DeleteDocumentTask(ctx, repository.DeleteDocumentTaskParams{
+		ID:             id,
+		OrganizationID: orgID,
+	})
+	if err != nil {
 		return errs.New(errs.CodeInternalError, "internal server error", err)
+	}
+	if rows == 0 {
+		return errs.New(errs.CodeNotFound, "task not found", nil)
 	}
 	return nil
 }

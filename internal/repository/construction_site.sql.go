@@ -49,11 +49,16 @@ func (q *Queries) CreateConstructionSite(ctx context.Context, arg CreateConstruc
 }
 
 const deleteConstructionSite = `-- name: DeleteConstructionSite :execrows
-DELETE FROM construction_sites WHERE id = $1
+DELETE FROM construction_sites WHERE id = $1 AND organization_id = $2
 `
 
-func (q *Queries) DeleteConstructionSite(ctx context.Context, id uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteConstructionSite, id)
+type DeleteConstructionSiteParams struct {
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+}
+
+func (q *Queries) DeleteConstructionSite(ctx context.Context, arg DeleteConstructionSiteParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteConstructionSite, arg.ID, arg.OrganizationID)
 	if err != nil {
 		return 0, err
 	}
@@ -61,11 +66,17 @@ func (q *Queries) DeleteConstructionSite(ctx context.Context, id uuid.UUID) (int
 }
 
 const getConstructionSite = `-- name: GetConstructionSite :one
-SELECT id, organization_id, parent_id, name, status, created_by, created_at, updated_at FROM construction_sites WHERE id = $1
+SELECT id, organization_id, parent_id, name, status, created_by, created_at, updated_at FROM construction_sites
+WHERE id = $1 AND organization_id = $2
 `
 
-func (q *Queries) GetConstructionSite(ctx context.Context, id uuid.UUID) (ConstructionSite, error) {
-	row := q.db.QueryRow(ctx, getConstructionSite, id)
+type GetConstructionSiteParams struct {
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+}
+
+func (q *Queries) GetConstructionSite(ctx context.Context, arg GetConstructionSiteParams) (ConstructionSite, error) {
+	row := q.db.QueryRow(ctx, getConstructionSite, arg.ID, arg.OrganizationID)
 	var i ConstructionSite
 	err := row.Scan(
 		&i.ID,
@@ -117,21 +128,27 @@ func (q *Queries) ListConstructionSitesByOrganization(ctx context.Context, organ
 
 const updateConstructionSite = `-- name: UpdateConstructionSite :one
 UPDATE construction_sites
-SET name       = $2,
-    status     = $3,
+SET name       = $3,
+    status     = $4,
     updated_at = now()
-WHERE id = $1
+WHERE id = $1 AND organization_id = $2
 RETURNING id, organization_id, parent_id, name, status, created_by, created_at, updated_at
 `
 
 type UpdateConstructionSiteParams struct {
-	ID     uuid.UUID `json:"id"`
-	Name   string    `json:"name"`
-	Status string    `json:"status"`
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+	Name           string    `json:"name"`
+	Status         string    `json:"status"`
 }
 
 func (q *Queries) UpdateConstructionSite(ctx context.Context, arg UpdateConstructionSiteParams) (ConstructionSite, error) {
-	row := q.db.QueryRow(ctx, updateConstructionSite, arg.ID, arg.Name, arg.Status)
+	row := q.db.QueryRow(ctx, updateConstructionSite,
+		arg.ID,
+		arg.OrganizationID,
+		arg.Name,
+		arg.Status,
+	)
 	var i ConstructionSite
 	err := row.Scan(
 		&i.ID,
