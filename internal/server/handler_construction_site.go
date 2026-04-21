@@ -51,6 +51,11 @@ func (s *Server) CreateConstructionSite(c *gin.Context) {
 			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid parent_id", err))
 			return
 		}
+		// Verify the parent site belongs to the same organization.
+		if _, err := s.constructionSiteService.Get(c.Request.Context(), parentID, orgID); err != nil {
+			s.respondWithError(c, err)
+			return
+		}
 		params.ParentID = pgtype.UUID{Bytes: parentID, Valid: true}
 	}
 

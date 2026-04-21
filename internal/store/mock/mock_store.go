@@ -570,9 +570,9 @@ func (_m *MockStore) ListDocumentsBySite(ctx context.Context, arg repository.Lis
 	return r0, r1
 }
 
-// ListTasksByDocument provides a mock function with given fields: ctx, documentID
-func (_m *MockStore) ListTasksByDocument(ctx context.Context, documentID uuid.UUID) ([]repository.DocumentTask, error) {
-	ret := _m.Called(ctx, documentID)
+// ListTasksByDocument provides a mock function with given fields: ctx, arg
+func (_m *MockStore) ListTasksByDocument(ctx context.Context, arg repository.ListTasksByDocumentParams) ([]repository.DocumentTask, error) {
+	ret := _m.Called(ctx, arg)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListTasksByDocument")
@@ -580,19 +580,19 @@ func (_m *MockStore) ListTasksByDocument(ctx context.Context, documentID uuid.UU
 
 	var r0 []repository.DocumentTask
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]repository.DocumentTask, error)); ok {
-		return rf(ctx, documentID)
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListTasksByDocumentParams) ([]repository.DocumentTask, error)); ok {
+		return rf(ctx, arg)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) []repository.DocumentTask); ok {
-		r0 = rf(ctx, documentID)
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListTasksByDocumentParams) []repository.DocumentTask); ok {
+		r0 = rf(ctx, arg)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]repository.DocumentTask)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
-		r1 = rf(ctx, documentID)
+	if rf, ok := ret.Get(1).(func(context.Context, repository.ListTasksByDocumentParams) error); ok {
+		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)
 	}

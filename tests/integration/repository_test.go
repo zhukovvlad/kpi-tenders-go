@@ -265,3 +265,220 @@ func TestRepository_ListDocumentsBySite(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, docs, 2)
 }
+
+// ── Tenant isolation (trigger) tests ─────────────────────────────────────────
+
+func TestRepository_CreateConstructionSite_CrossTenantParent_IsRejected(t *testing.T) {
+	ctx := context.Background()
+	q := repository.New(testPool)
+	org1 := createTestOrg(t, ctx)
+	org2 := createTestOrg(t, ctx)
+
+	parent, err := q.CreateConstructionSite(ctx, repository.CreateConstructionSiteParams{
+		OrganizationID: org1.ID, Name: "Parent Org1", Status: "active",
+	})
+	require.NoError(t, err)
+
+	// org2 пытается использовать parent из org1 — триггер должен это заблокировать
+	_, err = q.CreateConstructionSite(ctx, repository.CreateConstructionSiteParams{
+		OrganizationID: org2.ID,
+		ParentID:       pgtype.UUID{Bytes: parent.ID, Valid: true},
+		Name:           "Child Org2",
+		Status:         "active",
+	})
+	require.Error(t, err, "trigger must reject cross-tenant parent_id")
+}
+
+func TestRepository_CreateDocument_CrossTenantSite_IsRejected(t *testing.T) {
+	ctx := context.Background()
+	q := repository.New(testPool)
+	org1 := createTestOrg(t, ctx)
+	org2 := createTestOrg(t, ctx)
+	user2 := createTestUser(t, ctx, org2.ID)
+
+	site, err := q.CreateConstructionSite(ctx, repository.CreateConstructionSiteParams{
+		OrganizationID: org1.ID, Name: "Site Org1", Status: "active",
+	})
+	require.NoError(t, err)
+
+	// org2 пытается создать документ с site_id из org1 — триггер должен заблокировать
+	_, err = q.CreateDocument(ctx, repository.CreateDocumentParams{
+		OrganizationID: org2.ID,
+		SiteID:         pgtype.UUID{Bytes: site.ID, Valid: true},
+		UploadedBy:     user2.ID,
+		FileName:       "cross.pdf",
+		StoragePath:    "docs/cross.pdf",
+	})
+	require.Error(t, err, "trigger must reject cross-tenant site_id")
+}
+
+// ── Document task tests ───────────────────────────────────────────────────────
+
+func createTestSite(t *testing.T, ctx context.Context, orgID uuid.UUID) repository.ConstructionSite {
+	t.Helper()
+	q := repository.New(testPool)
+	site, err := q.CreateConstructionSite(ctx, repository.CreateConstructionSiteParams{
+		OrganizationID: orgID, Name: "Site-" + uuid.New().String(), Status: "active",
+	})
+	require.NoError(t, err)
+	return site
+}
+
+func createTestTask(t *testing.T, ctx context.Context, docID uuid.UUID) repository.DocumentTask {
+	t.Helper()
+	q := repository.New(testPool)
+	task, err := q.CreateDocumentTask(ctx, repository.CreateDocumentTaskParams{
+		DocumentID: docID, ModuleName: "test_module",
+	})
+	require.NoError(t, err)
+	return task
+}
+
+func TestRepository_CreateDocumentTask(t *testing.T) {
+	ctx := context.Background()
+	q := repository.New(testPool)
+	org := createTestOrg(t, ctx)
+	user := createTestUser(t, ctx, org.ID)
+	doc := createTestDocument(t, ctx, org.ID, user.ID)
+
+	task, err := q.CreateDocumentTask(ctx, repository.CreateDocumentTaskParams{
+		DocumentID: doc.ID, ModuleName: "analysis",
+	})
+
+	require.NoError(t, err)
+	assert.NotEqual(t, uuid.Nil, task.ID)
+	assert.Equal(t, doc.ID, task.DocumentID)
+	assert.Equal(t, "analysis", task.ModuleName)
+	assert.Equal(t, "pending", task.Status)
+}
+
+func TestRepository_GetDocumentTask_OwnOrg(t *testing.T) {
+	ctx := context.Background()
+	q := repository.New(testPool)
+	org := createTestOrg(t, ctx)
+	user := createTestUser(t, ctx, org.ID)
+	doc := createTestDocument(t, ctx, org.ID, user.ID)
+	task := createTestTask(t, ctx, doc.ID)
+
+	fetched, err := q.GetDocumentTask(ctx, repository.GetDocumentTaskParams{
+		ID: task.ID, OrganizationID: org.ID,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, task.ID, fetched.ID)
+}
+
+func TestRepository_GetDocumentTask_OtherOrg_NotFound(t *testing.T) {
+	ctx := context.Background()
+	q := repository.New(testPool)
+	org1 := createTestOrg(t, ctx)
+	org2 := createTestOrg(t, ctx)
+	user1 := createTestUser(t, ctx, org1.ID)
+	doc := createTestDocument(t, ctx, org1.ID, user1.ID)
+	task := createTestTask(t, ctx, doc.ID)
+
+	// org2 пытается прочитать задачу org1
+	_, err := q.GetDocumentTask(ctx, repository.GetDocumentTaskParams{
+		ID: task.ID, OrganizationID: org2.ID,
+	})
+	require.Error(t, err, "must not return task belonging to another org")
+}
+
+func TestRepository_ListTasksByDocument_OwnOrg(t *testing.T) {
+	ctx := context.Background()
+	q := repository.New(testPool)
+	org := createTestOrg(t, ctx)
+	user := createTestUser(t, ctx, org.ID)
+	doc := createTestDocument(t, ctx, org.ID, user.ID)
+
+	for range 3 {
+		createTestTask(t, ctx, doc.ID)
+	}
+
+	tasks, err := q.ListTasksByDocument(ctx, repository.ListTasksByDocumentParams{
+		DocumentID: doc.ID, OrganizationID: org.ID,
+	})
+	require.NoError(t, err)
+	assert.Len(t, tasks, 3)
+}
+
+func TestRepository_ListTasksByDocument_OtherOrg_ReturnsEmpty(t *testing.T) {
+	ctx := context.Background()
+	q := repository.New(testPool)
+	org1 := createTestOrg(t, ctx)
+	org2 := createTestOrg(t, ctx)
+	user1 := createTestUser(t, ctx, org1.ID)
+	doc := createTestDocument(t, ctx, org1.ID, user1.ID)
+	createTestTask(t, ctx, doc.ID)
+
+	// org2 перечисляет задачи документа org1
+	tasks, err := q.ListTasksByDocument(ctx, repository.ListTasksByDocumentParams{
+		DocumentID: doc.ID, OrganizationID: org2.ID,
+	})
+	require.NoError(t, err)
+	assert.Empty(t, tasks)
+}
+
+func TestRepository_UpdateDocumentTaskStatus_OwnOrg(t *testing.T) {
+	ctx := context.Background()
+	q := repository.New(testPool)
+	org := createTestOrg(t, ctx)
+	user := createTestUser(t, ctx, org.ID)
+	doc := createTestDocument(t, ctx, org.ID, user.ID)
+	task := createTestTask(t, ctx, doc.ID)
+
+	updated, err := q.UpdateDocumentTaskStatus(ctx, repository.UpdateDocumentTaskStatusParams{
+		ID: task.ID, OrganizationID: org.ID, Status: "processing",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "processing", updated.Status)
+}
+
+func TestRepository_UpdateDocumentTaskStatus_OtherOrg_NotFound(t *testing.T) {
+	ctx := context.Background()
+	q := repository.New(testPool)
+	org1 := createTestOrg(t, ctx)
+	org2 := createTestOrg(t, ctx)
+	user1 := createTestUser(t, ctx, org1.ID)
+	doc := createTestDocument(t, ctx, org1.ID, user1.ID)
+	task := createTestTask(t, ctx, doc.ID)
+
+	// org2 пытается обновить статус задачи org1
+	_, err := q.UpdateDocumentTaskStatus(ctx, repository.UpdateDocumentTaskStatusParams{
+		ID: task.ID, OrganizationID: org2.ID, Status: "processing",
+	})
+	require.Error(t, err, "must not update task belonging to another org")
+}
+
+func TestRepository_DeleteDocumentTask_OwnOrg(t *testing.T) {
+	ctx := context.Background()
+	q := repository.New(testPool)
+	org := createTestOrg(t, ctx)
+	user := createTestUser(t, ctx, org.ID)
+	doc := createTestDocument(t, ctx, org.ID, user.ID)
+	task := createTestTask(t, ctx, doc.ID)
+
+	rows, err := q.DeleteDocumentTask(ctx, repository.DeleteDocumentTaskParams{
+		ID: task.ID, OrganizationID: org.ID,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), rows)
+}
+
+func TestRepository_DeleteDocumentTask_OtherOrg_DeletesNothing(t *testing.T) {
+	ctx := context.Background()
+	q := repository.New(testPool)
+	org1 := createTestOrg(t, ctx)
+	org2 := createTestOrg(t, ctx)
+	user1 := createTestUser(t, ctx, org1.ID)
+	doc := createTestDocument(t, ctx, org1.ID, user1.ID)
+	task := createTestTask(t, ctx, doc.ID)
+
+	// org2 пытается удалить задачу org1
+	rows, err := q.DeleteDocumentTask(ctx, repository.DeleteDocumentTaskParams{
+		ID: task.ID, OrganizationID: org2.ID,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), rows, "must not delete task belonging to another org")
+}

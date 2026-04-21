@@ -57,36 +57,6 @@ func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) 
 	return i, err
 }
 
-const createDocumentTask = `-- name: CreateDocumentTask :one
-
-INSERT INTO document_tasks (document_id, module_name)
-VALUES ($1, $2)
-RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at
-`
-
-type CreateDocumentTaskParams struct {
-	DocumentID uuid.UUID `json:"document_id"`
-	ModuleName string    `json:"module_name"`
-}
-
-// ── Document Tasks ──────────────────────────────────
-func (q *Queries) CreateDocumentTask(ctx context.Context, arg CreateDocumentTaskParams) (DocumentTask, error) {
-	row := q.db.QueryRow(ctx, createDocumentTask, arg.DocumentID, arg.ModuleName)
-	var i DocumentTask
-	err := row.Scan(
-		&i.ID,
-		&i.DocumentID,
-		&i.ModuleName,
-		&i.Status,
-		&i.CeleryTaskID,
-		&i.ResultPayload,
-		&i.ErrorMessage,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const deleteDocument = `-- name: DeleteDocument :execrows
 DELETE FROM documents WHERE id = $1 AND organization_id = $2
 `
@@ -98,25 +68,6 @@ type DeleteDocumentParams struct {
 
 func (q *Queries) DeleteDocument(ctx context.Context, arg DeleteDocumentParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteDocument, arg.ID, arg.OrganizationID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const deleteDocumentTask = `-- name: DeleteDocumentTask :execrows
-DELETE FROM document_tasks
-WHERE document_tasks.id = $1
-  AND document_tasks.document_id IN (SELECT documents.id FROM documents WHERE documents.organization_id = $2)
-`
-
-type DeleteDocumentTaskParams struct {
-	ID             uuid.UUID `json:"id"`
-	OrganizationID uuid.UUID `json:"organization_id"`
-}
-
-func (q *Queries) DeleteDocumentTask(ctx context.Context, arg DeleteDocumentTaskParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteDocumentTask, arg.ID, arg.OrganizationID)
 	if err != nil {
 		return 0, err
 	}
@@ -146,36 +97,6 @@ func (q *Queries) GetDocument(ctx context.Context, arg GetDocumentParams) (Docum
 		&i.StoragePath,
 		&i.MimeType,
 		&i.FileSizeBytes,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const getDocumentTask = `-- name: GetDocumentTask :one
-SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id,
-       dt.result_payload, dt.error_message, dt.created_at, dt.updated_at
-FROM document_tasks AS dt
-JOIN documents AS d ON d.id = dt.document_id
-WHERE dt.id = $1 AND d.organization_id = $2
-`
-
-type GetDocumentTaskParams struct {
-	ID             uuid.UUID `json:"id"`
-	OrganizationID uuid.UUID `json:"organization_id"`
-}
-
-func (q *Queries) GetDocumentTask(ctx context.Context, arg GetDocumentTaskParams) (DocumentTask, error) {
-	row := q.db.QueryRow(ctx, getDocumentTask, arg.ID, arg.OrganizationID)
-	var i DocumentTask
-	err := row.Scan(
-		&i.ID,
-		&i.DocumentID,
-		&i.ModuleName,
-		&i.Status,
-		&i.CeleryTaskID,
-		&i.ResultPayload,
-		&i.ErrorMessage,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -261,68 +182,4 @@ func (q *Queries) ListDocumentsBySite(ctx context.Context, arg ListDocumentsBySi
 		return nil, err
 	}
 	return items, nil
-}
-
-const listTasksByDocument = `-- name: ListTasksByDocument :many
-SELECT id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at FROM document_tasks
-WHERE document_id = $1
-ORDER BY created_at DESC
-`
-
-func (q *Queries) ListTasksByDocument(ctx context.Context, documentID uuid.UUID) ([]DocumentTask, error) {
-	rows, err := q.db.Query(ctx, listTasksByDocument, documentID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []DocumentTask{}
-	for rows.Next() {
-		var i DocumentTask
-		if err := rows.Scan(
-			&i.ID,
-			&i.DocumentID,
-			&i.ModuleName,
-			&i.Status,
-			&i.CeleryTaskID,
-			&i.ResultPayload,
-			&i.ErrorMessage,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const updateDocumentTaskStatus = `-- name: UpdateDocumentTaskStatus :one
-UPDATE document_tasks SET status = $2, updated_at = now()
-WHERE id = $1
-RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at
-`
-
-type UpdateDocumentTaskStatusParams struct {
-	ID     uuid.UUID `json:"id"`
-	Status string    `json:"status"`
-}
-
-func (q *Queries) UpdateDocumentTaskStatus(ctx context.Context, arg UpdateDocumentTaskStatusParams) (DocumentTask, error) {
-	row := q.db.QueryRow(ctx, updateDocumentTaskStatus, arg.ID, arg.Status)
-	var i DocumentTask
-	err := row.Scan(
-		&i.ID,
-		&i.DocumentID,
-		&i.ModuleName,
-		&i.Status,
-		&i.CeleryTaskID,
-		&i.ResultPayload,
-		&i.ErrorMessage,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
 }

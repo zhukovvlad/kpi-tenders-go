@@ -14,7 +14,6 @@ import (
 type Querier interface {
 	CreateConstructionSite(ctx context.Context, arg CreateConstructionSiteParams) (ConstructionSite, error)
 	CreateDocument(ctx context.Context, arg CreateDocumentParams) (Document, error)
-	// ── Document Tasks ──────────────────────────────────
 	CreateDocumentTask(ctx context.Context, arg CreateDocumentTaskParams) (DocumentTask, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
@@ -32,7 +31,7 @@ type Querier interface {
 	ListConstructionSitesByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ConstructionSite, error)
 	ListDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]Document, error)
 	ListDocumentsBySite(ctx context.Context, arg ListDocumentsBySiteParams) ([]Document, error)
-	ListTasksByDocument(ctx context.Context, documentID uuid.UUID) ([]DocumentTask, error)
+	ListTasksByDocument(ctx context.Context, arg ListTasksByDocumentParams) ([]DocumentTask, error)
 	UpdateConstructionSite(ctx context.Context, arg UpdateConstructionSiteParams) (ConstructionSite, error)
 	UpdateDocumentTaskStatus(ctx context.Context, arg UpdateDocumentTaskStatusParams) (DocumentTask, error)
 	UpdateOrganization(ctx context.Context, arg UpdateOrganizationParams) (Organization, error)

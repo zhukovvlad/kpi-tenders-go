@@ -1,5 +1,8 @@
 -- Расширение для работы с векторными эмбеддингами (используется в RAG-поиске)
 CREATE EXTENSION IF NOT EXISTS vector;
+-- gen_random_uuid() встроен в PostgreSQL 13+, но pgcrypto обеспечивает
+-- совместимость и предоставляет дополнительные криптографические функции.
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- ==========================================
 -- ОРГАНИЗАЦИИ
@@ -120,3 +123,68 @@ CREATE INDEX idx_documents_site_id             ON documents(site_id);
 CREATE INDEX idx_documents_parent_id           ON documents(parent_id);
 CREATE INDEX idx_tasks_document_id             ON document_tasks(document_id);
 CREATE INDEX idx_tasks_status                  ON document_tasks(status);
+
+-- ==========================================
+-- TENANT ISOLATION: составные уникальные ключи
+-- ==========================================
+-- Нужны для composite FK в триггерах и для гарантии уникальности в рамках тенанта.
+
+ALTER TABLE users              ADD CONSTRAINT uq_users_id_org         UNIQUE (id, organization_id);
+ALTER TABLE construction_sites ADD CONSTRAINT uq_sites_id_org         UNIQUE (id, organization_id);
+ALTER TABLE documents          ADD CONSTRAINT uq_documents_id_org     UNIQUE (id, organization_id);
+
+-- ==========================================
+-- TENANT ISOLATION: триггеры same-org проверок
+-- ==========================================
+-- PostgreSQL не поддерживает composite FK с nullable колонками,
+-- поэтому same-org checks реализованы через BEFORE INSERT/UPDATE триггеры.
+
+CREATE OR REPLACE FUNCTION check_site_org_isolation() RETURNS trigger AS $$
+BEGIN
+    -- parent_id: родительский объект должен принадлежать той же организации
+    IF NEW.parent_id IS NOT NULL THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM construction_sites
+            WHERE id = NEW.parent_id AND organization_id = NEW.organization_id
+        ) THEN
+            RAISE EXCEPTION 'parent_id % does not belong to organization %',
+                NEW.parent_id, NEW.organization_id;
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_site_org_isolation
+    BEFORE INSERT OR UPDATE ON construction_sites
+    FOR EACH ROW EXECUTE FUNCTION check_site_org_isolation();
+
+CREATE OR REPLACE FUNCTION check_document_org_isolation() RETURNS trigger AS $$
+BEGIN
+    -- site_id: объект строительства должен принадлежать той же организации
+    IF NEW.site_id IS NOT NULL THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM construction_sites
+            WHERE id = NEW.site_id AND organization_id = NEW.organization_id
+        ) THEN
+            RAISE EXCEPTION 'site_id % does not belong to organization %',
+                NEW.site_id, NEW.organization_id;
+        END IF;
+    END IF;
+    -- parent_id: родительский документ должен принадлежать той же организации
+    IF NEW.parent_id IS NOT NULL THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM documents
+            WHERE id = NEW.parent_id AND organization_id = NEW.organization_id
+        ) THEN
+            RAISE EXCEPTION 'parent_id % does not belong to organization %',
+                NEW.parent_id, NEW.organization_id;
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_document_org_isolation
+    BEFORE INSERT OR UPDATE ON documents
+    FOR EACH ROW EXECUTE FUNCTION check_document_org_isolation();

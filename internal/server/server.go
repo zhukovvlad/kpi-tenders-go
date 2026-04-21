@@ -23,6 +23,7 @@ type Server struct {
 	organizationService     *service.OrganizationService
 	constructionSiteService *service.ConstructionSiteService
 	documentService         *service.DocumentService
+	documentTaskService     *service.DocumentTaskService
 }
 
 func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server {
@@ -43,6 +44,7 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 		organizationService:     service.NewOrganizationService(db, log),
 		constructionSiteService: service.NewConstructionSiteService(db, log),
 		documentService:         service.NewDocumentService(db, log),
+		documentTaskService:     service.NewDocumentTaskService(db, log),
 	}
 
 	srv.setupRouter()
