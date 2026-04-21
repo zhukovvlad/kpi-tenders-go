@@ -89,7 +89,7 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (access
 
 	if !user.IsActive {
 		s.log.Warn("login: account deactivated", slog.String("user_id", user.ID.String()))
-		return "", "", errs.New(errs.CodeUnauthorized, "account is deactivated", nil)
+		return "", "", errs.New(errs.CodeUnauthorized, "account is unavailable", nil)
 	}
 
 	org, repoErr := s.repo.GetOrganizationByID(ctx, user.OrganizationID)

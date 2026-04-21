@@ -21,6 +21,10 @@ sql:
               type: "UUID"
           - db_type: "timestamptz"
             go_type: "time.Time"
+          - db_type: "jsonb"
+            go_type:
+              import: "encoding/json"
+              type: "RawMessage"
           - db_type: "vector"
             go_type:
               import: "github.com/pgvector/pgvector-go"

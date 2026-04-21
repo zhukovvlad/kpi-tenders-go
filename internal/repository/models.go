@@ -5,6 +5,7 @@
 package repository
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -57,7 +58,7 @@ type DocumentTask struct {
 	// UUID задачи в Celery; заполняется воркером при взятии задачи в работу
 	CeleryTaskID pgtype.Text `json:"celery_task_id"`
 	// Структурированный результат обработки; схема зависит от module_name
-	ResultPayload []byte `json:"result_payload"`
+	ResultPayload json.RawMessage `json:"result_payload"`
 	// Описание ошибки при status = failed; NULL в остальных случаях
 	ErrorMessage pgtype.Text `json:"error_message"`
 	CreatedAt    time.Time   `json:"created_at"`
@@ -71,7 +72,7 @@ type Organization struct {
 	// ИНН: 10 цифр для ЮЛ, 12 для ИП; NULL если не указан
 	Inn pgtype.Text `json:"inn"`
 	// Произвольные настройки тенанта (тема, лимиты, флаги)
-	Settings []byte `json:"settings"`
+	Settings json.RawMessage `json:"settings"`
 	// false — организация деактивирована, вход для всех её пользователей заблокирован
 	IsActive  bool      `json:"is_active"`
 	CreatedAt time.Time `json:"created_at"`
