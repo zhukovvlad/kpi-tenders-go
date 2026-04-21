@@ -96,14 +96,14 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (access
 	if repoErr != nil {
 		if errors.Is(repoErr, pgx.ErrNoRows) {
 			s.log.Warn("login: organization missing", slog.String("org_id", user.OrganizationID.String()))
-			return "", "", errs.New(errs.CodeUnauthorized, "organization is deactivated", nil)
+			return "", "", errs.New(errs.CodeUnauthorized, "organization is unavailable", nil)
 		}
 		s.log.Error("login: failed to fetch organization", slog.String("err", repoErr.Error()))
 		return "", "", errs.New(errs.CodeInternalError, "internal server error", repoErr)
 	}
 	if !org.IsActive {
 		s.log.Warn("login: organization deactivated", slog.String("org_id", org.ID.String()))
-		return "", "", errs.New(errs.CodeUnauthorized, "organization is deactivated", nil)
+		return "", "", errs.New(errs.CodeUnauthorized, "organization is unavailable", nil)
 	}
 
 	return s.GenerateTokens(user.ID, user.OrganizationID, user.Role)
