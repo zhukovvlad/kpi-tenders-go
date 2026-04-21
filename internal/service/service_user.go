@@ -39,6 +39,9 @@ func (s *UserService) Create(ctx context.Context, p CreateUserParams) (repositor
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(p.Password), bcrypt.DefaultCost)
 	if err != nil {
+		if errors.Is(err, bcrypt.ErrPasswordTooLong) {
+			return repository.User{}, errs.New(errs.CodeValidationFailed, "password must be at most 72 bytes", err)
+		}
 		return repository.User{}, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
 
@@ -69,8 +72,8 @@ func (s *UserService) List(ctx context.Context, orgID uuid.UUID) ([]repository.L
 type UpdateUserParams struct {
 	UserID uuid.UUID
 	OrgID  uuid.UUID
-	Role   *string // nil = не менять
-	Active *bool   // nil = не менять
+	Role   *string // nil = leave unchanged
+	Active *bool   // nil = leave unchanged
 }
 
 func (s *UserService) Update(ctx context.Context, p UpdateUserParams) (repository.UpdateUserRow, error) {

@@ -20,7 +20,10 @@ type createUserRequest struct {
 // CreateUser handles POST /api/v1/users.
 // Admin-only: creates a new user in the caller's organization.
 func (s *Server) CreateUser(c *gin.Context) {
-	orgID := c.MustGet("orgID").(uuid.UUID)
+	orgID, ok := s.orgIDFromContext(c)
+	if !ok {
+		return
+	}
 
 	var req createUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -54,7 +57,10 @@ func (s *Server) CreateUser(c *gin.Context) {
 // ListUsers handles GET /api/v1/users.
 // Admin-only: returns all users in the caller's organization.
 func (s *Server) ListUsers(c *gin.Context) {
-	orgID := c.MustGet("orgID").(uuid.UUID)
+	orgID, ok := s.orgIDFromContext(c)
+	if !ok {
+		return
+	}
 
 	users, err := s.userService.List(c.Request.Context(), orgID)
 	if err != nil {
@@ -73,8 +79,14 @@ type updateUserRequest struct {
 // UpdateUser handles PATCH /api/v1/users/:user_id.
 // Admin-only: updates role or active status of a user within the same org.
 func (s *Server) UpdateUser(c *gin.Context) {
-	orgID := c.MustGet("orgID").(uuid.UUID)
-	callerID := c.MustGet("userID").(uuid.UUID)
+	orgID, ok := s.orgIDFromContext(c)
+	if !ok {
+		return
+	}
+	callerID, ok := s.userIDFromContext(c)
+	if !ok {
+		return
+	}
 
 	userID, err := uuid.Parse(c.Param("user_id"))
 	if err != nil {
@@ -115,8 +127,14 @@ func (s *Server) UpdateUser(c *gin.Context) {
 // DeactivateUser handles DELETE /api/v1/users/:user_id.
 // Admin-only: sets is_active=false (soft delete).
 func (s *Server) DeactivateUser(c *gin.Context) {
-	orgID := c.MustGet("orgID").(uuid.UUID)
-	callerID := c.MustGet("userID").(uuid.UUID)
+	orgID, ok := s.orgIDFromContext(c)
+	if !ok {
+		return
+	}
+	callerID, ok := s.userIDFromContext(c)
+	if !ok {
+		return
+	}
 
 	userID, err := uuid.Parse(c.Param("user_id"))
 	if err != nil {

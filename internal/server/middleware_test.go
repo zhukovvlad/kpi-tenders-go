@@ -193,3 +193,57 @@ func TestServiceBearerAuth_MalformedHeader_Returns401(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
+
+// ── AdminOnly ─────────────────────────────────────────────────────────────────
+
+// adminPingToken generates a valid access token with the given role for testing AdminOnly.
+func adminPingToken(t *testing.T, s *Server, role string) string {
+	t.Helper()
+	access, _, err := s.authService.GenerateTokens(uuid.New(), uuid.New(), role)
+	require.NoError(t, err)
+	return access
+}
+
+func TestAdminOnly_AdminRole_PassesThrough(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s := newTestServerWithJWT()
+
+	tok := adminPingToken(t, s, "admin")
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/users", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: tok})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	// No DB behind, but 500 means AdminOnly passed and the handler was reached.
+	assert.NotEqual(t, http.StatusForbidden, w.Code)
+	assert.NotEqual(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestAdminOnly_MemberRole_Returns403(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s := newTestServerWithJWT()
+
+	tok := adminPingToken(t, s, "member")
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/users", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: tok})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestAdminOnly_EmptyRole_Returns403(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s := newTestServerWithJWT()
+
+	tok := adminPingToken(t, s, "")
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/users", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: tok})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
