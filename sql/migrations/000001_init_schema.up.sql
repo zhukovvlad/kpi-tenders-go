@@ -125,15 +125,6 @@ CREATE INDEX idx_tasks_document_id             ON document_tasks(document_id);
 CREATE INDEX idx_tasks_status                  ON document_tasks(status);
 
 -- ==========================================
--- TENANT ISOLATION: составные уникальные ключи
--- ==========================================
--- Нужны для composite FK в триггерах и для гарантии уникальности в рамках тенанта.
-
-ALTER TABLE users              ADD CONSTRAINT uq_users_id_org         UNIQUE (id, organization_id);
-ALTER TABLE construction_sites ADD CONSTRAINT uq_sites_id_org         UNIQUE (id, organization_id);
-ALTER TABLE documents          ADD CONSTRAINT uq_documents_id_org     UNIQUE (id, organization_id);
-
--- ==========================================
 -- TENANT ISOLATION: триггеры same-org проверок
 -- ==========================================
 -- PostgreSQL не поддерживает composite FK с nullable колонками,
