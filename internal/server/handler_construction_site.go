@@ -37,6 +37,12 @@ func (s *Server) CreateConstructionSite(c *gin.Context) {
 	if status == "" {
 		status = "active"
 	}
+	switch status {
+	case "active", "completed", "archived":
+	default:
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid status: must be active, completed or archived", nil))
+		return
+	}
 
 	params := repository.CreateConstructionSiteParams{
 		OrganizationID: orgID,
@@ -124,6 +130,13 @@ func (s *Server) UpdateConstructionSite(c *gin.Context) {
 	var req updateConstructionSiteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
+		return
+	}
+
+	switch req.Status {
+	case "active", "completed", "archived":
+	default:
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid status: must be active, completed or archived", nil))
 		return
 	}
 

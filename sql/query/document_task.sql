@@ -1,6 +1,8 @@
 -- name: CreateDocumentTask :one
 INSERT INTO document_tasks (document_id, module_name)
-VALUES ($1, $2)
+SELECT $1, $2
+FROM documents
+WHERE documents.id = $1 AND documents.organization_id = $3
 RETURNING *;
 
 -- name: GetDocumentTask :one

@@ -13,17 +13,20 @@ import (
 
 const createDocumentTask = `-- name: CreateDocumentTask :one
 INSERT INTO document_tasks (document_id, module_name)
-VALUES ($1, $2)
+SELECT $1, $2
+FROM documents
+WHERE documents.id = $1 AND documents.organization_id = $3
 RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at
 `
 
 type CreateDocumentTaskParams struct {
-	DocumentID uuid.UUID `json:"document_id"`
-	ModuleName string    `json:"module_name"`
+	DocumentID     uuid.UUID `json:"document_id"`
+	ModuleName     string    `json:"module_name"`
+	OrganizationID uuid.UUID `json:"organization_id"`
 }
 
 func (q *Queries) CreateDocumentTask(ctx context.Context, arg CreateDocumentTaskParams) (DocumentTask, error) {
-	row := q.db.QueryRow(ctx, createDocumentTask, arg.DocumentID, arg.ModuleName)
+	row := q.db.QueryRow(ctx, createDocumentTask, arg.DocumentID, arg.ModuleName, arg.OrganizationID)
 	var i DocumentTask
 	err := row.Scan(
 		&i.ID,

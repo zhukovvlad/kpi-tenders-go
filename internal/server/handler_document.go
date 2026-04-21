@@ -49,6 +49,11 @@ func (s *Server) CreateDocument(c *gin.Context) {
 			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid site_id", err))
 			return
 		}
+		// Verify the site belongs to the authenticated org.
+		if _, err := s.constructionSiteService.Get(c.Request.Context(), id, orgID); err != nil {
+			s.respondWithError(c, err)
+			return
+		}
 		params.SiteID = pgtype.UUID{Bytes: id, Valid: true}
 	}
 
@@ -66,6 +71,10 @@ func (s *Server) CreateDocument(c *gin.Context) {
 	}
 
 	if req.FileSizeBytes != nil {
+		if *req.FileSizeBytes < 0 {
+			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "file_size_bytes must be non-negative", nil))
+			return
+		}
 		params.FileSizeBytes = pgtype.Int8{Int64: *req.FileSizeBytes, Valid: true}
 	}
 

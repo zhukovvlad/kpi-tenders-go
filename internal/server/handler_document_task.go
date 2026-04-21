@@ -40,8 +40,9 @@ func (s *Server) CreateDocumentTask(c *gin.Context) {
 	}
 
 	task, err := s.documentTaskService.Create(c.Request.Context(), repository.CreateDocumentTaskParams{
-		DocumentID: docID,
-		ModuleName: req.ModuleName,
+		DocumentID:     docID,
+		ModuleName:     req.ModuleName,
+		OrganizationID: orgID,
 	})
 	if err != nil {
 		s.respondWithError(c, err)
@@ -103,6 +104,10 @@ type updateTaskStatusRequest struct {
 	Status string `json:"status" binding:"required"`
 }
 
+var validTaskStatuses = map[string]bool{
+	"pending": true, "processing": true, "completed": true, "failed": true,
+}
+
 func (s *Server) UpdateDocumentTaskStatus(c *gin.Context) {
 	orgID, ok := s.orgIDFromContext(c)
 	if !ok {
@@ -118,6 +123,11 @@ func (s *Server) UpdateDocumentTaskStatus(c *gin.Context) {
 	var req updateTaskStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
+		return
+	}
+
+	if !validTaskStatuses[req.Status] {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid status: must be pending, processing, completed or failed", nil))
 		return
 	}
 

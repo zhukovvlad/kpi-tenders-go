@@ -324,11 +324,11 @@ func createTestSite(t *testing.T, ctx context.Context, orgID uuid.UUID) reposito
 	return site
 }
 
-func createTestTask(t *testing.T, ctx context.Context, docID uuid.UUID) repository.DocumentTask {
+func createTestTask(t *testing.T, ctx context.Context, docID, orgID uuid.UUID) repository.DocumentTask {
 	t.Helper()
 	q := repository.New(testPool)
 	task, err := q.CreateDocumentTask(ctx, repository.CreateDocumentTaskParams{
-		DocumentID: docID, ModuleName: "test_module",
+		DocumentID: docID, ModuleName: "test_module", OrganizationID: orgID,
 	})
 	require.NoError(t, err)
 	return task
@@ -342,7 +342,7 @@ func TestRepository_CreateDocumentTask(t *testing.T) {
 	doc := createTestDocument(t, ctx, org.ID, user.ID)
 
 	task, err := q.CreateDocumentTask(ctx, repository.CreateDocumentTaskParams{
-		DocumentID: doc.ID, ModuleName: "analysis",
+		DocumentID: doc.ID, ModuleName: "analysis", OrganizationID: org.ID,
 	})
 
 	require.NoError(t, err)
@@ -358,7 +358,7 @@ func TestRepository_GetDocumentTask_OwnOrg(t *testing.T) {
 	org := createTestOrg(t, ctx)
 	user := createTestUser(t, ctx, org.ID)
 	doc := createTestDocument(t, ctx, org.ID, user.ID)
-	task := createTestTask(t, ctx, doc.ID)
+	task := createTestTask(t, ctx, doc.ID, org.ID)
 
 	fetched, err := q.GetDocumentTask(ctx, repository.GetDocumentTaskParams{
 		ID: task.ID, OrganizationID: org.ID,
@@ -375,7 +375,7 @@ func TestRepository_GetDocumentTask_OtherOrg_NotFound(t *testing.T) {
 	org2 := createTestOrg(t, ctx)
 	user1 := createTestUser(t, ctx, org1.ID)
 	doc := createTestDocument(t, ctx, org1.ID, user1.ID)
-	task := createTestTask(t, ctx, doc.ID)
+	task := createTestTask(t, ctx, doc.ID, org1.ID)
 
 	// org2 пытается прочитать задачу org1
 	_, err := q.GetDocumentTask(ctx, repository.GetDocumentTaskParams{
@@ -392,7 +392,7 @@ func TestRepository_ListTasksByDocument_OwnOrg(t *testing.T) {
 	doc := createTestDocument(t, ctx, org.ID, user.ID)
 
 	for range 3 {
-		createTestTask(t, ctx, doc.ID)
+		createTestTask(t, ctx, doc.ID, org.ID)
 	}
 
 	tasks, err := q.ListTasksByDocument(ctx, repository.ListTasksByDocumentParams{
@@ -409,7 +409,7 @@ func TestRepository_ListTasksByDocument_OtherOrg_ReturnsEmpty(t *testing.T) {
 	org2 := createTestOrg(t, ctx)
 	user1 := createTestUser(t, ctx, org1.ID)
 	doc := createTestDocument(t, ctx, org1.ID, user1.ID)
-	createTestTask(t, ctx, doc.ID)
+	createTestTask(t, ctx, doc.ID, org1.ID)
 
 	// org2 перечисляет задачи документа org1
 	tasks, err := q.ListTasksByDocument(ctx, repository.ListTasksByDocumentParams{
@@ -425,7 +425,7 @@ func TestRepository_UpdateDocumentTaskStatus_OwnOrg(t *testing.T) {
 	org := createTestOrg(t, ctx)
 	user := createTestUser(t, ctx, org.ID)
 	doc := createTestDocument(t, ctx, org.ID, user.ID)
-	task := createTestTask(t, ctx, doc.ID)
+	task := createTestTask(t, ctx, doc.ID, org.ID)
 
 	updated, err := q.UpdateDocumentTaskStatus(ctx, repository.UpdateDocumentTaskStatusParams{
 		ID: task.ID, OrganizationID: org.ID, Status: "processing",
@@ -442,7 +442,7 @@ func TestRepository_UpdateDocumentTaskStatus_OtherOrg_NotFound(t *testing.T) {
 	org2 := createTestOrg(t, ctx)
 	user1 := createTestUser(t, ctx, org1.ID)
 	doc := createTestDocument(t, ctx, org1.ID, user1.ID)
-	task := createTestTask(t, ctx, doc.ID)
+	task := createTestTask(t, ctx, doc.ID, org1.ID)
 
 	// org2 пытается обновить статус задачи org1
 	_, err := q.UpdateDocumentTaskStatus(ctx, repository.UpdateDocumentTaskStatusParams{
@@ -457,7 +457,7 @@ func TestRepository_DeleteDocumentTask_OwnOrg(t *testing.T) {
 	org := createTestOrg(t, ctx)
 	user := createTestUser(t, ctx, org.ID)
 	doc := createTestDocument(t, ctx, org.ID, user.ID)
-	task := createTestTask(t, ctx, doc.ID)
+	task := createTestTask(t, ctx, doc.ID, org.ID)
 
 	rows, err := q.DeleteDocumentTask(ctx, repository.DeleteDocumentTaskParams{
 		ID: task.ID, OrganizationID: org.ID,
@@ -473,7 +473,7 @@ func TestRepository_DeleteDocumentTask_OtherOrg_DeletesNothing(t *testing.T) {
 	org2 := createTestOrg(t, ctx)
 	user1 := createTestUser(t, ctx, org1.ID)
 	doc := createTestDocument(t, ctx, org1.ID, user1.ID)
-	task := createTestTask(t, ctx, doc.ID)
+	task := createTestTask(t, ctx, doc.ID, org1.ID)
 
 	// org2 пытается удалить задачу org1
 	rows, err := q.DeleteDocumentTask(ctx, repository.DeleteDocumentTaskParams{

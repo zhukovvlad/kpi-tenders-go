@@ -87,6 +87,21 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (access
 		return "", "", errs.New(errs.CodeUnauthorized, "invalid email or password", nil)
 	}
 
+	if !user.IsActive {
+		s.log.Warn("login: account deactivated", slog.String("user_id", user.ID.String()))
+		return "", "", errs.New(errs.CodeUnauthorized, "account is deactivated", nil)
+	}
+
+	org, repoErr := s.repo.GetOrganizationByID(ctx, user.OrganizationID)
+	if repoErr != nil {
+		s.log.Error("login: failed to fetch organization", slog.String("err", repoErr.Error()))
+		return "", "", errs.New(errs.CodeInternalError, "internal server error", repoErr)
+	}
+	if !org.IsActive {
+		s.log.Warn("login: organization deactivated", slog.String("org_id", org.ID.String()))
+		return "", "", errs.New(errs.CodeUnauthorized, "organization is deactivated", nil)
+	}
+
 	return s.GenerateTokens(user.ID, user.OrganizationID, user.Role)
 }
 

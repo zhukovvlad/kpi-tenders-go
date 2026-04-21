@@ -24,6 +24,9 @@ func NewDocumentTaskService(repo repository.Querier, log *slog.Logger) *Document
 func (s *DocumentTaskService) Create(ctx context.Context, params repository.CreateDocumentTaskParams) (repository.DocumentTask, error) {
 	task, err := s.repo.CreateDocumentTask(ctx, params)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return repository.DocumentTask{}, errs.New(errs.CodeNotFound, "document not found", err)
+		}
 		return repository.DocumentTask{}, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
 	return task, nil

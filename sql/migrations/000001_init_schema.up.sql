@@ -1,5 +1,3 @@
--- Расширение для работы с векторными эмбеддингами (используется в RAG-поиске)
-CREATE EXTENSION IF NOT EXISTS vector;
 -- gen_random_uuid() встроен в PostgreSQL 13+, но pgcrypto обеспечивает
 -- совместимость и предоставляет дополнительные криптографические функции.
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -151,6 +149,16 @@ BEGIN
                 NEW.parent_id, NEW.organization_id;
         END IF;
     END IF;
+    -- created_by: пользователь должен принадлежать той же организации
+    IF NEW.created_by IS NOT NULL THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM users
+            WHERE id = NEW.created_by AND organization_id = NEW.organization_id
+        ) THEN
+            RAISE EXCEPTION 'created_by % does not belong to organization %',
+                NEW.created_by, NEW.organization_id;
+        END IF;
+    END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -161,6 +169,14 @@ CREATE TRIGGER trg_site_org_isolation
 
 CREATE OR REPLACE FUNCTION check_document_org_isolation() RETURNS trigger AS $$
 BEGIN
+    -- uploaded_by: пользователь должен принадлежать той же организации
+    IF NOT EXISTS (
+        SELECT 1 FROM users
+        WHERE id = NEW.uploaded_by AND organization_id = NEW.organization_id
+    ) THEN
+        RAISE EXCEPTION 'uploaded_by % does not belong to organization %',
+            NEW.uploaded_by, NEW.organization_id;
+    END IF;
     -- site_id: объект строительства должен принадлежать той же организации
     IF NEW.site_id IS NOT NULL THEN
         IF NOT EXISTS (
