@@ -77,6 +77,9 @@ type UpdateUserParams struct {
 }
 
 func (s *UserService) Update(ctx context.Context, p UpdateUserParams) (repository.UpdateUserRow, error) {
+	if p.Role == nil && p.Active == nil {
+		return repository.UpdateUserRow{}, errs.New(errs.CodeValidationFailed, "at least one field must be provided", nil)
+	}
 	if p.Role != nil && *p.Role != "admin" && *p.Role != "member" {
 		return repository.UpdateUserRow{}, errs.New(errs.CodeValidationFailed, "role must be admin or member", nil)
 	}

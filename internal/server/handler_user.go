@@ -76,7 +76,7 @@ type updateUserRequest struct {
 	IsActive *bool   `json:"is_active"`
 }
 
-// UpdateUser handles PATCH /api/v1/users/:user_id.
+// UpdateUser handles PATCH /api/v1/users/:id.
 // Admin-only: updates role or active status of a user within the same org.
 func (s *Server) UpdateUser(c *gin.Context) {
 	orgID, ok := s.orgIDFromContext(c)
@@ -88,7 +88,7 @@ func (s *Server) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	userID, err := uuid.Parse(c.Param("user_id"))
+	userID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid user id", err))
 		return
@@ -124,7 +124,7 @@ func (s *Server) UpdateUser(c *gin.Context) {
 	c.JSON(http.StatusOK, updated)
 }
 
-// DeactivateUser handles DELETE /api/v1/users/:user_id.
+// DeactivateUser handles DELETE /api/v1/users/:id.
 // Admin-only: sets is_active=false (soft delete).
 func (s *Server) DeactivateUser(c *gin.Context) {
 	orgID, ok := s.orgIDFromContext(c)
@@ -136,7 +136,7 @@ func (s *Server) DeactivateUser(c *gin.Context) {
 		return
 	}
 
-	userID, err := uuid.Parse(c.Param("user_id"))
+	userID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid user id", err))
 		return

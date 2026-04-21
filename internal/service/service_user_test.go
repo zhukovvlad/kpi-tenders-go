@@ -174,6 +174,20 @@ func TestUserService_Update_Role_Success(t *testing.T) {
 	mq.AssertExpectations(t)
 }
 
+func TestUserService_Update_NoFields_ReturnsValidationFailed(t *testing.T) {
+	ctx := context.Background()
+	mq := new(storemock.MockQuerier) // no expectations — should not reach DB
+
+	svc := newTestUserService(mq)
+	_, err := svc.Update(ctx, UpdateUserParams{UserID: uuid.New(), OrgID: uuid.New()})
+
+	require.Error(t, err)
+	var appErr *errs.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, errs.CodeValidationFailed, appErr.Code)
+	mq.AssertExpectations(t)
+}
+
 func TestUserService_Update_InvalidRole_ReturnsValidationFailed(t *testing.T) {
 	ctx := context.Background()
 	mq := new(storemock.MockQuerier) // no expectations

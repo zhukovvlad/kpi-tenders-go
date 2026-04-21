@@ -133,8 +133,8 @@ func (s *Server) setupRouter() {
 			{
 				users.POST("", s.CreateUser)
 				users.GET("", s.ListUsers)
-				users.PATCH("/:user_id", s.UpdateUser)
-				users.DELETE("/:user_id", s.DeactivateUser)
+				users.PATCH("/:id", s.UpdateUser)
+				users.DELETE("/:id", s.DeactivateUser)
 			}
 		}
 	}
