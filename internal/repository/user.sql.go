@@ -7,8 +7,10 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createUser = `-- name: CreateUser :one
@@ -81,6 +83,102 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.OrganizationID,
 		&i.Email,
 		&i.PasswordHash,
+		&i.FullName,
+		&i.Role,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listUsersByOrganization = `-- name: ListUsersByOrganization :many
+SELECT id, organization_id, email, full_name, role, is_active, created_at, updated_at
+FROM users
+WHERE organization_id = $1
+ORDER BY created_at ASC
+`
+
+type ListUsersByOrganizationRow struct {
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+	Email          string    `json:"email"`
+	FullName       string    `json:"full_name"`
+	Role           string    `json:"role"`
+	IsActive       bool      `json:"is_active"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+func (q *Queries) ListUsersByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ListUsersByOrganizationRow, error) {
+	rows, err := q.db.Query(ctx, listUsersByOrganization, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUsersByOrganizationRow{}
+	for rows.Next() {
+		var i ListUsersByOrganizationRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.Email,
+			&i.FullName,
+			&i.Role,
+			&i.IsActive,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateUser = `-- name: UpdateUser :one
+UPDATE users
+SET
+    role      = COALESCE($3, role),
+    is_active = COALESCE($4, is_active),
+    updated_at = now()
+WHERE id = $1 AND organization_id = $2
+RETURNING id, organization_id, email, full_name, role, is_active, created_at, updated_at
+`
+
+type UpdateUserParams struct {
+	ID             uuid.UUID   `json:"id"`
+	OrganizationID uuid.UUID   `json:"organization_id"`
+	Role           pgtype.Text `json:"role"`
+	IsActive       pgtype.Bool `json:"is_active"`
+}
+
+type UpdateUserRow struct {
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+	Email          string    `json:"email"`
+	FullName       string    `json:"full_name"`
+	Role           string    `json:"role"`
+	IsActive       bool      `json:"is_active"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (UpdateUserRow, error) {
+	row := q.db.QueryRow(ctx, updateUser,
+		arg.ID,
+		arg.OrganizationID,
+		arg.Role,
+		arg.IsActive,
+	)
+	var i UpdateUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.Email,
 		&i.FullName,
 		&i.Role,
 		&i.IsActive,

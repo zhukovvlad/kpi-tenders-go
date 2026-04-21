@@ -586,6 +586,36 @@ func (_m *MockQuerier) ListTasksByDocument(ctx context.Context, arg repository.L
 	return r0, r1
 }
 
+// ListUsersByOrganization provides a mock function with given fields: ctx, organizationID
+func (_m *MockQuerier) ListUsersByOrganization(ctx context.Context, organizationID uuid.UUID) ([]repository.ListUsersByOrganizationRow, error) {
+	ret := _m.Called(ctx, organizationID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListUsersByOrganization")
+	}
+
+	var r0 []repository.ListUsersByOrganizationRow
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]repository.ListUsersByOrganizationRow, error)); ok {
+		return rf(ctx, organizationID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) []repository.ListUsersByOrganizationRow); ok {
+		r0 = rf(ctx, organizationID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.ListUsersByOrganizationRow)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = rf(ctx, organizationID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // UpdateConstructionSite provides a mock function with given fields: ctx, arg
 func (_m *MockQuerier) UpdateConstructionSite(ctx context.Context, arg repository.UpdateConstructionSiteParams) (repository.ConstructionSite, error) {
 	ret := _m.Called(ctx, arg)
@@ -662,6 +692,34 @@ func (_m *MockQuerier) UpdateOrganization(ctx context.Context, arg repository.Up
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, repository.UpdateOrganizationParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// UpdateUser provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) UpdateUser(ctx context.Context, arg repository.UpdateUserParams) (repository.UpdateUserRow, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateUser")
+	}
+
+	var r0 repository.UpdateUserRow
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpdateUserParams) (repository.UpdateUserRow, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpdateUserParams) repository.UpdateUserRow); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.UpdateUserRow)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.UpdateUserParams) error); ok {
 		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)
