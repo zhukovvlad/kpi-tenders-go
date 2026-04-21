@@ -5,71 +5,91 @@
 package repository
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/pgvector/pgvector-go"
 )
 
-type CatalogPosition struct {
-	ID         uuid.UUID       `json:"id"`
-	DocumentID uuid.UUID       `json:"document_id"`
-	Title      string          `json:"title"`
-	Embedding  pgvector.Vector `json:"embedding"`
-	Parameters []byte          `json:"parameters"`
-	CreatedAt  time.Time       `json:"created_at"`
-}
-
-type Document struct {
-	ID             uuid.UUID   `json:"id"`
-	OrganizationID uuid.UUID   `json:"organization_id"`
-	ProjectID      pgtype.UUID `json:"project_id"`
-	Title          string      `json:"title"`
-	FilePath       string      `json:"file_path"`
-	Status         string      `json:"status"`
-	UploadedBy     uuid.UUID   `json:"uploaded_by"`
-	CreatedAt      time.Time   `json:"created_at"`
-	UpdatedAt      time.Time   `json:"updated_at"`
-}
-
-type DocumentTask struct {
-	ID          uuid.UUID          `json:"id"`
-	DocumentID  uuid.UUID          `json:"document_id"`
-	AssignedTo  pgtype.UUID        `json:"assigned_to"`
-	Title       string             `json:"title"`
-	Description pgtype.Text        `json:"description"`
-	Status      string             `json:"status"`
-	DueDate     pgtype.Timestamptz `json:"due_date"`
-	CreatedAt   time.Time          `json:"created_at"`
-	UpdatedAt   time.Time          `json:"updated_at"`
-}
-
-type Organization struct {
-	ID        uuid.UUID   `json:"id"`
-	Name      string      `json:"name"`
-	Inn       pgtype.Text `json:"inn"`
+// Объекты строительства (ЖК, очереди, корпуса) — иерархическая структура тенанта
+type ConstructionSite struct {
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+	// ID родительского объекта; NULL для корневых объектов (например, сам ЖК)
+	ParentID pgtype.UUID `json:"parent_id"`
+	Name     string      `json:"name"`
+	// Статус жизненного цикла: active | completed | archived
+	Status string `json:"status"`
+	// Пользователь, создавший объект; NULL если пользователь удалён
+	CreatedBy pgtype.UUID `json:"created_by"`
 	CreatedAt time.Time   `json:"created_at"`
 	UpdatedAt time.Time   `json:"updated_at"`
 }
 
-type Project struct {
-	ID             uuid.UUID   `json:"id"`
-	OrganizationID uuid.UUID   `json:"organization_id"`
-	Name           string      `json:"name"`
-	Description    pgtype.Text `json:"description"`
-	Status         string      `json:"status"`
-	CreatedAt      time.Time   `json:"created_at"`
-	UpdatedAt      time.Time   `json:"updated_at"`
+// Метаданные загруженных файлов; физический файл хранится в MinIO
+type Document struct {
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+	// Объект строительства, к которому относится документ; NULL — документ без привязки
+	SiteID     pgtype.UUID `json:"site_id"`
+	UploadedBy uuid.UUID   `json:"uploaded_by"`
+	// Исходный документ, если текущий получен в результате обработки (конвертация, анонимизация)
+	ParentID pgtype.UUID `json:"parent_id"`
+	FileName string      `json:"file_name"`
+	// Путь к файлу в MinIO: bucket/prefix/uuid.ext
+	StoragePath string `json:"storage_path"`
+	// MIME-тип файла, определяется при загрузке; NULL если не определён
+	MimeType pgtype.Text `json:"mime_type"`
+	// Размер файла в байтах; NULL если не известен на момент создания записи
+	FileSizeBytes pgtype.Int8 `json:"file_size_bytes"`
+	CreatedAt     time.Time   `json:"created_at"`
+	UpdatedAt     time.Time   `json:"updated_at"`
 }
 
+// Задачи AI-воркера на Python для обработки документов
+type DocumentTask struct {
+	ID         uuid.UUID `json:"id"`
+	DocumentID uuid.UUID `json:"document_id"`
+	// Маршрутизатор воркера: определяет логику обработки (например: anonymize, parse_estimate, convert). Набор значений расширяется по мере добавления модулей
+	ModuleName string `json:"module_name"`
+	// Статус выполнения: pending | processing | completed | failed
+	Status string `json:"status"`
+	// UUID задачи в Celery; заполняется воркером при взятии задачи в работу
+	CeleryTaskID pgtype.Text `json:"celery_task_id"`
+	// Структурированный результат обработки; схема зависит от module_name
+	ResultPayload json.RawMessage `json:"result_payload"`
+	// Описание ошибки при status = failed; NULL в остальных случаях
+	ErrorMessage pgtype.Text `json:"error_message"`
+	CreatedAt    time.Time   `json:"created_at"`
+	UpdatedAt    time.Time   `json:"updated_at"`
+}
+
+// Организации — изолированные тенанты системы
+type Organization struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+	// ИНН: 10 цифр для ЮЛ, 12 для ИП; NULL если не указан
+	Inn pgtype.Text `json:"inn"`
+	// Произвольные настройки тенанта (тема, лимиты, флаги)
+	Settings json.RawMessage `json:"settings"`
+	// false — организация деактивирована, вход для всех её пользователей заблокирован
+	IsActive  bool      `json:"is_active"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Пользователи, привязанные к организации
 type User struct {
 	ID             uuid.UUID `json:"id"`
 	OrganizationID uuid.UUID `json:"organization_id"`
 	Email          string    `json:"email"`
 	PasswordHash   string    `json:"password_hash"`
 	FullName       string    `json:"full_name"`
-	Role           string    `json:"role"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	// Роль пользователя: admin — полный доступ к тенанту, member — работа с документами
+	Role string `json:"role"`
+	// false — пользователь деактивирован, вход заблокирован
+	IsActive  bool      `json:"is_active"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

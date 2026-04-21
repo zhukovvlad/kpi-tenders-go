@@ -12,23 +12,27 @@ import (
 )
 
 type Querier interface {
+	CreateConstructionSite(ctx context.Context, arg CreateConstructionSiteParams) (ConstructionSite, error)
 	CreateDocument(ctx context.Context, arg CreateDocumentParams) (Document, error)
-	// ── Document Tasks ──────────────────────────────────
 	CreateDocumentTask(ctx context.Context, arg CreateDocumentTaskParams) (DocumentTask, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
-	DeleteDocument(ctx context.Context, id uuid.UUID) error
-	DeleteDocumentTask(ctx context.Context, id uuid.UUID) error
+	DeleteConstructionSite(ctx context.Context, arg DeleteConstructionSiteParams) (int64, error)
+	DeleteDocument(ctx context.Context, arg DeleteDocumentParams) (int64, error)
+	DeleteDocumentTask(ctx context.Context, arg DeleteDocumentTaskParams) (int64, error)
 	DeleteOrganization(ctx context.Context, id uuid.UUID) (int64, error)
-	GetDocument(ctx context.Context, id uuid.UUID) (Document, error)
-	GetDocumentTask(ctx context.Context, id uuid.UUID) (DocumentTask, error)
+	GetConstructionSite(ctx context.Context, arg GetConstructionSiteParams) (ConstructionSite, error)
+	GetDocument(ctx context.Context, arg GetDocumentParams) (Document, error)
+	GetDocumentTask(ctx context.Context, arg GetDocumentTaskParams) (DocumentTask, error)
 	GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organization, error)
 	GetOrganizationByINN(ctx context.Context, inn pgtype.Text) (Organization, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
+	ListConstructionSitesByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ConstructionSite, error)
 	ListDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]Document, error)
-	ListTasksByDocument(ctx context.Context, documentID uuid.UUID) ([]DocumentTask, error)
-	UpdateDocumentStatus(ctx context.Context, arg UpdateDocumentStatusParams) (Document, error)
+	ListDocumentsBySite(ctx context.Context, arg ListDocumentsBySiteParams) ([]Document, error)
+	ListTasksByDocument(ctx context.Context, arg ListTasksByDocumentParams) ([]DocumentTask, error)
+	UpdateConstructionSite(ctx context.Context, arg UpdateConstructionSiteParams) (ConstructionSite, error)
 	UpdateDocumentTaskStatus(ctx context.Context, arg UpdateDocumentTaskStatusParams) (DocumentTask, error)
 	UpdateOrganization(ctx context.Context, arg UpdateOrganizationParams) (Organization, error)
 }

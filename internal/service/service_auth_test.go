@@ -32,14 +32,21 @@ func TestAuthService_Login_Success(t *testing.T) {
 	hash, err := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.MinCost)
 	require.NoError(t, err)
 
+	orgID := uuid.New()
 	expectedUser := repository.User{
 		ID:             uuid.New(),
-		OrganizationID: uuid.New(),
+		OrganizationID: orgID,
 		Email:          "user@example.com",
 		PasswordHash:   string(hash),
 		Role:           "admin",
+		IsActive:       true,
+	}
+	expectedOrg := repository.Organization{
+		ID:       orgID,
+		IsActive: true,
 	}
 	ms.On("GetUserByEmail", ctx, "user@example.com").Return(expectedUser, nil)
+	ms.On("GetOrganizationByID", ctx, orgID).Return(expectedOrg, nil)
 
 	svc := newTestAuthService(ms)
 	access, refresh, err := svc.Login(ctx, "user@example.com", "password123")

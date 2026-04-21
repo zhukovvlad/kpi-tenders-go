@@ -15,7 +15,7 @@ import (
 const createOrganization = `-- name: CreateOrganization :one
 INSERT INTO organizations (name, inn)
 VALUES ($1, $2)
-RETURNING id, name, inn, created_at, updated_at
+RETURNING id, name, inn, settings, is_active, created_at, updated_at
 `
 
 type CreateOrganizationParams struct {
@@ -30,6 +30,8 @@ func (q *Queries) CreateOrganization(ctx context.Context, arg CreateOrganization
 		&i.ID,
 		&i.Name,
 		&i.Inn,
+		&i.Settings,
+		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -49,7 +51,7 @@ func (q *Queries) DeleteOrganization(ctx context.Context, id uuid.UUID) (int64, 
 }
 
 const getOrganizationByID = `-- name: GetOrganizationByID :one
-SELECT id, name, inn, created_at, updated_at FROM organizations WHERE id = $1
+SELECT id, name, inn, settings, is_active, created_at, updated_at FROM organizations WHERE id = $1
 `
 
 func (q *Queries) GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organization, error) {
@@ -59,6 +61,8 @@ func (q *Queries) GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organi
 		&i.ID,
 		&i.Name,
 		&i.Inn,
+		&i.Settings,
+		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -66,7 +70,7 @@ func (q *Queries) GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organi
 }
 
 const getOrganizationByINN = `-- name: GetOrganizationByINN :one
-SELECT id, name, inn, created_at, updated_at FROM organizations WHERE inn = $1
+SELECT id, name, inn, settings, is_active, created_at, updated_at FROM organizations WHERE inn = $1
 `
 
 func (q *Queries) GetOrganizationByINN(ctx context.Context, inn pgtype.Text) (Organization, error) {
@@ -76,6 +80,8 @@ func (q *Queries) GetOrganizationByINN(ctx context.Context, inn pgtype.Text) (Or
 		&i.ID,
 		&i.Name,
 		&i.Inn,
+		&i.Settings,
+		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -88,7 +94,7 @@ SET name       = $2,
     inn        = CASE WHEN $4::boolean THEN $3 ELSE inn END,
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, inn, created_at, updated_at
+RETURNING id, name, inn, settings, is_active, created_at, updated_at
 `
 
 type UpdateOrganizationParams struct {
@@ -110,6 +116,8 @@ func (q *Queries) UpdateOrganization(ctx context.Context, arg UpdateOrganization
 		&i.ID,
 		&i.Name,
 		&i.Inn,
+		&i.Settings,
+		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
