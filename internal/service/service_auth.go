@@ -94,6 +94,10 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (access
 
 	org, repoErr := s.repo.GetOrganizationByID(ctx, user.OrganizationID)
 	if repoErr != nil {
+		if errors.Is(repoErr, pgx.ErrNoRows) {
+			s.log.Warn("login: organization missing", slog.String("org_id", user.OrganizationID.String()))
+			return "", "", errs.New(errs.CodeUnauthorized, "organization is deactivated", nil)
+		}
 		s.log.Error("login: failed to fetch organization", slog.String("err", repoErr.Error()))
 		return "", "", errs.New(errs.CodeInternalError, "internal server error", repoErr)
 	}

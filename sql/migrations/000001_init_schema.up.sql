@@ -50,7 +50,8 @@ CREATE TABLE construction_sites (
     organization_id UUID         NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     parent_id       UUID         REFERENCES construction_sites(id) ON DELETE SET NULL,
     name            VARCHAR(255) NOT NULL,
-    status          VARCHAR(50)  NOT NULL DEFAULT 'active',
+    status          VARCHAR(50)  NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'completed', 'archived')),
     created_by      UUID         REFERENCES users(id) ON DELETE SET NULL,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
@@ -94,7 +95,8 @@ CREATE TABLE document_tasks (
     id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     document_id     UUID         NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     module_name     TEXT         NOT NULL,
-    status          VARCHAR(50)  NOT NULL DEFAULT 'pending',
+    status          VARCHAR(50)  NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
     celery_task_id  VARCHAR(255),
     result_payload  JSONB        NOT NULL DEFAULT '{}'::jsonb,
     error_message   TEXT,
@@ -139,14 +141,33 @@ ALTER TABLE documents          ADD CONSTRAINT uq_documents_id_org     UNIQUE (id
 
 CREATE OR REPLACE FUNCTION check_site_org_isolation() RETURNS trigger AS $$
 BEGIN
-    -- parent_id: родительский объект должен принадлежать той же организации
+    -- parent_id: самоссылка и цикличность запрещены
     IF NEW.parent_id IS NOT NULL THEN
+        IF NEW.parent_id = NEW.id THEN
+            RAISE EXCEPTION 'parent_id cannot reference the same construction site %', NEW.id;
+        END IF;
+        -- родительский объект должен принадлежать той же организации
         IF NOT EXISTS (
             SELECT 1 FROM construction_sites
             WHERE id = NEW.parent_id AND organization_id = NEW.organization_id
         ) THEN
             RAISE EXCEPTION 'parent_id % does not belong to organization %',
                 NEW.parent_id, NEW.organization_id;
+        END IF;
+        -- обнаружение цикла через обход предков
+        IF EXISTS (
+            WITH RECURSIVE ancestors AS (
+                SELECT id, parent_id
+                FROM construction_sites
+                WHERE id = NEW.parent_id
+                UNION ALL
+                SELECT cs.id, cs.parent_id
+                FROM construction_sites cs
+                JOIN ancestors a ON cs.id = a.parent_id
+            )
+            SELECT 1 FROM ancestors WHERE id = NEW.id
+        ) THEN
+            RAISE EXCEPTION 'parent_id % would create a construction site cycle', NEW.parent_id;
         END IF;
     END IF;
     -- created_by: пользователь должен принадлежать той же организации
@@ -204,3 +225,28 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER trg_document_org_isolation
     BEFORE INSERT OR UPDATE ON documents
     FOR EACH ROW EXECUTE FUNCTION check_document_org_isolation();
+
+-- ==========================================
+-- TENANT ISOLATION: запрет смены organization_id
+-- ==========================================
+CREATE OR REPLACE FUNCTION prevent_organization_id_change() RETURNS trigger AS $$
+BEGIN
+    IF OLD.organization_id IS DISTINCT FROM NEW.organization_id THEN
+        RAISE EXCEPTION 'organization_id cannot be changed for % %',
+            TG_TABLE_NAME, OLD.id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_users_prevent_org_change
+    BEFORE UPDATE OF organization_id ON users
+    FOR EACH ROW EXECUTE FUNCTION prevent_organization_id_change();
+
+CREATE TRIGGER trg_sites_prevent_org_change
+    BEFORE UPDATE OF organization_id ON construction_sites
+    FOR EACH ROW EXECUTE FUNCTION prevent_organization_id_change();
+
+CREATE TRIGGER trg_documents_prevent_org_change
+    BEFORE UPDATE OF organization_id ON documents
+    FOR EACH ROW EXECUTE FUNCTION prevent_organization_id_change();

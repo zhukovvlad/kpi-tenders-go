@@ -63,6 +63,11 @@ func (s *Server) CreateDocument(c *gin.Context) {
 			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid parent_id", err))
 			return
 		}
+		// Verify the parent document belongs to the authenticated org.
+		if _, err := s.documentService.Get(c.Request.Context(), id, orgID); err != nil {
+			s.respondWithError(c, err)
+			return
+		}
 		params.ParentID = pgtype.UUID{Bytes: id, Valid: true}
 	}
 

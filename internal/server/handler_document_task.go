@@ -33,12 +33,6 @@ func (s *Server) CreateDocumentTask(c *gin.Context) {
 		return
 	}
 
-	// Verify document belongs to the authenticated org before creating a task.
-	if _, err := s.documentService.Get(c.Request.Context(), docID, orgID); err != nil {
-		s.respondWithError(c, err)
-		return
-	}
-
 	task, err := s.documentTaskService.Create(c.Request.Context(), repository.CreateDocumentTaskParams{
 		DocumentID:     docID,
 		ModuleName:     req.ModuleName,
