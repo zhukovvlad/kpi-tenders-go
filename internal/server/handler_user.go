@@ -152,5 +152,5 @@ func (s *Server) DeactivateUser(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "user deactivated"})
+	c.Status(http.StatusNoContent)
 }
