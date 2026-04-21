@@ -35,6 +35,19 @@ func (s *Server) AuthMiddleware() gin.HandlerFunc {
 	}
 }
 
+// AdminOnly allows only users with role "admin" to proceed.
+// Must be used after AuthMiddleware, which sets "role" in the context.
+func (s *Server) AdminOnly() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, _ := c.Get("role")
+		if role != "admin" {
+			c.AbortWithStatusJSON(http.StatusForbidden, errorResponse{Error: errorBody{Code: errs.CodeForbidden, Message: "admin rights required"}})
+			return
+		}
+		c.Next()
+	}
+}
+
 // ServiceBearerAuth validates a static bearer token for service-to-service
 // requests. Uses constant-time comparison to prevent timing attacks.
 func (s *Server) ServiceBearerAuth() gin.HandlerFunc {

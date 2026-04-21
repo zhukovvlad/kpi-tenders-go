@@ -32,9 +32,11 @@ type Querier interface {
 	ListDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]Document, error)
 	ListDocumentsBySite(ctx context.Context, arg ListDocumentsBySiteParams) ([]Document, error)
 	ListTasksByDocument(ctx context.Context, arg ListTasksByDocumentParams) ([]DocumentTask, error)
+	ListUsersByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ListUsersByOrganizationRow, error)
 	UpdateConstructionSite(ctx context.Context, arg UpdateConstructionSiteParams) (ConstructionSite, error)
 	UpdateDocumentTaskStatus(ctx context.Context, arg UpdateDocumentTaskStatusParams) (DocumentTask, error)
 	UpdateOrganization(ctx context.Context, arg UpdateOrganizationParams) (Organization, error)
+	UpdateUser(ctx context.Context, arg UpdateUserParams) (UpdateUserRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

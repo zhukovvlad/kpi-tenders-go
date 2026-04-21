@@ -193,3 +193,65 @@ func TestServiceBearerAuth_MalformedHeader_Returns401(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
+
+// ── AdminOnly ─────────────────────────────────────────────────────────────────
+
+// newTestServerWithAdminRoute returns a server with a dedicated no-op route
+// protected by AuthMiddleware + AdminOnly, so tests get a clean 200/403 signal.
+func newTestServerWithAdminRoute() *Server {
+	s := newTestServerWithJWT()
+	s.Router().GET("/test/admin-ping", s.AuthMiddleware(), s.AdminOnly(), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+	return s
+}
+
+// adminToken generates a valid access token with the given role.
+func adminToken(t *testing.T, s *Server, role string) string {
+	t.Helper()
+	access, _, err := s.authService.GenerateTokens(uuid.New(), uuid.New(), role)
+	require.NoError(t, err)
+	return access
+}
+
+func TestAdminOnly_AdminRole_PassesThrough(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s := newTestServerWithAdminRoute()
+
+	tok := adminToken(t, s, "admin")
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test/admin-ping", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: tok})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestAdminOnly_MemberRole_Returns403(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s := newTestServerWithAdminRoute()
+
+	tok := adminToken(t, s, "member")
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test/admin-ping", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: tok})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestAdminOnly_EmptyRole_Returns403(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s := newTestServerWithAdminRoute()
+
+	tok := adminToken(t, s, "")
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test/admin-ping", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: tok})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}

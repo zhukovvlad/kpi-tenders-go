@@ -21,6 +21,7 @@ type Server struct {
 	router                  *gin.Engine
 	authService             *service.AuthService
 	organizationService     *service.OrganizationService
+	userService             *service.UserService
 	constructionSiteService *service.ConstructionSiteService
 	documentService         *service.DocumentService
 	documentTaskService     *service.DocumentTaskService
@@ -42,6 +43,7 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 		store:                   db,
 		authService:             service.NewAuthService(db, log, cfg.JWTAccessSecret, cfg.JWTRefreshSecret),
 		organizationService:     service.NewOrganizationService(db, log),
+		userService:             service.NewUserService(db, log),
 		constructionSiteService: service.NewConstructionSiteService(db, log),
 		documentService:         service.NewDocumentService(db, log),
 		documentTaskService:     service.NewDocumentTaskService(db, log),
@@ -124,6 +126,15 @@ func (s *Server) setupRouter() {
 				tasks.GET("/:id", s.GetDocumentTask)
 				tasks.PATCH("/:id/status", s.UpdateDocumentTaskStatus)
 				tasks.DELETE("/:id", s.DeleteDocumentTask)
+			}
+
+			users := protected.Group("/users")
+			users.Use(s.AdminOnly())
+			{
+				users.POST("", s.CreateUser)
+				users.GET("", s.ListUsers)
+				users.PATCH("/:id", s.UpdateUser)
+				users.DELETE("/:id", s.DeactivateUser)
 			}
 		}
 	}
