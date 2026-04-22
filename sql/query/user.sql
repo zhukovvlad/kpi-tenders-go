@@ -9,6 +9,11 @@ SELECT * FROM users WHERE email = $1;
 -- name: GetUserByID :one
 SELECT * FROM users WHERE id = $1;
 
+-- name: GetUserByIDAndOrg :one
+SELECT id, organization_id, email, full_name, role, is_active, created_at, updated_at
+FROM users
+WHERE id = $1 AND organization_id = $2;
+
 -- name: ListUsersByOrganization :many
 SELECT id, organization_id, email, full_name, role, is_active, created_at, updated_at
 FROM users

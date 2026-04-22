@@ -89,6 +89,7 @@ func (s *Server) setupRouter() {
 			auth.POST("/login", s.Login)
 			auth.POST("/refresh", s.RefreshTokens)
 			auth.POST("/logout", s.Logout)
+			auth.GET("/me", s.AuthMiddleware(), s.GetMe)
 		}
 
 		// Protected routes
