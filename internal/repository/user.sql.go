@@ -92,6 +92,44 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 	return i, err
 }
 
+const getUserByIDAndOrg = `-- name: GetUserByIDAndOrg :one
+SELECT id, organization_id, email, full_name, role, is_active, created_at, updated_at
+FROM users
+WHERE id = $1 AND organization_id = $2
+`
+
+type GetUserByIDAndOrgParams struct {
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+}
+
+type GetUserByIDAndOrgRow struct {
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+	Email          string    `json:"email"`
+	FullName       string    `json:"full_name"`
+	Role           string    `json:"role"`
+	IsActive       bool      `json:"is_active"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+func (q *Queries) GetUserByIDAndOrg(ctx context.Context, arg GetUserByIDAndOrgParams) (GetUserByIDAndOrgRow, error) {
+	row := q.db.QueryRow(ctx, getUserByIDAndOrg, arg.ID, arg.OrganizationID)
+	var i GetUserByIDAndOrgRow
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.Email,
+		&i.FullName,
+		&i.Role,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listUsersByOrganization = `-- name: ListUsersByOrganization :many
 SELECT id, organization_id, email, full_name, role, is_active, created_at, updated_at
 FROM users

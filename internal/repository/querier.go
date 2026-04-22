@@ -28,6 +28,7 @@ type Querier interface {
 	GetOrganizationByINN(ctx context.Context, inn pgtype.Text) (Organization, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
+	GetUserByIDAndOrg(ctx context.Context, arg GetUserByIDAndOrgParams) (GetUserByIDAndOrgRow, error)
 	ListConstructionSitesByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ConstructionSite, error)
 	ListDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]Document, error)
 	ListDocumentsBySite(ctx context.Context, arg ListDocumentsBySiteParams) ([]Document, error)

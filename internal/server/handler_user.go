@@ -154,3 +154,31 @@ func (s *Server) DeactivateUser(c *gin.Context) {
 
 	c.Status(http.StatusNoContent)
 }
+
+// GetMe handles GET /api/v1/auth/me.
+// Returns the profile of the currently authenticated user.
+func (s *Server) GetMe(c *gin.Context) {
+	userID, ok := s.userIDFromContext(c)
+	if !ok {
+		return
+	}
+	orgID, ok := s.orgIDFromContext(c)
+	if !ok {
+		return
+	}
+
+	user, err := s.userService.GetProfile(c.Request.Context(), userID, orgID)
+	if err != nil {
+		s.respondWithError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"id":              user.ID,
+		"organization_id": user.OrganizationID,
+		"email":           user.Email,
+		"full_name":       user.FullName,
+		"role":            user.Role,
+		"is_active":       user.IsActive,
+	})
+}

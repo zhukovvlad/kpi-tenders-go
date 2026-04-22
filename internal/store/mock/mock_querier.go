@@ -466,6 +466,34 @@ func (_m *MockQuerier) GetUserByID(ctx context.Context, id uuid.UUID) (repositor
 	return r0, r1
 }
 
+// GetUserByIDAndOrg provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) GetUserByIDAndOrg(ctx context.Context, arg repository.GetUserByIDAndOrgParams) (repository.GetUserByIDAndOrgRow, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetUserByIDAndOrg")
+	}
+
+	var r0 repository.GetUserByIDAndOrgRow
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetUserByIDAndOrgParams) (repository.GetUserByIDAndOrgRow, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetUserByIDAndOrgParams) repository.GetUserByIDAndOrgRow); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.GetUserByIDAndOrgRow)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.GetUserByIDAndOrgParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // ListConstructionSitesByOrganization provides a mock function with given fields: ctx, organizationID
 func (_m *MockQuerier) ListConstructionSitesByOrganization(ctx context.Context, organizationID uuid.UUID) ([]repository.ConstructionSite, error) {
 	ret := _m.Called(ctx, organizationID)

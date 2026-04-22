@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -255,5 +256,95 @@ func TestUserService_Deactivate_UserNotFound_ReturnsNotFound(t *testing.T) {
 	var appErr *errs.Error
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, errs.CodeNotFound, appErr.Code)
+	mq.AssertExpectations(t)
+}
+
+// ── GetProfile ───────────────────────────────────────────────────────────────
+
+func TestUserService_GetProfile_Success(t *testing.T) {
+	ctx := context.Background()
+	mq := new(storemock.MockQuerier)
+
+	userID := uuid.New()
+	orgID := uuid.New()
+	expected := repository.GetUserByIDAndOrgRow{
+		ID:             userID,
+		OrganizationID: orgID,
+		Email:          "user@acme.com",
+		FullName:       "John Doe",
+		Role:           "member",
+		IsActive:       true,
+	}
+
+	mq.On("GetUserByIDAndOrg", mock.Anything, repository.GetUserByIDAndOrgParams{
+		ID:             userID,
+		OrganizationID: orgID,
+	}).Return(expected, nil)
+
+	svc := newTestUserService(mq)
+	user, err := svc.GetProfile(ctx, userID, orgID)
+
+	require.NoError(t, err)
+	assert.Equal(t, userID, user.ID)
+	assert.Equal(t, orgID, user.OrganizationID)
+	assert.Equal(t, "user@acme.com", user.Email)
+	assert.Equal(t, "member", user.Role)
+	assert.True(t, user.IsActive)
+	mq.AssertExpectations(t)
+}
+
+func TestUserService_GetProfile_NotFound_ReturnsNotFound(t *testing.T) {
+	ctx := context.Background()
+	mq := new(storemock.MockQuerier)
+
+	mq.On("GetUserByIDAndOrg", mock.Anything, mock.Anything).Return(repository.GetUserByIDAndOrgRow{}, pgx.ErrNoRows)
+
+	svc := newTestUserService(mq)
+	_, err := svc.GetProfile(ctx, uuid.New(), uuid.New())
+
+	require.Error(t, err)
+	var appErr *errs.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, errs.CodeNotFound, appErr.Code)
+	mq.AssertExpectations(t)
+}
+
+func TestUserService_GetProfile_InactiveUser_ReturnsUnauthorized(t *testing.T) {
+	ctx := context.Background()
+	mq := new(storemock.MockQuerier)
+
+	userID := uuid.New()
+	orgID := uuid.New()
+
+	mq.On("GetUserByIDAndOrg", mock.Anything, mock.Anything).Return(
+		repository.GetUserByIDAndOrgRow{ID: userID, IsActive: false}, nil,
+	)
+
+	svc := newTestUserService(mq)
+	_, err := svc.GetProfile(ctx, userID, orgID)
+
+	require.Error(t, err)
+	var appErr *errs.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, errs.CodeUnauthorized, appErr.Code)
+	assert.Equal(t, "account is unavailable", appErr.Message)
+	mq.AssertExpectations(t)
+}
+
+func TestUserService_GetProfile_DBError_ReturnsInternalError(t *testing.T) {
+	ctx := context.Background()
+	mq := new(storemock.MockQuerier)
+
+	mq.On("GetUserByIDAndOrg", mock.Anything, mock.Anything).Return(
+		repository.GetUserByIDAndOrgRow{}, errors.New("db: connection refused"),
+	)
+
+	svc := newTestUserService(mq)
+	_, err := svc.GetProfile(ctx, uuid.New(), uuid.New())
+
+	require.Error(t, err)
+	var appErr *errs.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, errs.CodeInternalError, appErr.Code)
 	mq.AssertExpectations(t)
 }

@@ -117,3 +117,20 @@ func (s *UserService) Deactivate(ctx context.Context, userID, orgID uuid.UUID) (
 		Active: &f,
 	})
 }
+
+func (s *UserService) GetProfile(ctx context.Context, userID, orgID uuid.UUID) (repository.GetUserByIDAndOrgRow, error) {
+	user, err := s.repo.GetUserByIDAndOrg(ctx, repository.GetUserByIDAndOrgParams{
+		ID:             userID,
+		OrganizationID: orgID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return repository.GetUserByIDAndOrgRow{}, errs.New(errs.CodeNotFound, "user not found", err)
+		}
+		return repository.GetUserByIDAndOrgRow{}, errs.New(errs.CodeInternalError, "internal server error", err)
+	}
+	if !user.IsActive {
+		return repository.GetUserByIDAndOrgRow{}, errs.New(errs.CodeUnauthorized, "account is unavailable", nil)
+	}
+	return user, nil
+}
