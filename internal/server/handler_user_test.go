@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -147,6 +148,37 @@ func TestGetMe_InactiveUser_Returns401(t *testing.T) {
 	require.True(t, ok, "expected 'error' object in response body")
 	assert.Equal(t, string(errs.CodeUnauthorized), errObj["code"])
 	assert.Equal(t, "account is unavailable", errObj["message"])
+
+	mq.AssertExpectations(t)
+}
+
+func TestGetMe_DBError_Returns500(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	userID := uuid.New()
+	orgID := uuid.New()
+
+	mq := new(storemock.MockQuerier)
+	mq.On("GetUserByIDAndOrg", mock.Anything, mock.Anything).
+		Return(repository.GetUserByIDAndOrgRow{}, errors.New("connection reset"))
+
+	s := newServerWithMockUserService(mq)
+
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "member")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/auth/me", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	errObj, ok := body["error"].(map[string]any)
+	require.True(t, ok, "expected 'error' object in response body")
+	assert.Equal(t, string(errs.CodeInternalError), errObj["code"])
 
 	mq.AssertExpectations(t)
 }
