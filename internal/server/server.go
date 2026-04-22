@@ -182,8 +182,3 @@ func (s *Server) Start(address string) error {
 func (s *Server) Router() *gin.Engine {
 	return s.router
 }
-
-// Log exposes the logger for testing.
-func (s *Server) Log() *slog.Logger {
-	return s.log
-}

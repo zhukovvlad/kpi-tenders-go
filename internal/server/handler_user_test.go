@@ -26,7 +26,7 @@ import (
 // tests share a single log configuration.
 func newServerWithMockUserService(mq *storemock.MockQuerier) *Server {
 	s := newTestServerWithJWT()
-	s.userService = service.NewUserService(mq, s.Log())
+	s.userService = service.NewUserService(mq, s.log)
 	return s
 }
 
