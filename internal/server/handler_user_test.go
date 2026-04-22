@@ -3,10 +3,8 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -19,18 +17,16 @@ import (
 	"go-kpi-tenders/internal/repository"
 	"go-kpi-tenders/internal/service"
 	storemock "go-kpi-tenders/internal/store/mock"
+	"go-kpi-tenders/pkg/errs"
 )
-
-// newTestLogger returns a silent logger suitable for handler tests.
-func newHandlerTestLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-}
 
 // newServerWithMockUserService creates a JWT-capable server and replaces its
 // userService with one backed by the supplied MockQuerier.
+// The server's own logger (configured in newTestServerWithJWT) is reused so
+// tests share a single log configuration.
 func newServerWithMockUserService(mq *storemock.MockQuerier) *Server {
 	s := newTestServerWithJWT()
-	s.userService = service.NewUserService(mq, newHandlerTestLogger())
+	s.userService = service.NewUserService(mq, s.Log())
 	return s
 }
 
@@ -113,6 +109,13 @@ func TestGetMe_UserNotFound_Returns404(t *testing.T) {
 	s.Router().ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	errObj, ok := body["error"].(map[string]any)
+	require.True(t, ok, "expected 'error' object in response body")
+	assert.Equal(t, string(errs.CodeNotFound), errObj["code"])
+
 	mq.AssertExpectations(t)
 }
 
@@ -142,6 +145,7 @@ func TestGetMe_InactiveUser_Returns401(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	errObj, ok := body["error"].(map[string]any)
 	require.True(t, ok, "expected 'error' object in response body")
+	assert.Equal(t, string(errs.CodeUnauthorized), errObj["code"])
 	assert.Equal(t, "account is unavailable", errObj["message"])
 
 	mq.AssertExpectations(t)
