@@ -50,7 +50,8 @@ func ensureBucket(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 	exists, err := mc.BucketExists(ctx, testMinioBucket)
 	require.NoError(t, err)
 	if !exists {

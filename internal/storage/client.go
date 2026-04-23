@@ -99,8 +99,11 @@ func (c *Client) objectNameFrom(storagePath string) (string, error) {
 }
 
 // SafeExt extracts the file extension from name and returns it lowercased,
-// keeping only ASCII lowercase letters and digits after the leading dot
-// (e.g. ".pdf", ".docx", ".tar" → kept; ".пдф", ".P D F" → dropped).
+// keeping only ASCII lowercase letters and digits after the leading dot.
+// Examples: ".pdf", ".docx", ".tar" → kept as-is (or lowercased);
+// ".пдф" (non-ASCII), ". pdf" (space) → dropped.
+// Note: uppercase letters such as in ".PDF" are normalised by ToLower first,
+// so ".PDF" is accepted and returned as ".pdf".
 // Extensions longer than 10 bytes or consisting of a bare dot are also dropped.
 // This ensures S3 object keys stay universally safe regardless of filename origin.
 func SafeExt(name string) string {

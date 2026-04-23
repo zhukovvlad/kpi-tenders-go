@@ -594,3 +594,52 @@ func TestUploadDocument_InvalidFileName_Returns400(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	msc.AssertNotCalled(t, "Upload")
 }
+
+// TestUploadDocument_FileTooLarge_Returns400 verifies that a file exceeding
+// maxUploadSize (100 MiB) is rejected with 400 before any S3 or DB operation.
+func TestUploadDocument_FileTooLarge_Returns400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	msc := new(mockStorageClient) // Upload must NOT be called.
+
+	s := newTestServerWithJWT()
+	s.storageClient = msc
+
+	userID, orgID := uuid.New(), uuid.New()
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	// Build a raw multipart body whose file part content exceeds maxUploadSize.
+	// The closing boundary is intentionally absent so that MaxBytesReader is
+	// the first thing that stops the multipart parser — not a normal EOF.
+	const boundary = "testboundary12345"
+	partHeader := "--" + boundary + "\r\n" +
+		"Content-Disposition: form-data; name=\"file\"; filename=\"big.pdf\"\r\n" +
+		"Content-Type: application/octet-stream\r\n" +
+		"\r\n"
+	body := io.MultiReader(
+		strings.NewReader(partHeader),
+		// Exceed the 100 MiB limit; zeroReader produces bytes without allocating.
+		io.LimitReader(zeroReader{}, maxUploadSize+1),
+	)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/documents/upload", body)
+	req.Header.Set("Content-Type", "multipart/form-data; boundary="+boundary)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	msc.AssertNotCalled(t, "Upload")
+}
+
+// zeroReader is an io.Reader that endlessly returns zero bytes.
+type zeroReader struct{}
+
+func (zeroReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 0
+	}
+	return len(p), nil
+}

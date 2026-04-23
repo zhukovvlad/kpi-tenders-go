@@ -36,7 +36,7 @@ type Server struct {
     cfg           *config.Config
     log           *slog.Logger
     store         store.Store           // nil when pool == nil (tests without DB)
-    storageClient *storage.Client       // nil when S3 creds absent; upload degrades to 500
+    storageClient storageClient         // interface (server.storageClient); nil when S3 creds absent; upload degrades to 500
     router        *gin.Engine
     authService, documentService, organizationService ...
 }

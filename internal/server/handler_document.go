@@ -1,10 +1,12 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -202,7 +204,10 @@ func (s *Server) UploadDocument(c *gin.Context) {
 		switch {
 		case errors.Is(err, http.ErrMissingFile):
 			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "file is required", err))
-		case errors.As(err, &maxErr):
+		// errors.As may not propagate through all multipart parsing layers;
+		// the string check is a belt-and-suspenders fallback for Go versions
+		// where MaxBytesError is wrapped before reaching FormFile.
+		case errors.As(err, &maxErr) || strings.Contains(err.Error(), "request body too large"):
 			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "file too large (max 100 MiB)", err))
 		default:
 			s.respondWithError(c, errs.New(errs.CodeInternalError, "cannot parse upload", err))
@@ -285,7 +290,12 @@ func (s *Server) UploadDocument(c *gin.Context) {
 	doc, err := s.documentService.Create(c.Request.Context(), params)
 	if err != nil {
 		// Best-effort cleanup: remove the uploaded object to avoid orphaned S3 objects.
-		if delErr := s.storageClient.Delete(c.Request.Context(), storagePath); delErr != nil {
+		// Use a fresh background context with a timeout: c.Request.Context() may
+		// already be cancelled (e.g. client disconnect) which would prevent Delete
+		// from running — exactly the scenario the cleanup exists to handle.
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if delErr := s.storageClient.Delete(cleanupCtx, storagePath); delErr != nil {
 			s.log.Error("upload: failed to delete orphaned object", "path", storagePath, "err", delErr)
 		}
 		s.respondWithError(c, err)
