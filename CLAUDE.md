@@ -11,6 +11,7 @@
 cmd/api/main.go               — точка входа, graceful shutdown
 internal/config/              — конфигурация (cleanenv + .env)
 internal/server/              — HTTP-слой: Server struct, роутер, middleware, хендлеры
+internal/server/storage_iface.go — интерфейс storageClient (consumer-side, Go idiom)
 internal/service/             — бизнес-логика
 internal/repository/          — SQLC-генерируемый слой БД (сгенерирован sqlc)
 internal/store/               — Store interface + SQLStore (transaction support)

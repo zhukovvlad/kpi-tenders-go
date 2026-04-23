@@ -16,7 +16,16 @@ import (
 	"go-kpi-tenders/pkg/errs"
 )
 
-const maxUploadSize = 100 << 20 // 100 MiB
+const (
+	// maxFileSize is the intended maximum size for the uploaded file itself.
+	maxFileSize = 100 << 20 // 100 MiB
+
+	// maxRequestBodySize is the limit applied to the entire multipart request body,
+	// which includes MIME boundaries, part headers, and other form fields in
+	// addition to the file data. 1 MiB of headroom is sufficient for any
+	// realistic multipart envelope.
+	maxRequestBodySize = maxFileSize + 1<<20 // 101 MiB
+)
 
 type createDocumentRequest struct {
 	SiteID        *string `json:"site_id"`
@@ -195,8 +204,9 @@ func (s *Server) UploadDocument(c *gin.Context) {
 		return
 	}
 
-	// Limit request body size before parsing.
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxUploadSize)
+	// Limit request body size before parsing. maxRequestBodySize adds headroom
+	// above maxFileSize to accommodate multipart boundaries and part headers.
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxRequestBodySize)
 
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
@@ -213,6 +223,11 @@ func (s *Server) UploadDocument(c *gin.Context) {
 			s.respondWithError(c, errs.New(errs.CodeInternalError, "cannot parse upload", err))
 		}
 		return
+	}
+	// net/http may have spilled multipart parts to temporary disk files during
+	// FormFile. Clean them up when the handler returns regardless of outcome.
+	if c.Request.MultipartForm != nil {
+		defer c.Request.MultipartForm.RemoveAll() //nolint:errcheck
 	}
 
 	// Validate optional fields BEFORE uploading to avoid orphaned S3 objects.

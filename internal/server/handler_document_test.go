@@ -596,7 +596,7 @@ func TestUploadDocument_InvalidFileName_Returns400(t *testing.T) {
 }
 
 // TestUploadDocument_FileTooLarge_Returns400 verifies that a file exceeding
-// maxUploadSize (100 MiB) is rejected with 400 before any S3 or DB operation.
+// maxFileSize (100 MiB) is rejected with 400 before any S3 or DB operation.
 func TestUploadDocument_FileTooLarge_Returns400(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -609,7 +609,7 @@ func TestUploadDocument_FileTooLarge_Returns400(t *testing.T) {
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
 
-	// Build a raw multipart body whose file part content exceeds maxUploadSize.
+	// Build a raw multipart body whose file part content exceeds maxRequestBodySize.
 	// The closing boundary is intentionally absent so that MaxBytesReader is
 	// the first thing that stops the multipart parser — not a normal EOF.
 	const boundary = "testboundary12345"
@@ -619,8 +619,8 @@ func TestUploadDocument_FileTooLarge_Returns400(t *testing.T) {
 		"\r\n"
 	body := io.MultiReader(
 		strings.NewReader(partHeader),
-		// Exceed the 100 MiB limit; zeroReader produces bytes without allocating.
-		io.LimitReader(zeroReader{}, maxUploadSize+1),
+		// Exceed the full request body limit; zeroReader produces bytes without allocating.
+		io.LimitReader(zeroReader{}, maxRequestBodySize+1),
 	)
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/documents/upload", body)
