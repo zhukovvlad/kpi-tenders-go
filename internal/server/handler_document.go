@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -25,6 +26,9 @@ const (
 	// addition to the file data. 1 MiB of headroom is sufficient for any
 	// realistic multipart envelope.
 	maxRequestBodySize = maxFileSize + 1<<20 // 101 MiB
+
+	// maxFileSizeMiB is maxFileSize expressed in MiB for human-readable error messages.
+	maxFileSizeMiB = maxFileSize >> 20 // 100
 )
 
 type createDocumentRequest struct {
@@ -191,7 +195,7 @@ func parseUUID(raw string) (uuid.UUID, error) {
 //   - parent_id   (optional) — UUID of the parent document
 func (s *Server) UploadDocument(c *gin.Context) {
 	if s.storageClient == nil {
-		s.respondWithError(c, errs.New(errs.CodeInternalError, "storage not configured", nil))
+		s.respondWithError(c, errs.New(errs.CodeInternalError, "storage unavailable", nil))
 		return
 	}
 
@@ -218,7 +222,7 @@ func (s *Server) UploadDocument(c *gin.Context) {
 		// the string check is a belt-and-suspenders fallback for Go versions
 		// where MaxBytesError is wrapped before reaching FormFile.
 		case errors.As(err, &maxErr) || strings.Contains(err.Error(), "request body too large"):
-			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "file too large (max 100 MiB)", err))
+			s.respondWithError(c, errs.New(errs.CodeValidationFailed, fmt.Sprintf("file too large (max %d MiB)", maxFileSizeMiB), err))
 		default:
 			s.respondWithError(c, errs.New(errs.CodeInternalError, "cannot parse upload", err))
 		}
@@ -242,7 +246,7 @@ func (s *Server) UploadDocument(c *gin.Context) {
 	// request body (file + multipart overhead), so a file just over 100 MiB could
 	// still slip through if its overhead keeps the total under maxRequestBodySize.
 	if fileHeader.Size > maxFileSize {
-		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "file too large (max 100 MiB)", nil))
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, fmt.Sprintf("file too large (max %d MiB)", maxFileSizeMiB), nil))
 		return
 	}
 
