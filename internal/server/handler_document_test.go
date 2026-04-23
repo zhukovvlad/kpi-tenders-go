@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -28,6 +29,27 @@ import (
 )
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+// mockStorageClient is a testify-mock implementation of the storageClient
+// interface, allowing Upload/Delete/PresignedURL to be stubbed in unit tests.
+type mockStorageClient struct {
+	mock.Mock
+}
+
+func (m *mockStorageClient) Upload(ctx context.Context, r io.Reader, size int64, originalFilename, contentType string) (string, error) {
+	args := m.Called(ctx, r, size, originalFilename, contentType)
+	return args.String(0), args.Error(1)
+}
+
+func (m *mockStorageClient) PresignedURL(ctx context.Context, storagePath string, ttl time.Duration) (string, error) {
+	args := m.Called(ctx, storagePath, ttl)
+	return args.String(0), args.Error(1)
+}
+
+func (m *mockStorageClient) Delete(ctx context.Context, storagePath string) error {
+	args := m.Called(ctx, storagePath)
+	return args.Error(0)
+}
 
 // newServerWithMockDocumentService creates a JWT-capable server whose
 // documentService is backed by the supplied MockQuerier.
@@ -60,6 +82,26 @@ func emptyMultipartRequest(t *testing.T, url, accessToken string) *http.Request 
 	t.Helper()
 	body := &bytes.Buffer{}
 	mw := multipart.NewWriter(body)
+	require.NoError(t, mw.Close())
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, url, body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	if accessToken != "" {
+		req.AddCookie(&http.Cookie{Name: "access_token", Value: accessToken})
+	}
+	return req
+}
+
+// multipartRequestWithFile builds a multipart/form-data POST request that
+// includes a "file" field with the given filename and body content.
+func multipartRequestWithFile(t *testing.T, url, accessToken, filename, content string) *http.Request {
+	t.Helper()
+	body := &bytes.Buffer{}
+	mw := multipart.NewWriter(body)
+	part, err := mw.CreateFormFile("file", filename)
+	require.NoError(t, err)
+	_, err = io.WriteString(part, content)
+	require.NoError(t, err)
 	require.NoError(t, mw.Close())
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, url, body)
@@ -457,4 +499,98 @@ func TestUploadDocument_MissingFile_Returns400(t *testing.T) {
 	s.Router().ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// TestUploadDocument_HappyPath_Returns201 verifies the full success flow:
+// storage.Upload is called, documentService.Create succeeds, response is 201.
+func TestUploadDocument_HappyPath_Returns201(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	docID := uuid.New()
+	userID, orgID := uuid.New(), uuid.New()
+	const storagePath = "tenders/some-uuid.pdf"
+
+	mq := new(storemock.MockQuerier)
+	mq.On("CreateDocument", mock.Anything, mock.Anything).
+		Return(sampleDocument(docID, orgID), nil)
+
+	msc := new(mockStorageClient)
+	msc.On("Upload", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(storagePath, nil)
+
+	s := newTestServerWithJWT()
+	s.storageClient = msc
+	s.documentService = service.NewDocumentService(mq, s.log)
+
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	req := multipartRequestWithFile(t, "/api/v1/documents/upload", access, "tender.pdf", "pdf-content")
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	assert.Equal(t, docID.String(), got["id"])
+	mq.AssertExpectations(t)
+	msc.AssertExpectations(t)
+}
+
+// TestUploadDocument_DBError_CleansUpS3Object verifies that when
+// documentService.Create fails after a successful upload, the handler calls
+// storageClient.Delete to remove the orphaned S3 object, then returns 500.
+func TestUploadDocument_DBError_CleansUpS3Object(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	userID, orgID := uuid.New(), uuid.New()
+	const storagePath = "tenders/some-uuid.pdf"
+
+	mq := new(storemock.MockQuerier)
+	mq.On("CreateDocument", mock.Anything, mock.Anything).
+		Return(repository.Document{}, errors.New("db error"))
+
+	msc := new(mockStorageClient)
+	msc.On("Upload", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(storagePath, nil)
+	msc.On("Delete", mock.Anything, storagePath).Return(nil)
+
+	s := newTestServerWithJWT()
+	s.storageClient = msc
+	s.documentService = service.NewDocumentService(mq, s.log)
+
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	req := multipartRequestWithFile(t, "/api/v1/documents/upload", access, "tender.pdf", "pdf-content")
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	mq.AssertExpectations(t)
+	// Delete must have been called to clean up the orphaned object.
+	msc.AssertExpectations(t)
+}
+
+// TestUploadDocument_InvalidFileName_Returns400 verifies that a filename that
+// normalises to "." (empty path component) is rejected before any S3 call.
+func TestUploadDocument_InvalidFileName_Returns400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	msc := new(mockStorageClient) // Upload must NOT be called.
+
+	s := newTestServerWithJWT()
+	s.storageClient = msc
+
+	userID, orgID := uuid.New(), uuid.New()
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	// Empty filename: filepath.Base("") == ".", which is rejected.
+	req := multipartRequestWithFile(t, "/api/v1/documents/upload", access, "", "content")
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	msc.AssertNotCalled(t, "Upload")
 }

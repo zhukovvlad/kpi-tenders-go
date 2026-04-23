@@ -98,18 +98,20 @@ func (c *Client) objectNameFrom(storagePath string) (string, error) {
 	return objectName, nil
 }
 
-// safeExt extracts the file extension from name and returns it lowercased if it
-// contains only ASCII letters and digits (e.g. ".pdf", ".docx").
-// Non-ASCII characters (e.g. Cyrillic extensions like ".пдф") or extensions
-// longer than 10 bytes are dropped to keep S3 object keys universally safe.
+// SafeExt extracts the file extension from name and returns it lowercased,
+// keeping only ASCII lowercase letters and digits after the leading dot
+// (e.g. ".pdf", ".docx", ".tar" → kept; ".пдф", ".P D F" → dropped).
+// Extensions longer than 10 bytes or consisting of a bare dot are also dropped.
+// This ensures S3 object keys stay universally safe regardless of filename origin.
 func SafeExt(name string) string {
 	ext := strings.ToLower(filepath.Ext(name))
-	// Reject bare dot (e.g. filepath.Ext(".") == ".") or overlong extensions.
+	// Reject bare dot (filepath.Ext(".") == ".") or overlong extensions.
 	if len(ext) <= 1 || len(ext) > 10 {
 		return ""
 	}
-	for _, r := range ext {
-		if r > 127 {
+	// Allow only [a-z0-9] after the leading dot.
+	for _, r := range ext[1:] {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') {
 			return ""
 		}
 	}

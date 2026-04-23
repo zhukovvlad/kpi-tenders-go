@@ -19,7 +19,7 @@ type Server struct {
 	cfg                     *config.Config
 	log                     *slog.Logger
 	store                   store.Store
-	storageClient           *storage.Client
+	storageClient           storageClient // nil when S3 not configured
 	router                  *gin.Engine
 	authService             *service.AuthService
 	organizationService     *service.OrganizationService
@@ -61,16 +61,20 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 	}
 
 	srv := &Server{
-		cfg:                     cfg,
-		log:                     log,
-		store:                   db,
-		storageClient:           sc,
+		cfg:   cfg,
+		log:   log,
+		store: db,
+		// storageClient is set below only when non-nil to avoid storing a
+		// (*storage.Client)(nil) as a non-nil interface value.
 		authService:             service.NewAuthService(db, log, cfg.JWTAccessSecret, cfg.JWTRefreshSecret),
 		organizationService:     service.NewOrganizationService(db, log),
 		userService:             service.NewUserService(db, log),
 		constructionSiteService: service.NewConstructionSiteService(db, log),
 		documentService:         service.NewDocumentService(db, log),
 		documentTaskService:     service.NewDocumentTaskService(db, log),
+	}
+	if sc != nil {
+		srv.storageClient = sc
 	}
 
 	srv.setupRouter()

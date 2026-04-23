@@ -213,7 +213,11 @@ func (s *Server) UploadDocument(c *gin.Context) {
 	// Validate optional fields BEFORE uploading to avoid orphaned S3 objects.
 	// Normalize filename: strip leading path components (including Windows-style
 	// backslash paths like "C:\fakepath\file.pdf") before storing.
-	fileName := filepath.Base(strings.ReplaceAll(fileHeader.Filename, "\\", "/"))
+	fileName := strings.TrimSpace(filepath.Base(strings.ReplaceAll(fileHeader.Filename, "\\", "/")))
+	if fileName == "" || fileName == "." || fileName == ".." {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid file name", nil))
+		return
+	}
 
 	params := repository.CreateDocumentParams{
 		OrganizationID: orgID,
