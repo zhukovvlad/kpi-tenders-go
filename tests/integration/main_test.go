@@ -22,6 +22,15 @@ import (
 // testPool is shared across all integration tests in this package.
 var testPool *pgxpool.Pool
 
+// testMinioEndpoint, testMinioAccessKey, testMinioSecretKey are set in TestMain
+// from the ephemeral MinIO testcontainer and shared across storage tests.
+var (
+	testMinioEndpoint  string
+	testMinioAccessKey = "minioadmin"
+	testMinioSecretKey = "minioadmin"
+	testMinioBucket    = "tenders"
+)
+
 func TestMain(m *testing.M) {
 	os.Exit(runTests(m))
 }
@@ -29,6 +38,7 @@ func TestMain(m *testing.M) {
 func runTests(m *testing.M) int {
 	ctx := context.Background()
 
+	// ── PostgreSQL ────────────────────────────────────────────────────────────
 	pgContainer, err := tcpostgres.Run(ctx,
 		"pgvector/pgvector:pg16",
 		tcpostgres.WithDatabase("kpi_test"),
@@ -69,6 +79,43 @@ func runTests(m *testing.M) int {
 	}
 
 	testPool = pool
+
+	// ── MinIO ─────────────────────────────────────────────────────────────────
+	minioContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image:        "minio/minio:RELEASE.2024-01-16T16-07-38Z",
+			ExposedPorts: []string{"9000/tcp"},
+			Env: map[string]string{
+				"MINIO_ROOT_USER":     testMinioAccessKey,
+				"MINIO_ROOT_PASSWORD": testMinioSecretKey,
+			},
+			Cmd:        []string{"server", "/data"},
+			WaitingFor: wait.ForHTTP("/minio/health/live").WithPort("9000/tcp").WithStartupTimeout(60 * time.Second),
+		},
+		Started: true,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start minio container: %v\n", err)
+		return 1
+	}
+	defer func() {
+		if err := minioContainer.Terminate(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to terminate minio container: %v\n", err)
+		}
+	}()
+
+	minioHost, err := minioContainer.Host(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to get minio host: %v\n", err)
+		return 1
+	}
+	minioPort, err := minioContainer.MappedPort(ctx, "9000/tcp")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to get minio port: %v\n", err)
+		return 1
+	}
+	testMinioEndpoint = fmt.Sprintf("%s:%s", minioHost, minioPort.Port())
+
 	return m.Run()
 }
 

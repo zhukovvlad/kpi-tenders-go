@@ -22,8 +22,8 @@ type Config struct {
 
 	S3Endpoint  string `env:"S3_ENDPOINT"   env-default:"localhost:9000"`
 	S3Region    string `env:"S3_REGION"     env-default:"us-east-1"`
-	S3AccessKey string `env:"S3_ACCESS_KEY" env-required:"true"`
-	S3SecretKey string `env:"S3_SECRET_KEY" env-required:"true"`
+	S3AccessKey string `env:"S3_ACCESS_KEY"`
+	S3SecretKey string `env:"S3_SECRET_KEY"`
 	S3Bucket    string `env:"S3_BUCKET"     env-default:"tenders"`
 	S3UseSSL    bool   `env:"S3_USE_SSL"    env-default:"false"`
 }

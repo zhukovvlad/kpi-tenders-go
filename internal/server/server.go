@@ -11,6 +11,7 @@ import (
 
 	"go-kpi-tenders/internal/config"
 	"go-kpi-tenders/internal/service"
+	"go-kpi-tenders/internal/storage"
 	"go-kpi-tenders/internal/store"
 )
 
@@ -18,6 +19,7 @@ type Server struct {
 	cfg                     *config.Config
 	log                     *slog.Logger
 	store                   store.Store
+	storageClient           storageClient // nil when S3 not configured
 	router                  *gin.Engine
 	authService             *service.AuthService
 	organizationService     *service.OrganizationService
@@ -37,16 +39,42 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 		db = store.New(pool)
 	}
 
+	// storageClient may be nil if S3 credentials are not configured (e.g. some
+	// unit-test scenarios). Upload endpoints will return 500 in that case.
+	var sc *storage.Client
+	hasAccessKey := cfg.S3AccessKey != ""
+	hasSecretKey := cfg.S3SecretKey != ""
+	switch {
+	case hasAccessKey && hasSecretKey:
+		var err error
+		sc, err = storage.New(cfg)
+		if err != nil {
+			// Non-fatal: server starts, upload endpoints degrade gracefully.
+			log.Error("storage: failed to init MinIO client", "err", err)
+		}
+	case hasAccessKey || hasSecretKey:
+		// Misconfiguration: only one of the two credentials is set.
+		log.Error("storage: S3AccessKey and S3SecretKey must both be set",
+			"hasAccessKey", hasAccessKey,
+			"hasSecretKey", hasSecretKey,
+		)
+	}
+
 	srv := &Server{
-		cfg:                     cfg,
-		log:                     log,
-		store:                   db,
+		cfg:   cfg,
+		log:   log,
+		store: db,
+		// storageClient is set below only when non-nil to avoid storing a
+		// (*storage.Client)(nil) as a non-nil interface value.
 		authService:             service.NewAuthService(db, log, cfg.JWTAccessSecret, cfg.JWTRefreshSecret),
 		organizationService:     service.NewOrganizationService(db, log),
 		userService:             service.NewUserService(db, log),
 		constructionSiteService: service.NewConstructionSiteService(db, log),
 		documentService:         service.NewDocumentService(db, log),
 		documentTaskService:     service.NewDocumentTaskService(db, log),
+	}
+	if sc != nil {
+		srv.storageClient = sc
 	}
 
 	srv.setupRouter()
@@ -115,6 +143,7 @@ func (s *Server) setupRouter() {
 			documents := protected.Group("/documents")
 			{
 				documents.POST("", s.CreateDocument)
+				documents.POST("/upload", s.UploadDocument)
 				documents.GET("", s.ListDocuments)
 				documents.GET("/:id", s.GetDocument)
 				documents.DELETE("/:id", s.DeleteDocument)
