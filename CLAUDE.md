@@ -15,6 +15,7 @@ internal/service/             — бизнес-логика
 internal/repository/          — SQLC-генерируемый слой БД (сгенерирован sqlc)
 internal/store/               — Store interface + SQLStore (transaction support)
 internal/store/mock/          — MockStore для unit-тестов сервисов
+internal/storage/             — MinIO/S3 клиент (upload, presigned URL)
 internal/pgutil/              — утилиты PostgreSQL (IsUniqueViolation)
 pkg/errs/                     — структурированные ошибки приложения
 pkg/logging/                  — slog-логгер
@@ -32,14 +33,17 @@ tests/integration/            — интеграционные тесты (build
 
 ```go
 type Server struct {
-    cfg   *config.Config; log *slog.Logger
-    store store.Store  // nil when pool == nil (tests without DB)
-    router *gin.Engine
+    cfg           *config.Config
+    log           *slog.Logger
+    store         store.Store           // nil when pool == nil (tests without DB)
+    storageClient *storage.Client       // nil when S3 creds absent; upload degrades to 500
+    router        *gin.Engine
     authService, documentService, organizationService ...
 }
 ```
 
-Новые сервисы добавляются как поля `Server` и инициализируются в `NewServer()`.
+Новые сервисы/клиенты добавляются как поля `Server` и инициализируются в `NewServer()`.
+`storageClient` инициализируется лениво — если `S3_ACCESS_KEY`/`S3_SECRET_KEY` не заданы, сервер стартует без S3.
 
 ### Store / Repository pattern
 
@@ -82,14 +86,20 @@ POST   /api/v1/auth/register
 POST   /api/v1/auth/login
 POST   /api/v1/auth/refresh
 POST   /api/v1/auth/logout
+GET    /api/v1/auth/me
 
 GET/PATCH/DELETE /api/v1/organizations/:id
 
-POST/GET         /api/v1/documents
-GET/PATCH/DELETE /api/v1/documents/:id  (status update)
+POST             /api/v1/documents           (JSON, storage_path задаётся вручную)
+POST             /api/v1/documents/upload    (multipart/form-data → S3 → БД)
+GET              /api/v1/documents
+GET/DELETE       /api/v1/documents/:id
 
 POST/GET         /api/v1/tasks
 GET/PATCH/DELETE /api/v1/tasks/:id      (status update)
+
+POST/GET         /api/v1/sites
+GET/PATCH/DELETE /api/v1/sites/:id
 ```
 
 ### Заглушки / TODO
@@ -101,7 +111,6 @@ GET/PATCH/DELETE /api/v1/tasks/:id      (status update)
 ### Не реализовано
 
 - Projects (таблица есть, хендлеров/сервисов/запросов нет)
-- Python worker integration endpoint
 - `catalog_positions` SQLC-запросы (таблица создана в 000002)
 
 ## База данных
@@ -121,11 +130,15 @@ GET/PATCH/DELETE /api/v1/tasks/:id      (status update)
 
 ### Unit-тесты (без Docker)
 ```text
-internal/service/service_auth_test.go         — AuthService: login, timing, JWT
-internal/service/service_organization_test.go — OrganizationService: register, conflicts
-internal/server/errors_test.go                — respondWithError маппинг
-internal/server/health_test.go                — health endpoint
-internal/server/middleware_test.go            — AuthMiddleware, ServiceBearerAuth
+internal/service/service_auth_test.go               — AuthService: login, timing, JWT
+internal/service/service_organization_test.go       — OrganizationService: register, conflicts
+internal/service/service_user_test.go               — UserService: GetProfile, tenant isolation
+internal/server/errors_test.go                      — respondWithError маппинг
+internal/server/health_test.go                      — health endpoint
+internal/server/middleware_test.go                  — AuthMiddleware, ServiceBearerAuth
+internal/server/handler_user_test.go                — GET /api/v1/auth/me
+internal/server/handler_document_test.go            — POST /api/v1/documents/upload
+internal/storage/client_test.go                     — PresignedURL, Upload error wrapping
 ```
 
 **Паттерн:**
@@ -140,19 +153,22 @@ svc := service.NewOrganizationService(ms, log)
 ```text
 tests/integration/main_test.go        — TestMain: testcontainers pgvector/pgvector:pg16 + миграции
 tests/integration/repository_test.go  — CRUD + RAG cosine search по catalog_positions
+tests/integration/storage_test.go     — Upload + PresignedURL против живого MinIO (localhost:9000)
 ```
 
 Build tag: `//go:build integration` — не запускаются при `go test ./...`.
 
 ## Команды
 
+> **Правило:** всегда запускать тесты через `make`, не напрямую через `go test`.
+
 ```bash
 make up               # поднять инфраструктуру (DB, Redis, S3)
 make migrate_up       # применить миграции
 make sqlc             # регенерировать repository из SQL
-make test             # unit + integration (нужен Docker)
-make test-unit        # unit-тесты: ./internal/... ./cmd/... ./pkg/... (без Docker)
-make test-integration # интеграционные: ./tests/integration/... (нужен Docker)
+make test-unit        # ← unit-тесты (./internal/... ./cmd/... ./pkg/...) — без Docker
+make test-integration # ← интеграционные (./tests/integration/...) — нужен Docker
+make test             # ← всё вместе: unit + integration
 make mock             # регенерировать MockStore через mockery
 make run              # запустить сервер
 make gen-secrets      # сгенерировать JWT/service секреты

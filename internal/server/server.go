@@ -11,6 +11,7 @@ import (
 
 	"go-kpi-tenders/internal/config"
 	"go-kpi-tenders/internal/service"
+	"go-kpi-tenders/internal/storage"
 	"go-kpi-tenders/internal/store"
 )
 
@@ -18,6 +19,7 @@ type Server struct {
 	cfg                     *config.Config
 	log                     *slog.Logger
 	store                   store.Store
+	storageClient           *storage.Client
 	router                  *gin.Engine
 	authService             *service.AuthService
 	organizationService     *service.OrganizationService
@@ -37,10 +39,23 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 		db = store.New(pool)
 	}
 
+	// storageClient may be nil if S3 credentials are not configured (e.g. some
+	// unit-test scenarios). Upload endpoints will return 503 in that case.
+	var sc *storage.Client
+	if cfg.S3AccessKey != "" && cfg.S3SecretKey != "" {
+		var err error
+		sc, err = storage.New(cfg)
+		if err != nil {
+			// Non-fatal: server starts, upload endpoints degrade gracefully.
+			log.Error("storage: failed to init MinIO client", "err", err)
+		}
+	}
+
 	srv := &Server{
 		cfg:                     cfg,
 		log:                     log,
 		store:                   db,
+		storageClient:           sc,
 		authService:             service.NewAuthService(db, log, cfg.JWTAccessSecret, cfg.JWTRefreshSecret),
 		organizationService:     service.NewOrganizationService(db, log),
 		userService:             service.NewUserService(db, log),
@@ -115,6 +130,7 @@ func (s *Server) setupRouter() {
 			documents := protected.Group("/documents")
 			{
 				documents.POST("", s.CreateDocument)
+				documents.POST("/upload", s.UploadDocument)
 				documents.GET("", s.ListDocuments)
 				documents.GET("/:id", s.GetDocument)
 				documents.DELETE("/:id", s.DeleteDocument)
