@@ -238,6 +238,13 @@ func (s *Server) UploadDocument(c *gin.Context) {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid file name", nil))
 		return
 	}
+	// Enforce the per-file size limit explicitly. MaxBytesReader caps the entire
+	// request body (file + multipart overhead), so a file just over 100 MiB could
+	// still slip through if its overhead keeps the total under maxRequestBodySize.
+	if fileHeader.Size > maxFileSize {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "file too large (max 100 MiB)", nil))
+		return
+	}
 
 	params := repository.CreateDocumentParams{
 		OrganizationID: orgID,
