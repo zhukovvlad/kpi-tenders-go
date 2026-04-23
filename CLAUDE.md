@@ -153,7 +153,7 @@ svc := service.NewOrganizationService(ms, log)
 ```text
 tests/integration/main_test.go        — TestMain: testcontainers pgvector/pgvector:pg16 + миграции
 tests/integration/repository_test.go  — CRUD + RAG cosine search по catalog_positions
-tests/integration/storage_test.go     — Upload + PresignedURL против живого MinIO (localhost:9000)
+tests/integration/storage_test.go     — Upload + PresignedURL против эфемерного MinIO-контейнера (testcontainers)
 ```
 
 Build tag: `//go:build integration` — не запускаются при `go test ./...`.
