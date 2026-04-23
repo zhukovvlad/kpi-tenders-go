@@ -64,7 +64,8 @@ func ensureBucket(t *testing.T) {
 
 func TestStorageUpload_ReturnsStoragePath(t *testing.T) {
 	sc := testStorageClient(t)
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	content := strings.NewReader("integration test content")
 	storagePath, err := sc.Upload(ctx, content, int64(content.Len()), "test.txt", "text/plain")
@@ -78,7 +79,8 @@ func TestStorageUpload_ReturnsStoragePath(t *testing.T) {
 
 func TestStorageUpload_ObjectExistsInMinIO(t *testing.T) {
 	sc := testStorageClient(t)
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	content := strings.NewReader("object existence check")
 	storagePath, err := sc.Upload(ctx, content, int64(content.Len()), "check.txt", "text/plain")
@@ -101,7 +103,8 @@ func TestStorageUpload_ObjectExistsInMinIO(t *testing.T) {
 
 func TestStoragePresignedURL_ReturnsReachableURL(t *testing.T) {
 	sc := testStorageClient(t)
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	content := strings.NewReader("presigned url test")
 	storagePath, err := sc.Upload(ctx, content, int64(content.Len()), "presign.txt", "text/plain")
@@ -122,7 +125,8 @@ func TestStoragePresignedURL_ReturnsReachableURL(t *testing.T) {
 
 func TestStoragePresignedURL_WrongBucket_ReturnsError(t *testing.T) {
 	sc := testStorageClient(t)
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	_, err := sc.PresignedURL(ctx, "wrong-bucket/some-object.pdf", time.Minute)
 	require.Error(t, err)
