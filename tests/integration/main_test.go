@@ -83,7 +83,7 @@ func runTests(m *testing.M) int {
 	// ── MinIO ─────────────────────────────────────────────────────────────────
 	minioContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        "minio/minio:latest",
+			Image:        "minio/minio:RELEASE.2024-01-16T16-07-38Z",
 			ExposedPorts: []string{"9000/tcp"},
 			Env: map[string]string{
 				"MINIO_ROOT_USER":     testMinioAccessKey,

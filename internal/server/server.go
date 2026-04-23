@@ -40,7 +40,7 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 	}
 
 	// storageClient may be nil if S3 credentials are not configured (e.g. some
-	// unit-test scenarios). Upload endpoints will return 503 in that case.
+	// unit-test scenarios). Upload endpoints will return 500 in that case.
 	var sc *storage.Client
 	if cfg.S3AccessKey != "" && cfg.S3SecretKey != "" {
 		var err error

@@ -63,6 +63,37 @@ func TestPresignedURL_ValidStoragePath_ReturnsURL(t *testing.T) {
 	assert.Contains(t, url, "some-uuid.pdf")
 }
 
+// ── Delete ────────────────────────────────────────────────────────────────────
+
+func TestDelete_BadStoragePath_ReturnsError(t *testing.T) {
+	c := newTestClient(t)
+
+	err := c.Delete(context.Background(), "other-bucket/uuid.pdf")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "tenders")
+}
+
+func TestDelete_EmptyObjectName_ReturnsError(t *testing.T) {
+	c := newTestClient(t)
+
+	// "tenders/" has an empty object name part.
+	err := c.Delete(context.Background(), "tenders/")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "empty object name")
+}
+
+func TestDelete_WrapsMinIOError(t *testing.T) {
+	c := newTestClient(t)
+
+	// Endpoint does not exist → RemoveObject will fail.
+	err := c.Delete(context.Background(), "tenders/some-uuid.pdf")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "storage: delete object")
+}
+
 // ── Upload ────────────────────────────────────────────────────────────────────
 
 func TestUpload_WrapsMinIOError(t *testing.T) {

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -195,40 +196,23 @@ func (s *Server) UploadDocument(c *gin.Context) {
 
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
-		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "file is required", err))
+		var maxErr *http.MaxBytesError
+		switch {
+		case errors.Is(err, http.ErrMissingFile):
+			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "file is required", err))
+		case errors.As(err, &maxErr):
+			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "file too large (max 100 MiB)", err))
+		default:
+			s.respondWithError(c, errs.New(errs.CodeInternalError, "cannot parse upload", err))
+		}
 		return
 	}
 
-	f, err := fileHeader.Open()
-	if err != nil {
-		s.respondWithError(c, errs.New(errs.CodeInternalError, "cannot open uploaded file", err))
-		return
-	}
-	defer f.Close()
-
-	contentType := fileHeader.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
-
-	storagePath, err := s.storageClient.Upload(
-		c.Request.Context(),
-		f,
-		fileHeader.Size,
-		fileHeader.Filename,
-		contentType,
-	)
-	if err != nil {
-		s.respondWithError(c, errs.New(errs.CodeInternalError, "upload failed", err))
-		return
-	}
-
+	// Validate optional fields BEFORE uploading to avoid orphaned S3 objects.
 	params := repository.CreateDocumentParams{
 		OrganizationID: orgID,
 		UploadedBy:     userID,
 		FileName:       fileHeader.Filename,
-		StoragePath:    storagePath,
-		MimeType:       pgtype.Text{String: contentType, Valid: true},
 		FileSizeBytes:  pgtype.Int8{Int64: fileHeader.Size, Valid: true},
 	}
 
@@ -258,8 +242,42 @@ func (s *Server) UploadDocument(c *gin.Context) {
 		params.ParentID = pgtype.UUID{Bytes: id, Valid: true}
 	}
 
+	f, err := fileHeader.Open()
+	if err != nil {
+		s.respondWithError(c, errs.New(errs.CodeInternalError, "cannot open uploaded file", err))
+		return
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			s.log.Error("upload: failed to close file", "err", err)
+		}
+	}()
+
+	contentType := fileHeader.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	params.MimeType = pgtype.Text{String: contentType, Valid: true}
+
+	storagePath, err := s.storageClient.Upload(
+		c.Request.Context(),
+		f,
+		fileHeader.Size,
+		fileHeader.Filename,
+		contentType,
+	)
+	if err != nil {
+		s.respondWithError(c, errs.New(errs.CodeInternalError, "upload failed", err))
+		return
+	}
+	params.StoragePath = storagePath
+
 	doc, err := s.documentService.Create(c.Request.Context(), params)
 	if err != nil {
+		// Best-effort cleanup: remove the uploaded object to avoid orphaned S3 objects.
+		if delErr := s.storageClient.Delete(c.Request.Context(), storagePath); delErr != nil {
+			s.log.Error("upload: failed to delete orphaned object", "path", storagePath, "err", delErr)
+		}
 		s.respondWithError(c, err)
 		return
 	}

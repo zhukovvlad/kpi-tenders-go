@@ -60,7 +60,7 @@ func emptyMultipartRequest(t *testing.T, url, accessToken string) *http.Request 
 	t.Helper()
 	body := &bytes.Buffer{}
 	mw := multipart.NewWriter(body)
-	mw.Close()
+	require.NoError(t, mw.Close())
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, url, body)
 	req.Header.Set("Content-Type", mw.FormDataContentType())

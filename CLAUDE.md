@@ -138,7 +138,7 @@ internal/server/health_test.go                      — health endpoint
 internal/server/middleware_test.go                  — AuthMiddleware, ServiceBearerAuth
 internal/server/handler_user_test.go                — GET /api/v1/auth/me
 internal/server/handler_document_test.go            — POST /api/v1/documents/upload
-internal/storage/client_test.go                     — PresignedURL, Upload error wrapping
+internal/storage/client_test.go                     — PresignedURL, Upload, Delete error wrapping
 ```
 
 **Паттерн:**

@@ -67,11 +67,28 @@ func (c *Client) PresignedURL(ctx context.Context, storagePath string, ttl time.
 	return u.String(), nil
 }
 
+// Delete removes the object at storagePath from the bucket.
+// It is a best-effort operation; callers may choose to log and continue on error.
+func (c *Client) Delete(ctx context.Context, storagePath string) error {
+	objectName, err := c.objectNameFrom(storagePath)
+	if err != nil {
+		return err
+	}
+	if err := c.mc.RemoveObject(ctx, c.bucket, objectName, minio.RemoveObjectOptions{}); err != nil {
+		return fmt.Errorf("storage: delete object %q: %w", objectName, err)
+	}
+	return nil
+}
+
 // objectNameFrom strips the leading "{bucket}/" prefix from storagePath.
 func (c *Client) objectNameFrom(storagePath string) (string, error) {
 	prefix := c.bucket + "/"
 	if !strings.HasPrefix(storagePath, prefix) {
 		return "", fmt.Errorf("storage: storagePath %q does not start with bucket %q", storagePath, c.bucket)
 	}
-	return strings.TrimPrefix(storagePath, prefix), nil
+	objectName := strings.TrimPrefix(storagePath, prefix)
+	if objectName == "" {
+		return "", fmt.Errorf("storage: storagePath %q has empty object name", storagePath)
+	}
+	return objectName, nil
 }
