@@ -3,6 +3,8 @@ package server
 import (
 	"errors"
 	"net/http"
+	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -209,10 +211,14 @@ func (s *Server) UploadDocument(c *gin.Context) {
 	}
 
 	// Validate optional fields BEFORE uploading to avoid orphaned S3 objects.
+	// Normalize filename: strip leading path components (including Windows-style
+	// backslash paths like "C:\fakepath\file.pdf") before storing.
+	fileName := filepath.Base(strings.ReplaceAll(fileHeader.Filename, "\\", "/"))
+
 	params := repository.CreateDocumentParams{
 		OrganizationID: orgID,
 		UploadedBy:     userID,
-		FileName:       fileHeader.Filename,
+		FileName:       fileName,
 		FileSizeBytes:  pgtype.Int8{Int64: fileHeader.Size, Valid: true},
 	}
 
@@ -263,7 +269,7 @@ func (s *Server) UploadDocument(c *gin.Context) {
 		c.Request.Context(),
 		f,
 		fileHeader.Size,
-		fileHeader.Filename,
+		fileName,
 		contentType,
 	)
 	if err != nil {

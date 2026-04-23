@@ -23,6 +23,12 @@ type Client struct {
 
 // New creates a MinIO-backed storage client from application config.
 func New(cfg *config.Config) (*Client, error) {
+	if cfg.S3Endpoint == "" {
+		return nil, fmt.Errorf("storage: S3Endpoint must not be empty")
+	}
+	if cfg.S3Bucket == "" {
+		return nil, fmt.Errorf("storage: S3Bucket must not be empty")
+	}
 	mc, err := minio.New(cfg.S3Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.S3AccessKey, cfg.S3SecretKey, ""),
 		Secure: cfg.S3UseSSL,
@@ -39,8 +45,7 @@ func New(cfg *config.Config) (*Client, error) {
 // Returns storagePath in the format "{bucket}/{object_name}" — the same
 // convention used by the Python worker (see app/storage/minio_client.py).
 func (c *Client) Upload(ctx context.Context, r io.Reader, size int64, originalFilename, contentType string) (storagePath string, err error) {
-	ext := filepath.Ext(originalFilename)
-	objectName := uuid.New().String() + strings.ToLower(ext)
+	objectName := uuid.New().String() + SafeExt(originalFilename)
 
 	_, err = c.mc.PutObject(ctx, c.bucket, objectName, r, size, minio.PutObjectOptions{
 		ContentType: contentType,
@@ -91,4 +96,22 @@ func (c *Client) objectNameFrom(storagePath string) (string, error) {
 		return "", fmt.Errorf("storage: storagePath %q has empty object name", storagePath)
 	}
 	return objectName, nil
+}
+
+// safeExt extracts the file extension from name and returns it lowercased if it
+// contains only ASCII letters and digits (e.g. ".pdf", ".docx").
+// Non-ASCII characters (e.g. Cyrillic extensions like ".пдф") or extensions
+// longer than 10 bytes are dropped to keep S3 object keys universally safe.
+func SafeExt(name string) string {
+	ext := strings.ToLower(filepath.Ext(name))
+	// Reject bare dot (e.g. filepath.Ext(".") == ".") or overlong extensions.
+	if len(ext) <= 1 || len(ext) > 10 {
+		return ""
+	}
+	for _, r := range ext {
+		if r > 127 {
+			return ""
+		}
+	}
+	return ext
 }

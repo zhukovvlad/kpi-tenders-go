@@ -15,7 +15,7 @@ internal/service/             — бизнес-логика
 internal/repository/          — SQLC-генерируемый слой БД (сгенерирован sqlc)
 internal/store/               — Store interface + SQLStore (transaction support)
 internal/store/mock/          — MockStore для unit-тестов сервисов
-internal/storage/             — MinIO/S3 клиент (upload, presigned URL)
+internal/storage/             — MinIO/S3 клиент (upload, presigned URL, delete, SafeExt)
 internal/pgutil/              — утилиты PostgreSQL (IsUniqueViolation)
 pkg/errs/                     — структурированные ошибки приложения
 pkg/logging/                  — slog-логгер
@@ -43,7 +43,7 @@ type Server struct {
 ```
 
 Новые сервисы/клиенты добавляются как поля `Server` и инициализируются в `NewServer()`.
-`storageClient` инициализируется лениво — если `S3_ACCESS_KEY`/`S3_SECRET_KEY` не заданы, сервер стартует без S3.
+`storageClient` инициализируется через `switch`: оба ключа → init; только один → `log.Error` (мисконфигурация); ни одного → без S3 (штатно). `storage.New` валидирует `S3Endpoint` и `S3Bucket` перед созданием клиента.
 
 ### Store / Repository pattern
 
@@ -138,7 +138,7 @@ internal/server/health_test.go                      — health endpoint
 internal/server/middleware_test.go                  — AuthMiddleware, ServiceBearerAuth
 internal/server/handler_user_test.go                — GET /api/v1/auth/me
 internal/server/handler_document_test.go            — POST /api/v1/documents/upload
-internal/storage/client_test.go                     — PresignedURL, Upload, Delete error wrapping
+internal/storage/client_test.go                     — PresignedURL, Upload, Delete error wrapping + TestSafeExt (10 кейсов)
 ```
 
 **Паттерн:**

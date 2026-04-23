@@ -112,3 +112,31 @@ func TestUpload_WrapsMinIOError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "storage: put object")
 }
+
+// ── safeExt ───────────────────────────────────────────────────────────────────
+
+func TestSafeExt(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		wantExt  string
+	}{
+		{"ascii lowercase", "document.pdf", ".pdf"},
+		{"ascii uppercase normalised", "report.PDF", ".pdf"},
+		{"multi-dot", "archive.tar.gz", ".gz"},
+		{"cyrillic extension dropped", "договор.пдф", ""},
+		{"cyrillic name ascii ext", "договор.pdf", ".pdf"},
+		{"no extension", "README", ""},
+		{"dot only", ".", ""},
+		{"very long extension dropped", "file.toolongextension", ""},
+		{"windows path normalised", "C:\\Users\\user\\file.docx", ".docx"},
+		{"mixed ascii-cyrillic ext dropped", "file.p\u0434f", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := storage.SafeExt(tt.filename)
+			assert.Equal(t, tt.wantExt, got)
+		})
+	}
+}

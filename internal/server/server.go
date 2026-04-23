@@ -42,13 +42,22 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 	// storageClient may be nil if S3 credentials are not configured (e.g. some
 	// unit-test scenarios). Upload endpoints will return 500 in that case.
 	var sc *storage.Client
-	if cfg.S3AccessKey != "" && cfg.S3SecretKey != "" {
+	hasAccessKey := cfg.S3AccessKey != ""
+	hasSecretKey := cfg.S3SecretKey != ""
+	switch {
+	case hasAccessKey && hasSecretKey:
 		var err error
 		sc, err = storage.New(cfg)
 		if err != nil {
 			// Non-fatal: server starts, upload endpoints degrade gracefully.
 			log.Error("storage: failed to init MinIO client", "err", err)
 		}
+	case hasAccessKey || hasSecretKey:
+		// Misconfiguration: only one of the two credentials is set.
+		log.Error("storage: S3AccessKey and S3SecretKey must both be set",
+			"hasAccessKey", hasAccessKey,
+			"hasSecretKey", hasSecretKey,
+		)
 	}
 
 	srv := &Server{
