@@ -14,6 +14,11 @@ import (
 // Protected by ServiceBearerAuth middleware — callers must supply a valid
 // SERVICE_TOKEN.
 func (s *Server) WorkerUpdateTaskStatus(c *gin.Context) {
+	if s.workerService == nil {
+		s.respondWithError(c, errs.New(errs.CodeInternalError, "worker service not configured", nil))
+		return
+	}
+
 	taskID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid task id", err))

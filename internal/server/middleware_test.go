@@ -159,8 +159,9 @@ func TestServiceBearerAuth_ValidToken_NotRejectedByMiddleware(t *testing.T) {
 	w := httptest.NewRecorder()
 	s.Router().ServeHTTP(w, req)
 
-	// Middleware passed → handler ran → body binding failed → 400 (not 401).
-	assert.Equal(t, http.StatusBadRequest, w.Code)
+	// Middleware passed → handler ran → workerService nil (no PythonServiceURL in test config) → 500.
+	// The key assertion is that the middleware did NOT return 401.
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 func TestServiceBearerAuth_MissingHeader_Returns401(t *testing.T) {

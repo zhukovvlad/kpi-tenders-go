@@ -79,7 +79,15 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 		constructionSiteService: service.NewConstructionSiteService(db, log),
 		documentService:         service.NewDocumentService(db, docStorage, log),
 		documentTaskService:     service.NewDocumentTaskService(db, log),
-		workerService:           service.NewWorkerService(db, pythonworker.New(cfg.PythonServiceURL), log),
+	}
+
+	// workerService requires a valid PythonServiceURL. When the URL is absent
+	// (e.g. unit-test helpers that build Config manually) the service is left
+	// nil and the callback endpoint returns 500 rather than panicking.
+	if cfg.PythonServiceURL != "" {
+		srv.workerService = service.NewWorkerService(db, pythonworker.New(cfg.PythonServiceURL), log)
+	} else {
+		log.Warn("worker: PYTHON_SERVICE_URL not set — worker callback endpoint disabled")
 	}
 	if sc != nil {
 		// storageClient is set after struct creation to avoid storing a
