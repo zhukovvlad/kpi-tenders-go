@@ -10,6 +10,14 @@ import (
 	"go-kpi-tenders/pkg/errs"
 )
 
+// validWorkerStatuses is the set of statuses a worker may report.
+// "pending" is excluded: it is set by the Go layer when creating a task.
+var validWorkerStatuses = map[string]bool{
+	"processing": true,
+	"completed":  true,
+	"failed":     true,
+}
+
 // WorkerUpdateTaskStatus handles PATCH /internal/worker/tasks/:id/status.
 // Protected by ServiceBearerAuth middleware — callers must supply a valid
 // SERVICE_TOKEN.
@@ -31,10 +39,7 @@ func (s *Server) WorkerUpdateTaskStatus(c *gin.Context) {
 		return
 	}
 
-	// "pending" is intentionally excluded: Go sets that status when creating a task.
-	// Workers only report transitions they drive (processing, completed, failed).
-	validStatuses := map[string]bool{"processing": true, "completed": true, "failed": true}
-	if !validStatuses[req.Status] {
+	if !validWorkerStatuses[req.Status] {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid status", nil))
 		return
 	}

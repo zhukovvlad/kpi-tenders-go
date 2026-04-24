@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // Client is an HTTP client for the internal Python worker service.
@@ -22,7 +21,7 @@ type Client struct {
 func New(baseURL string) *Client {
 	return &Client{
 		baseURL:    strings.TrimRight(baseURL, "/"),
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		httpClient: &http.Client{},
 	}
 }
 
