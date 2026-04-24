@@ -144,24 +144,26 @@ func TestAuthMiddleware_WrongSigningKey_Returns401(t *testing.T) {
 
 // ── ServiceBearerAuth ─────────────────────────────────────────────────────────
 
-// TestServiceBearerAuth_ValidToken_PassesThrough verifies that a valid
-// SERVICE_TOKEN causes ServiceBearerAuth to let the request reach the handler.
-// The handler returns 400 (empty body) — not 401 — which proves middleware passed.
+// TestServiceBearerAuth_ValidToken_NotRejectedByMiddleware verifies that a
+// valid SERVICE_TOKEN causes ServiceBearerAuth to let the request reach the
+// handler. A dedicated no-op route is used so the test only depends on
+// middleware behaviour and not on any business handler logic.
 func TestServiceBearerAuth_ValidToken_NotRejectedByMiddleware(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	s := newTestServerWithJWT()
 
-	taskID := uuid.New()
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch,
-		"/internal/worker/tasks/"+taskID.String()+"/status", nil)
+	// Register a no-op endpoint protected only by ServiceBearerAuth.
+	s.Router().GET("/test/service-ping", s.ServiceBearerAuth(), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test/service-ping", nil)
 	req.Header.Set("Authorization", "Bearer "+testServiceToken)
 
 	w := httptest.NewRecorder()
 	s.Router().ServeHTTP(w, req)
 
-	// Middleware passed → handler ran → workerService nil (no PythonServiceURL in test config) → 500.
-	// The key assertion is that the middleware did NOT return 401.
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 func TestServiceBearerAuth_MissingHeader_Returns401(t *testing.T) {

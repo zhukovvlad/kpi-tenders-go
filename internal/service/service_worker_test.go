@@ -48,7 +48,10 @@ func makeDocumentTask(id, docID uuid.UUID, module, status string, payload json.R
 }
 
 func convertPayloadJSON(mdPath string) json.RawMessage {
-	b, _ := json.Marshal(map[string]string{"md_storage_path": mdPath})
+	b, err := json.Marshal(map[string]string{"md_storage_path": mdPath})
+	if err != nil {
+		panic("convertPayloadJSON: failed to marshal payload: " + err.Error())
+	}
 	return b
 }
 
