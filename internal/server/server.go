@@ -69,9 +69,9 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 	}
 
 	srv := &Server{
-		cfg:   cfg,
-		log:   log,
-		store: db,
+		cfg:                     cfg,
+		log:                     log,
+		store:                   db,
 		authService:             service.NewAuthService(db, log, cfg.JWTAccessSecret, cfg.JWTRefreshSecret),
 		organizationService:     service.NewOrganizationService(db, log),
 		userService:             service.NewUserService(db, log),
