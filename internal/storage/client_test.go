@@ -58,10 +58,10 @@ func TestPresignedURL_ValidStoragePath_ReturnsURL(t *testing.T) {
 	c := newTestClient(t)
 
 	// minio-go computes the presigned URL locally (HMAC signing, no network).
-	url, err := c.PresignedURL(context.Background(), "tenders/some-uuid.pdf", time.Hour)
+	rawURL, err := c.PresignedURL(context.Background(), "tenders/some-uuid.pdf", time.Hour)
 
 	require.NoError(t, err)
-	assert.Contains(t, url, "some-uuid.pdf")
+	assert.Contains(t, rawURL, "some-uuid.pdf")
 }
 
 // ── PresignedURLWithParams ────────────────────────────────────────────────────

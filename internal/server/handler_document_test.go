@@ -32,7 +32,7 @@ import (
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 // mockStorageClient is a testify-mock implementation of the storageClient
-// interface, allowing Upload/Delete to be stubbed in unit tests.
+// interface, allowing Upload, PresignedURLWithParams, and Delete to be stubbed in unit tests.
 type mockStorageClient struct {
 	mock.Mock
 }
