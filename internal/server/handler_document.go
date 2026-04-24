@@ -189,7 +189,8 @@ func (s *Server) DeleteDocument(c *gin.Context) {
 //
 //	download=true  — sets Content-Disposition: attachment so the browser
 //	                 downloads the file instead of opening it inline.
-//	download=false (default) — Content-Disposition is omitted (inline).
+//	download=false (default) — Content-Disposition is omitted, so browser
+//	                            behavior depends on the content type and client.
 func (s *Server) GetDocumentPresignedURL(c *gin.Context) {
 	orgID, ok := s.orgIDFromContext(c)
 	if !ok {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -113,9 +114,12 @@ func (s *DocumentService) GetPresignedURL(ctx context.Context, docID, orgID uuid
 
 	var reqParams url.Values
 	if download {
+		// Sanitize filename: remove characters that could break the
+		// Content-Disposition header value (quotes, CR, LF).
+		safeName := strings.NewReplacer(`"`, "", "\r", "", "\n", "").Replace(doc.FileName)
 		reqParams = url.Values{
 			"response-content-disposition": []string{
-				fmt.Sprintf(`attachment; filename="%s"`, doc.FileName),
+				fmt.Sprintf(`attachment; filename="%s"`, safeName),
 			},
 		}
 	}

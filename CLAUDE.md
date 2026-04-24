@@ -65,7 +65,7 @@ type Server struct {
 | `internal_error` | 500 |
 | `not_found` | 404 |
 | `conflict` | 409 |
-| `validation_failed` | 422 |
+| `validation_failed` | 400 |
 | `unauthorized` | 401 |
 | `forbidden` | 403 |
 | `not_implemented` | 501 |
