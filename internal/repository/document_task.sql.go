@@ -126,37 +126,6 @@ func (q *Queries) GetDocumentTask(ctx context.Context, arg GetDocumentTaskParams
 	return i, err
 }
 
-const getDocumentTaskByDocumentModule = `-- name: GetDocumentTaskByDocumentModule :one
-SELECT id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at FROM document_tasks
-WHERE document_id = $1 AND module_name = $2
-ORDER BY created_at ASC, id ASC
-LIMIT 1
-`
-
-type GetDocumentTaskByDocumentModuleParams struct {
-	DocumentID uuid.UUID `json:"document_id"`
-	ModuleName string    `json:"module_name"`
-}
-
-// Internal: find an existing task by (document_id, module_name) without org-check.
-// Returns the oldest task deterministically via ORDER BY.
-func (q *Queries) GetDocumentTaskByDocumentModule(ctx context.Context, arg GetDocumentTaskByDocumentModuleParams) (DocumentTask, error) {
-	row := q.db.QueryRow(ctx, getDocumentTaskByDocumentModule, arg.DocumentID, arg.ModuleName)
-	var i DocumentTask
-	err := row.Scan(
-		&i.ID,
-		&i.DocumentID,
-		&i.ModuleName,
-		&i.Status,
-		&i.CeleryTaskID,
-		&i.ResultPayload,
-		&i.ErrorMessage,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const listTasksByDocument = `-- name: ListTasksByDocument :many
 SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id,
        dt.result_payload, dt.error_message, dt.created_at, dt.updated_at

@@ -55,11 +55,3 @@ INSERT INTO document_tasks (document_id, module_name)
 VALUES ($1, $2)
 ON CONFLICT (document_id, module_name) DO NOTHING
 RETURNING *;
-
--- name: GetDocumentTaskByDocumentModule :one
--- Internal: find an existing task by (document_id, module_name) without org-check.
--- Returns the oldest task deterministically via ORDER BY.
-SELECT * FROM document_tasks
-WHERE document_id = $1 AND module_name = $2
-ORDER BY created_at ASC, id ASC
-LIMIT 1;

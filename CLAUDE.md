@@ -125,14 +125,12 @@ _Нет активных заглушек._
 
 | Миграция | Таблицы / изменения |
 |----------|---------------------|
-| 000001 | organizations, users, projects, documents, document_tasks |
-| 000002 | UNIQUE constraint на document_tasks(document_id, module_name) — идемпотентность ON CONFLICT |
+| 000001 | organizations, users, projects, documents, document_tasks (с UNIQUE на document_id+module_name) |
 
 `catalog_positions.embedding` — тип `vector` без фиксированной размерности  
 (зафиксируй как `vector(1536)` когда определишься с моделью эмбеддингов).
 
-> **Примечание:** мигрция 000002 для `catalog_positions` (pgvector RAG) перенесена на следующий этап.  
-> Текущая 000002 — constraint на `document_tasks`. `catalog_positions` будет 000003.
+> **Примечание:** следующая миграция — `catalog_positions` (pgvector RAG), будет `000002`.
 
 ## Стратегия тестирования
 

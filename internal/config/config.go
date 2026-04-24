@@ -61,8 +61,9 @@ func (c *Config) validate() error {
 	if len(c.ServiceToken) < minSecretLen {
 		return fmt.Errorf("SERVICE_TOKEN must be at least %d characters", minSecretLen)
 	}
-	if _, err := url.ParseRequestURI(c.PythonServiceURL); err != nil {
-		return fmt.Errorf("PYTHON_SERVICE_URL is not a valid URL: %s", c.PythonServiceURL)
+	pythonURL, err := url.Parse(c.PythonServiceURL)
+	if err != nil || !pythonURL.IsAbs() || (pythonURL.Scheme != "http" && pythonURL.Scheme != "https") || pythonURL.Host == "" || pythonURL.Fragment != "" {
+		return fmt.Errorf("PYTHON_SERVICE_URL must be an absolute http/https URL with a host and no fragment: %q", c.PythonServiceURL)
 	}
 	return nil
 }

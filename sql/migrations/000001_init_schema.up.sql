@@ -101,7 +101,8 @@ CREATE TABLE document_tasks (
     result_payload  JSONB        NOT NULL DEFAULT '{}'::jsonb,
     error_message   TEXT,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT uq_document_tasks_document_module UNIQUE (document_id, module_name)
 );
 
 COMMENT ON TABLE document_tasks IS 'Задачи AI-воркера на Python для обработки документов';

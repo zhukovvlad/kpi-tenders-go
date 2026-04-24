@@ -33,9 +33,6 @@ type Querier interface {
 	// Prefer GetDocument when organization-scoped access is required.
 	GetDocumentByID(ctx context.Context, id uuid.UUID) (Document, error)
 	GetDocumentTask(ctx context.Context, arg GetDocumentTaskParams) (DocumentTask, error)
-	// Internal: find an existing task by (document_id, module_name) without org-check.
-	// Returns the oldest task deterministically via ORDER BY.
-	GetDocumentTaskByDocumentModule(ctx context.Context, arg GetDocumentTaskByDocumentModuleParams) (DocumentTask, error)
 	GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organization, error)
 	GetOrganizationByINN(ctx context.Context, inn pgtype.Text) (Organization, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
