@@ -2,6 +2,7 @@ package storage_test
 
 import (
 	"context"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -61,6 +62,48 @@ func TestPresignedURL_ValidStoragePath_ReturnsURL(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Contains(t, url, "some-uuid.pdf")
+}
+
+// ── PresignedURLWithParams ────────────────────────────────────────────────────
+
+func TestPresignedURLWithParams_BadStoragePath_ReturnsError(t *testing.T) {
+	c := newTestClient(t)
+
+	_, err := c.PresignedURLWithParams(context.Background(), "other-bucket/uuid.pdf", time.Hour, nil)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "tenders")
+}
+
+func TestPresignedURLWithParams_MissingSlash_ReturnsError(t *testing.T) {
+	c := newTestClient(t)
+
+	_, err := c.PresignedURLWithParams(context.Background(), "tenders", time.Hour, nil)
+
+	require.Error(t, err)
+}
+
+func TestPresignedURLWithParams_NilParams_ReturnsURL(t *testing.T) {
+	c := newTestClient(t)
+
+	// minio-go signs locally — no network needed.
+	rawURL, err := c.PresignedURLWithParams(context.Background(), "tenders/some-uuid.pdf", time.Hour, nil)
+
+	require.NoError(t, err)
+	assert.Contains(t, rawURL, "some-uuid.pdf")
+}
+
+func TestPresignedURLWithParams_WithContentDisposition_EncodedInURL(t *testing.T) {
+	c := newTestClient(t)
+
+	params := url.Values{
+		"response-content-disposition": []string{`attachment; filename="report.pdf"`},
+	}
+	rawURL, err := c.PresignedURLWithParams(context.Background(), "tenders/some-uuid.pdf", time.Hour, params)
+
+	require.NoError(t, err)
+	assert.Contains(t, rawURL, "some-uuid.pdf")
+	assert.Contains(t, rawURL, "response-content-disposition")
 }
 
 // ── Delete ────────────────────────────────────────────────────────────────────
