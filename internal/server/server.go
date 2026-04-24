@@ -2,7 +2,6 @@ package server
 
 import (
 	"log/slog"
-	"net/http"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -10,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"go-kpi-tenders/internal/config"
+	"go-kpi-tenders/internal/pythonworker"
 	"go-kpi-tenders/internal/service"
 	"go-kpi-tenders/internal/storage"
 	"go-kpi-tenders/internal/store"
@@ -27,6 +27,7 @@ type Server struct {
 	constructionSiteService *service.ConstructionSiteService
 	documentService         *service.DocumentService
 	documentTaskService     *service.DocumentTaskService
+	workerService           *service.WorkerService
 }
 
 func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server {
@@ -79,6 +80,15 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 		documentService:         service.NewDocumentService(db, docStorage, log),
 		documentTaskService:     service.NewDocumentTaskService(db, log),
 	}
+
+	// workerService requires a valid PythonServiceURL. When the URL is absent
+	// (e.g. unit-test helpers that build Config manually) the service is left
+	// nil and the callback endpoint returns 500 rather than panicking.
+	if cfg.PythonServiceURL != "" {
+		srv.workerService = service.NewWorkerService(db, pythonworker.New(cfg.PythonServiceURL), log)
+	} else {
+		log.Warn("worker: PYTHON_SERVICE_URL not set — worker callback endpoint disabled")
+	}
 	if sc != nil {
 		// storageClient is set after struct creation to avoid storing a
 		// (*storage.Client)(nil) as a non-nil interface value.
@@ -106,10 +116,7 @@ func (s *Server) setupRouter() {
 	internal := r.Group("/internal/worker")
 	internal.Use(s.ServiceBearerAuth())
 	{
-		// TODO: register Python worker endpoints
-		internal.GET("/ping", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"status": "pong"})
-		})
+		internal.PATCH("/tasks/:id/status", s.WorkerUpdateTaskStatus)
 	}
 
 	// ── Public API v1 ───────────────────────────────

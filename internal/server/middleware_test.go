@@ -144,11 +144,20 @@ func TestAuthMiddleware_WrongSigningKey_Returns401(t *testing.T) {
 
 // ── ServiceBearerAuth ─────────────────────────────────────────────────────────
 
-func TestServiceBearerAuth_ValidToken_Returns200(t *testing.T) {
+// TestServiceBearerAuth_ValidToken_NotRejectedByMiddleware verifies that a
+// valid SERVICE_TOKEN causes ServiceBearerAuth to let the request reach the
+// handler. A dedicated no-op route is used so the test only depends on
+// middleware behaviour and not on any business handler logic.
+func TestServiceBearerAuth_ValidToken_NotRejectedByMiddleware(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	s := newTestServerWithJWT()
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/internal/worker/ping", nil)
+	// Register a no-op endpoint protected only by ServiceBearerAuth.
+	s.Router().GET("/test/service-ping", s.ServiceBearerAuth(), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test/service-ping", nil)
 	req.Header.Set("Authorization", "Bearer "+testServiceToken)
 
 	w := httptest.NewRecorder()
@@ -161,7 +170,9 @@ func TestServiceBearerAuth_MissingHeader_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	s := newTestServerWithJWT()
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/internal/worker/ping", nil)
+	taskID := uuid.New()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch,
+		"/internal/worker/tasks/"+taskID.String()+"/status", nil)
 	w := httptest.NewRecorder()
 	s.Router().ServeHTTP(w, req)
 
@@ -172,7 +183,9 @@ func TestServiceBearerAuth_WrongToken_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	s := newTestServerWithJWT()
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/internal/worker/ping", nil)
+	taskID := uuid.New()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch,
+		"/internal/worker/tasks/"+taskID.String()+"/status", nil)
 	req.Header.Set("Authorization", "Bearer wrong-token")
 
 	w := httptest.NewRecorder()
@@ -185,7 +198,9 @@ func TestServiceBearerAuth_MalformedHeader_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	s := newTestServerWithJWT()
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/internal/worker/ping", nil)
+	taskID := uuid.New()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch,
+		"/internal/worker/tasks/"+taskID.String()+"/status", nil)
 	req.Header.Set("Authorization", "Token "+testServiceToken) // wrong scheme
 
 	w := httptest.NewRecorder()

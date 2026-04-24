@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"go-kpi-tenders/internal/pgutil"
 	"go-kpi-tenders/internal/repository"
 	"go-kpi-tenders/pkg/errs"
 )
@@ -26,6 +27,9 @@ func (s *DocumentTaskService) Create(ctx context.Context, params repository.Crea
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return repository.DocumentTask{}, errs.New(errs.CodeNotFound, "document not found", err)
+		}
+		if pgutil.IsUniqueViolation(err, "uq_document_tasks_document_module") {
+			return repository.DocumentTask{}, errs.New(errs.CodeConflict, "task for this module already exists", err)
 		}
 		return repository.DocumentTask{}, errs.New(errs.CodeInternalError, "internal server error", err)
 	}

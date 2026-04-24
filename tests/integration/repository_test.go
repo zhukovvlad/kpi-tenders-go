@@ -328,7 +328,7 @@ func createTestTask(t *testing.T, ctx context.Context, docID, orgID uuid.UUID) r
 	t.Helper()
 	q := repository.New(testPool)
 	task, err := q.CreateDocumentTask(ctx, repository.CreateDocumentTaskParams{
-		DocumentID: docID, ModuleName: "test_module", OrganizationID: orgID,
+		DocumentID: docID, ModuleName: "module_" + uuid.New().String(), OrganizationID: orgID,
 	})
 	require.NoError(t, err)
 	return task
