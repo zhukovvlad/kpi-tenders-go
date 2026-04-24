@@ -107,6 +107,9 @@ const getDocumentByID = `-- name: GetDocumentByID :one
 SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at FROM documents WHERE id = $1
 `
 
+// WARNING: This lookup is intentionally unscoped by organization_id.
+// Callers MUST enforce organization isolation at the service layer.
+// Prefer GetDocument when organization-scoped access is required.
 func (q *Queries) GetDocumentByID(ctx context.Context, id uuid.UUID) (Document, error) {
 	row := q.db.QueryRow(ctx, getDocumentByID, id)
 	var i Document
