@@ -182,6 +182,49 @@ func (s *Server) DeleteDocument(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// GetDocumentPresignedURL generates a short-lived presigned GET URL for the
+// document identified by :id.
+//
+// Query parameters:
+//
+//	download=true  — sets Content-Disposition: attachment so the browser
+//	                 downloads the file instead of opening it inline.
+//	download=false (default) — Content-Disposition is omitted, so browser
+//	                            behavior depends on the content type and client.
+func (s *Server) GetDocumentPresignedURL(c *gin.Context) {
+	orgID, ok := s.orgIDFromContext(c)
+	if !ok {
+		return
+	}
+
+	id, err := parseUUID(c.Param("id"))
+	if err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid id", err))
+		return
+	}
+
+	var download bool
+	if rawDownload := c.Query("download"); rawDownload != "" {
+		switch rawDownload {
+		case "true":
+			download = true
+		case "false":
+			// download stays false
+		default:
+			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid download param: expected true or false", nil))
+			return
+		}
+	}
+
+	presignedURL, err := s.documentService.GetPresignedURL(c.Request.Context(), id, orgID, download)
+	if err != nil {
+		s.respondWithError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"url": presignedURL})
+}
+
 func parseUUID(raw string) (uuid.UUID, error) {
 	return uuid.Parse(raw)
 }

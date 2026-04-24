@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -31,7 +32,7 @@ import (
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 // mockStorageClient is a testify-mock implementation of the storageClient
-// interface, allowing Upload/Delete/PresignedURL to be stubbed in unit tests.
+// interface, allowing Upload, PresignedURLWithParams, and Delete to be stubbed in unit tests.
 type mockStorageClient struct {
 	mock.Mock
 }
@@ -41,8 +42,8 @@ func (m *mockStorageClient) Upload(ctx context.Context, r io.Reader, size int64,
 	return args.String(0), args.Error(1)
 }
 
-func (m *mockStorageClient) PresignedURL(ctx context.Context, storagePath string, ttl time.Duration) (string, error) {
-	args := m.Called(ctx, storagePath, ttl)
+func (m *mockStorageClient) PresignedURLWithParams(ctx context.Context, storagePath string, ttl time.Duration, params url.Values) (string, error) {
+	args := m.Called(ctx, storagePath, ttl, params)
 	return args.String(0), args.Error(1)
 }
 
@@ -55,7 +56,7 @@ func (m *mockStorageClient) Delete(ctx context.Context, storagePath string) erro
 // documentService is backed by the supplied MockQuerier.
 func newServerWithMockDocumentService(mq *storemock.MockQuerier) *Server {
 	s := newTestServerWithJWT()
-	s.documentService = service.NewDocumentService(mq, s.log)
+	s.documentService = service.NewDocumentService(mq, nil, s.log)
 	return s
 }
 
@@ -520,7 +521,7 @@ func TestUploadDocument_HappyPath_Returns201(t *testing.T) {
 
 	s := newTestServerWithJWT()
 	s.storageClient = msc
-	s.documentService = service.NewDocumentService(mq, s.log)
+	s.documentService = service.NewDocumentService(mq, msc, s.log)
 
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
@@ -557,7 +558,7 @@ func TestUploadDocument_DBError_CleansUpS3Object(t *testing.T) {
 
 	s := newTestServerWithJWT()
 	s.storageClient = msc
-	s.documentService = service.NewDocumentService(mq, s.log)
+	s.documentService = service.NewDocumentService(mq, msc, s.log)
 
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
@@ -642,4 +643,203 @@ func (zeroReader) Read(p []byte) (int, error) {
 		p[i] = 0
 	}
 	return len(p), nil
+}
+
+// ── GET /api/v1/documents/:id/url ─────────────────────────────────────────────
+
+// newServerWithMockDocumentServiceAndStorage creates a JWT-capable server whose
+// documentService is backed by the supplied MockQuerier and mockStorageClient.
+func newServerWithMockDocumentServiceAndStorage(mq *storemock.MockQuerier, msc *mockStorageClient) *Server {
+	s := newTestServerWithJWT()
+	s.documentService = service.NewDocumentService(mq, msc, s.log)
+	return s
+}
+
+func TestGetDocumentPresignedURL_StorageNil_Returns500(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	userID, orgID := uuid.New(), uuid.New()
+	docID := uuid.New()
+
+	// documentService is created with nil storage (default in newServerWithMockDocumentService)
+	s := newServerWithMockDocumentService(new(storemock.MockQuerier))
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+		"/api/v1/documents/"+docID.String()+"/url", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestGetDocumentPresignedURL_InvalidID_Returns400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	userID, orgID := uuid.New(), uuid.New()
+
+	s := newServerWithMockDocumentService(new(storemock.MockQuerier))
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+		"/api/v1/documents/not-a-uuid/url", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestGetDocumentPresignedURL_NotFound_Returns404(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	userID, orgID := uuid.New(), uuid.New()
+	docID := uuid.New()
+
+	mq := new(storemock.MockQuerier)
+	mq.On("GetDocumentByID", mock.Anything, docID).
+		Return(repository.Document{}, pgx.ErrNoRows)
+
+	msc := new(mockStorageClient)
+	s := newServerWithMockDocumentServiceAndStorage(mq, msc)
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+		"/api/v1/documents/"+docID.String()+"/url", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	mq.AssertExpectations(t)
+}
+
+func TestGetDocumentPresignedURL_CrossOrgDoc_Returns404(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	userID, orgID := uuid.New(), uuid.New()
+	otherOrgID := uuid.New()
+	docID := uuid.New()
+
+	mq := new(storemock.MockQuerier)
+	// Document belongs to a different org.
+	mq.On("GetDocumentByID", mock.Anything, docID).
+		Return(sampleDocument(docID, otherOrgID), nil)
+
+	msc := new(mockStorageClient)
+	s := newServerWithMockDocumentServiceAndStorage(mq, msc)
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+		"/api/v1/documents/"+docID.String()+"/url", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	mq.AssertExpectations(t)
+}
+
+func TestGetDocumentPresignedURL_InlineMode_Returns200(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	userID, orgID := uuid.New(), uuid.New()
+	docID := uuid.New()
+	doc := sampleDocument(docID, orgID)
+	presignedURL := "https://s3.example.com/tenders/some-uuid.pdf?X-Amz-Signature=abc"
+
+	mq := new(storemock.MockQuerier)
+	mq.On("GetDocumentByID", mock.Anything, docID).Return(doc, nil)
+
+	msc := new(mockStorageClient)
+	// download=false → nil params
+	msc.On("PresignedURLWithParams", mock.Anything, doc.StoragePath, mock.Anything, url.Values(nil)).
+		Return(presignedURL, nil)
+
+	s := newServerWithMockDocumentServiceAndStorage(mq, msc)
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+		"/api/v1/documents/"+docID.String()+"/url?download=false", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, presignedURL, resp["url"])
+	mq.AssertExpectations(t)
+	msc.AssertExpectations(t)
+}
+
+func TestGetDocumentPresignedURL_DownloadMode_Returns200(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	userID, orgID := uuid.New(), uuid.New()
+	docID := uuid.New()
+	doc := sampleDocument(docID, orgID)
+	presignedURL := "https://s3.example.com/tenders/some-uuid.pdf?response-content-disposition=attachment"
+
+	mq := new(storemock.MockQuerier)
+	mq.On("GetDocumentByID", mock.Anything, docID).Return(doc, nil)
+
+	msc := new(mockStorageClient)
+	// download=true → Content-Disposition attachment params
+	expectedParams := url.Values{
+		"response-content-disposition": []string{`attachment; filename="tender.pdf"`},
+	}
+	msc.On("PresignedURLWithParams", mock.Anything, doc.StoragePath, mock.Anything, expectedParams).
+		Return(presignedURL, nil)
+
+	s := newServerWithMockDocumentServiceAndStorage(mq, msc)
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+		"/api/v1/documents/"+docID.String()+"/url?download=true", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, presignedURL, resp["url"])
+	mq.AssertExpectations(t)
+	msc.AssertExpectations(t)
+}
+
+func TestGetDocumentPresignedURL_InvalidDownloadParam_Returns400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	userID, orgID := uuid.New(), uuid.New()
+	docID := uuid.New()
+
+	mq := new(storemock.MockQuerier)
+	msc := new(mockStorageClient)
+	s := newServerWithMockDocumentServiceAndStorage(mq, msc)
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+		"/api/v1/documents/"+docID.String()+"/url?download=notabool", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

@@ -23,6 +23,10 @@ type Querier interface {
 	DeleteOrganization(ctx context.Context, id uuid.UUID) (int64, error)
 	GetConstructionSite(ctx context.Context, arg GetConstructionSiteParams) (ConstructionSite, error)
 	GetDocument(ctx context.Context, arg GetDocumentParams) (Document, error)
+	// WARNING: This lookup is intentionally unscoped by organization_id.
+	// Callers MUST enforce organization isolation at the service layer.
+	// Prefer GetDocument when organization-scoped access is required.
+	GetDocumentByID(ctx context.Context, id uuid.UUID) (Document, error)
 	GetDocumentTask(ctx context.Context, arg GetDocumentTaskParams) (DocumentTask, error)
 	GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organization, error)
 	GetOrganizationByINN(ctx context.Context, inn pgtype.Text) (Organization, error)
