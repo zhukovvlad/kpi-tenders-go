@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -65,7 +66,7 @@ func (s *WorkerService) HandleStatusUpdate(ctx context.Context, taskID uuid.UUID
 		ErrorMessage:  errMsg,
 	})
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return repository.DocumentTask{}, errs.New(errs.CodeNotFound, "task not found", err)
 		}
 		return repository.DocumentTask{}, errs.New(errs.CodeInternalError, "failed to update task", err)
@@ -93,6 +94,21 @@ func (s *WorkerService) triggerAnonymize(ctx context.Context, convertTask reposi
 	}
 	if payload.MDStoragePath == "" {
 		return fmt.Errorf("md_storage_path is empty in convert result_payload")
+	}
+
+	// Idempotency guard: if an anonymize task already exists for this document,
+	// skip creation. This prevents duplicate tasks when the worker retries a
+	// "convert completed" callback.
+	_, err := s.repo.GetDocumentTaskByDocumentModule(ctx, repository.GetDocumentTaskByDocumentModuleParams{
+		DocumentID: convertTask.DocumentID,
+		ModuleName: "anonymize",
+	})
+	if err == nil {
+		s.log.Info("worker: anonymize task already exists, skipping", "document_id", convertTask.DocumentID)
+		return nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("check existing anonymize task: %w", err)
 	}
 
 	anonTask, err := s.repo.CreateDocumentTaskInternal(ctx, repository.CreateDocumentTaskInternalParams{

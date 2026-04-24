@@ -147,7 +147,7 @@ func TestAuthMiddleware_WrongSigningKey_Returns401(t *testing.T) {
 // TestServiceBearerAuth_ValidToken_PassesThrough verifies that a valid
 // SERVICE_TOKEN causes ServiceBearerAuth to let the request reach the handler.
 // The handler returns 400 (empty body) — not 401 — which proves middleware passed.
-func TestServiceBearerAuth_ValidToken_Returns200(t *testing.T) {
+func TestServiceBearerAuth_ValidToken_NotRejectedByMiddleware(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	s := newTestServerWithJWT()
 
@@ -160,7 +160,7 @@ func TestServiceBearerAuth_ValidToken_Returns200(t *testing.T) {
 	s.Router().ServeHTTP(w, req)
 
 	// Middleware passed → handler ran → body binding failed → 400 (not 401).
-	assert.NotEqual(t, http.StatusUnauthorized, w.Code)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestServiceBearerAuth_MissingHeader_Returns401(t *testing.T) {

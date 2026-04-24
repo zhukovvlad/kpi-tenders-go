@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
@@ -52,8 +53,9 @@ func (c *Client) Process(ctx context.Context, req ProcessRequest) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("pythonworker: process returned %d", resp.StatusCode)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("pythonworker: process returned %d: %s", resp.StatusCode, bytes.TrimSpace(body))
 	}
 	return nil
 }

@@ -138,6 +138,7 @@ _Нет активных заглушек._
 internal/service/service_auth_test.go               — AuthService: login, timing, JWT
 internal/service/service_organization_test.go       — OrganizationService: register, conflicts
 internal/service/service_user_test.go               — UserService: GetProfile, tenant isolation
+internal/service/service_worker_test.go             — WorkerService: chaining, idempotency, errors, python client (7 кейсов)
 internal/server/errors_test.go                      — respondWithError маппинг
 internal/server/health_test.go                      — health endpoint
 internal/server/middleware_test.go                  — AuthMiddleware, ServiceBearerAuth

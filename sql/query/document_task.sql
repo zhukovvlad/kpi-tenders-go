@@ -52,3 +52,10 @@ RETURNING *;
 INSERT INTO document_tasks (document_id, module_name)
 VALUES ($1, $2)
 RETURNING *;
+
+-- name: GetDocumentTaskByDocumentModule :one
+-- Internal: find an existing task by (document_id, module_name) without org-check.
+-- Used to enforce idempotency in task chaining — prevents duplicate tasks on retry.
+SELECT * FROM document_tasks
+WHERE document_id = $1 AND module_name = $2
+LIMIT 1;

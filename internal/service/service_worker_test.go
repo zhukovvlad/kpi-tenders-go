@@ -92,6 +92,10 @@ func TestWorkerService_HandleStatusUpdate_ConvertCompleted_TriggersAnonymize(t *
 	anonTask := makeDocumentTask(anonTaskID, docID, "anonymize", "pending", nil)
 
 	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.Anything).Return(returnedTask, nil)
+	ms.On("GetDocumentTaskByDocumentModule", mock.Anything, repository.GetDocumentTaskByDocumentModuleParams{
+		DocumentID: docID,
+		ModuleName: "anonymize",
+	}).Return(repository.DocumentTask{}, pgx.ErrNoRows)
 	ms.On("CreateDocumentTaskInternal", mock.Anything, repository.CreateDocumentTaskInternalParams{
 		DocumentID: docID,
 		ModuleName: "anonymize",
@@ -180,6 +184,7 @@ func TestWorkerService_HandleStatusUpdate_PythonClientError_NoErrorPropagated(t 
 	anonTask := makeDocumentTask(anonTaskID, docID, "anonymize", "pending", nil)
 
 	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.Anything).Return(returnedTask, nil)
+	ms.On("GetDocumentTaskByDocumentModule", mock.Anything, mock.Anything).Return(repository.DocumentTask{}, pgx.ErrNoRows)
 	ms.On("CreateDocumentTaskInternal", mock.Anything, mock.Anything).Return(anonTask, nil)
 	pc.On("Process", mock.Anything, mock.Anything).Return(errors.New("python worker down"))
 
@@ -212,5 +217,38 @@ func TestWorkerService_HandleStatusUpdate_TaskNotFound(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "task not found")
 	ms.AssertExpectations(t)
+	pc.AssertNotCalled(t, "Process")
+}
+
+// 7. anonymize task already exists — idempotency guard skips creation.
+func TestWorkerService_HandleStatusUpdate_ConvertCompleted_AnonAlreadyExists_Idempotent(t *testing.T) {
+	ctx := context.Background()
+	ms := new(storemock.MockStore)
+	pc := new(mockPythonClient)
+
+	taskID := uuid.New()
+	docID := uuid.New()
+	existingAnonID := uuid.New()
+	mdPath := "tenders/docs/test.md"
+
+	returnedTask := makeDocumentTask(taskID, docID, "convert", "completed", convertPayloadJSON(mdPath))
+	existingAnon := makeDocumentTask(existingAnonID, docID, "anonymize", "pending", nil)
+
+	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.Anything).Return(returnedTask, nil)
+	ms.On("GetDocumentTaskByDocumentModule", mock.Anything, repository.GetDocumentTaskByDocumentModuleParams{
+		DocumentID: docID,
+		ModuleName: "anonymize",
+	}).Return(existingAnon, nil)
+
+	svc := newTestWorkerService(ms, pc)
+	task, err := svc.HandleStatusUpdate(ctx, taskID, WorkerStatusUpdate{
+		Status:        "completed",
+		ResultPayload: convertPayloadJSON(mdPath),
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "completed", task.Status)
+	ms.AssertExpectations(t)
+	ms.AssertNotCalled(t, "CreateDocumentTaskInternal")
 	pc.AssertNotCalled(t, "Process")
 }

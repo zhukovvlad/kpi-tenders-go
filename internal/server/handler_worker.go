@@ -26,6 +26,8 @@ func (s *Server) WorkerUpdateTaskStatus(c *gin.Context) {
 		return
 	}
 
+	// "pending" is intentionally excluded: Go sets that status when creating a task.
+	// Workers only report transitions they drive (processing, completed, failed).
 	validStatuses := map[string]bool{"processing": true, "completed": true, "failed": true}
 	if !validStatuses[req.Status] {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid status", nil))
