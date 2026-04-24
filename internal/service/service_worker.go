@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -112,9 +113,14 @@ func (s *WorkerService) triggerAnonymize(ctx context.Context, convertTask reposi
 		return fmt.Errorf("md_storage_path is empty in convert result_payload")
 	}
 
+	// Detach from the request context so chaining work is not cancelled when
+	// the callback request lifecycle ends (worker disconnect, client timeout).
+	chainCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+
 	// Create the anonymize task. ON CONFLICT (document_id, module_name) DO NOTHING
 	// makes this atomic: if the task already exists pgx returns ErrNoRows.
-	anonTask, err := s.repo.CreateDocumentTaskInternal(ctx, repository.CreateDocumentTaskInternalParams{
+	anonTask, err := s.repo.CreateDocumentTaskInternal(chainCtx, repository.CreateDocumentTaskInternalParams{
 		DocumentID: convertTask.DocumentID,
 		ModuleName: moduleAnonymize,
 	})
@@ -127,14 +133,14 @@ func (s *WorkerService) triggerAnonymize(ctx context.Context, convertTask reposi
 		return fmt.Errorf("create anonymize task: %w", err)
 	}
 
-	if err := s.pythonClient.Process(ctx, pythonworker.ProcessRequest{
+	if err := s.pythonClient.Process(chainCtx, pythonworker.ProcessRequest{
 		TaskID:      anonTask.ID.String(),
 		DocumentID:  anonTask.DocumentID.String(),
 		ModuleName:  moduleAnonymize,
 		StoragePath: payload.MDStoragePath,
 	}); err != nil {
 		// Mark orphaned task as failed so it does not linger in pending forever.
-		if markErr := s.markTaskFailed(ctx, anonTask.ID, err.Error()); markErr != nil {
+		if markErr := s.markTaskFailed(chainCtx, anonTask.ID, err.Error()); markErr != nil {
 			s.log.Error("worker: failed to mark orphaned anonymize task as failed",
 				"task_id", anonTask.ID, "err", markErr)
 		}
