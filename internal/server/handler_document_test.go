@@ -32,18 +32,13 @@ import (
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 // mockStorageClient is a testify-mock implementation of the storageClient
-// interface, allowing Upload/Delete/PresignedURL to be stubbed in unit tests.
+// interface, allowing Upload/Delete to be stubbed in unit tests.
 type mockStorageClient struct {
 	mock.Mock
 }
 
 func (m *mockStorageClient) Upload(ctx context.Context, r io.Reader, size int64, originalFilename, contentType string) (string, error) {
 	args := m.Called(ctx, r, size, originalFilename, contentType)
-	return args.String(0), args.Error(1)
-}
-
-func (m *mockStorageClient) PresignedURL(ctx context.Context, storagePath string, ttl time.Duration) (string, error) {
-	args := m.Called(ctx, storagePath, ttl)
 	return args.String(0), args.Error(1)
 }
 
@@ -825,4 +820,26 @@ func TestGetDocumentPresignedURL_DownloadMode_Returns200(t *testing.T) {
 	assert.Equal(t, presignedURL, resp["url"])
 	mq.AssertExpectations(t)
 	msc.AssertExpectations(t)
+}
+
+func TestGetDocumentPresignedURL_InvalidDownloadParam_Returns400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	userID, orgID := uuid.New(), uuid.New()
+	docID := uuid.New()
+
+	mq := new(storemock.MockQuerier)
+	msc := new(mockStorageClient)
+	s := newServerWithMockDocumentServiceAndStorage(mq, msc)
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+		"/api/v1/documents/"+docID.String()+"/url?download=notabool", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

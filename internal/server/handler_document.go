@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -206,10 +205,13 @@ func (s *Server) GetDocumentPresignedURL(c *gin.Context) {
 
 	var download bool
 	if rawDownload := c.Query("download"); rawDownload != "" {
-		var parseErr error
-		download, parseErr = strconv.ParseBool(rawDownload)
-		if parseErr != nil {
-			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid download param: expected true or false", parseErr))
+		switch rawDownload {
+		case "true":
+			download = true
+		case "false":
+			// download stays false
+		default:
+			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid download param: expected true or false", nil))
 			return
 		}
 	}
