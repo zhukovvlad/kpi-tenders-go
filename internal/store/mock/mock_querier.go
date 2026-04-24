@@ -326,6 +326,34 @@ func (_m *MockQuerier) GetDocument(ctx context.Context, arg repository.GetDocume
 	return r0, r1
 }
 
+// GetDocumentByID provides a mock function with given fields: ctx, id
+func (_m *MockQuerier) GetDocumentByID(ctx context.Context, id uuid.UUID) (repository.Document, error) {
+	ret := _m.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetDocumentByID")
+	}
+
+	var r0 repository.Document
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) (repository.Document, error)); ok {
+		return rf(ctx, id)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) repository.Document); ok {
+		r0 = rf(ctx, id)
+	} else {
+		r0 = ret.Get(0).(repository.Document)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = rf(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // GetDocumentTask provides a mock function with given fields: ctx, arg
 func (_m *MockQuerier) GetDocumentTask(ctx context.Context, arg repository.GetDocumentTaskParams) (repository.DocumentTask, error) {
 	ret := _m.Called(ctx, arg)

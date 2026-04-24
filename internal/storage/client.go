@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -66,6 +67,22 @@ func (c *Client) PresignedURL(ctx context.Context, storagePath string, ttl time.
 	}
 
 	u, err := c.mc.PresignedGetObject(ctx, c.bucket, objectName, ttl, nil)
+	if err != nil {
+		return "", fmt.Errorf("storage: presign %q: %w", objectName, err)
+	}
+	return u.String(), nil
+}
+
+// PresignedURLWithParams returns a time-limited presigned GET URL for the given
+// storagePath with additional response-override query parameters (e.g.
+// response-content-disposition for download vs. inline behaviour).
+func (c *Client) PresignedURLWithParams(ctx context.Context, storagePath string, ttl time.Duration, params url.Values) (string, error) {
+	objectName, err := c.objectNameFrom(storagePath)
+	if err != nil {
+		return "", err
+	}
+
+	u, err := c.mc.PresignedGetObject(ctx, c.bucket, objectName, ttl, params)
 	if err != nil {
 		return "", fmt.Errorf("storage: presign %q: %w", objectName, err)
 	}

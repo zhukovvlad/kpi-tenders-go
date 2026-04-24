@@ -103,6 +103,29 @@ func (q *Queries) GetDocument(ctx context.Context, arg GetDocumentParams) (Docum
 	return i, err
 }
 
+const getDocumentByID = `-- name: GetDocumentByID :one
+SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at FROM documents WHERE id = $1
+`
+
+func (q *Queries) GetDocumentByID(ctx context.Context, id uuid.UUID) (Document, error) {
+	row := q.db.QueryRow(ctx, getDocumentByID, id)
+	var i Document
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.SiteID,
+		&i.UploadedBy,
+		&i.ParentID,
+		&i.FileName,
+		&i.StoragePath,
+		&i.MimeType,
+		&i.FileSizeBytes,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listDocumentsByOrganization = `-- name: ListDocumentsByOrganization :many
 SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at FROM documents
 WHERE organization_id = $1

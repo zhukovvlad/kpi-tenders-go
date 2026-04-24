@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -46,6 +47,11 @@ func (m *mockStorageClient) PresignedURL(ctx context.Context, storagePath string
 	return args.String(0), args.Error(1)
 }
 
+func (m *mockStorageClient) PresignedURLWithParams(ctx context.Context, storagePath string, ttl time.Duration, params url.Values) (string, error) {
+	args := m.Called(ctx, storagePath, ttl, params)
+	return args.String(0), args.Error(1)
+}
+
 func (m *mockStorageClient) Delete(ctx context.Context, storagePath string) error {
 	args := m.Called(ctx, storagePath)
 	return args.Error(0)
@@ -55,7 +61,7 @@ func (m *mockStorageClient) Delete(ctx context.Context, storagePath string) erro
 // documentService is backed by the supplied MockQuerier.
 func newServerWithMockDocumentService(mq *storemock.MockQuerier) *Server {
 	s := newTestServerWithJWT()
-	s.documentService = service.NewDocumentService(mq, s.log)
+	s.documentService = service.NewDocumentService(mq, nil, s.log)
 	return s
 }
 
@@ -520,7 +526,7 @@ func TestUploadDocument_HappyPath_Returns201(t *testing.T) {
 
 	s := newTestServerWithJWT()
 	s.storageClient = msc
-	s.documentService = service.NewDocumentService(mq, s.log)
+	s.documentService = service.NewDocumentService(mq, msc, s.log)
 
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
@@ -557,7 +563,7 @@ func TestUploadDocument_DBError_CleansUpS3Object(t *testing.T) {
 
 	s := newTestServerWithJWT()
 	s.storageClient = msc
-	s.documentService = service.NewDocumentService(mq, s.log)
+	s.documentService = service.NewDocumentService(mq, msc, s.log)
 
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)

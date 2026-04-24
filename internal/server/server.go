@@ -70,11 +70,12 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 		organizationService:     service.NewOrganizationService(db, log),
 		userService:             service.NewUserService(db, log),
 		constructionSiteService: service.NewConstructionSiteService(db, log),
-		documentService:         service.NewDocumentService(db, log),
+		documentService:         service.NewDocumentService(db, nil, log),
 		documentTaskService:     service.NewDocumentTaskService(db, log),
 	}
 	if sc != nil {
 		srv.storageClient = sc
+		srv.documentService = service.NewDocumentService(db, sc, log)
 	}
 
 	srv.setupRouter()
@@ -146,6 +147,7 @@ func (s *Server) setupRouter() {
 				documents.POST("/upload", s.UploadDocument)
 				documents.GET("", s.ListDocuments)
 				documents.GET("/:id", s.GetDocument)
+				documents.GET("/:id/url", s.GetDocumentPresignedURL)
 				documents.DELETE("/:id", s.DeleteDocument)
 			}
 
