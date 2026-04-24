@@ -60,22 +60,29 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 		)
 	}
 
+	// docStorage is a nil interface when S3 is not configured, ensuring
+	// NewDocumentService receives a true interface nil (not a typed nil pointer)
+	// so that nil checks inside the service work correctly.
+	var docStorage storageClient
+	if sc != nil {
+		docStorage = sc
+	}
+
 	srv := &Server{
 		cfg:   cfg,
 		log:   log,
 		store: db,
-		// storageClient is set below only when non-nil to avoid storing a
-		// (*storage.Client)(nil) as a non-nil interface value.
 		authService:             service.NewAuthService(db, log, cfg.JWTAccessSecret, cfg.JWTRefreshSecret),
 		organizationService:     service.NewOrganizationService(db, log),
 		userService:             service.NewUserService(db, log),
 		constructionSiteService: service.NewConstructionSiteService(db, log),
-		documentService:         service.NewDocumentService(db, nil, log),
+		documentService:         service.NewDocumentService(db, docStorage, log),
 		documentTaskService:     service.NewDocumentTaskService(db, log),
 	}
 	if sc != nil {
+		// storageClient is set after struct creation to avoid storing a
+		// (*storage.Client)(nil) as a non-nil interface value.
 		srv.storageClient = sc
-		srv.documentService = service.NewDocumentService(db, sc, log)
 	}
 
 	srv.setupRouter()
