@@ -92,7 +92,7 @@ func (s *DocumentService) Delete(ctx context.Context, id, orgID uuid.UUID) error
 
 // GetPresignedURL generates a time-limited presigned GET URL for the document.
 // It enforces org-level isolation: documents belonging to a different org return
-// 403 (not 404) so callers can distinguish "not found" from "access denied".
+// 404 (not 403) to avoid leaking document existence across org boundaries.
 // When download is true the URL includes a Content-Disposition: attachment header
 // so the browser downloads the file instead of opening it inline.
 func (s *DocumentService) GetPresignedURL(ctx context.Context, docID, orgID uuid.UUID, download bool) (string, error) {
@@ -109,7 +109,7 @@ func (s *DocumentService) GetPresignedURL(ctx context.Context, docID, orgID uuid
 	}
 
 	if doc.OrganizationID != orgID {
-		return "", errs.New(errs.CodeForbidden, "access denied", nil)
+		return "", errs.New(errs.CodeNotFound, "document not found", nil)
 	}
 
 	var reqParams url.Values

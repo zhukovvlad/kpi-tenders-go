@@ -726,7 +726,7 @@ func TestGetDocumentPresignedURL_NotFound_Returns404(t *testing.T) {
 	mq.AssertExpectations(t)
 }
 
-func TestGetDocumentPresignedURL_ForbiddenCrossOrg_Returns403(t *testing.T) {
+func TestGetDocumentPresignedURL_CrossOrgDoc_Returns404(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	userID, orgID := uuid.New(), uuid.New()
@@ -750,7 +750,7 @@ func TestGetDocumentPresignedURL_ForbiddenCrossOrg_Returns403(t *testing.T) {
 	w := httptest.NewRecorder()
 	s.Router().ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Equal(t, http.StatusNotFound, w.Code)
 	mq.AssertExpectations(t)
 }
 
