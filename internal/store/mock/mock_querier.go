@@ -102,6 +102,34 @@ func (_m *MockQuerier) CreateDocumentTask(ctx context.Context, arg repository.Cr
 	return r0, r1
 }
 
+// CreateDocumentTaskInternal provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) CreateDocumentTaskInternal(ctx context.Context, arg repository.CreateDocumentTaskInternalParams) (repository.DocumentTask, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateDocumentTaskInternal")
+	}
+
+	var r0 repository.DocumentTask
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateDocumentTaskInternalParams) (repository.DocumentTask, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateDocumentTaskInternalParams) repository.DocumentTask); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.DocumentTask)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.CreateDocumentTaskInternalParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // CreateOrganization provides a mock function with given fields: ctx, arg
 func (_m *MockQuerier) CreateOrganization(ctx context.Context, arg repository.CreateOrganizationParams) (repository.Organization, error) {
 	ret := _m.Called(ctx, arg)
@@ -776,6 +804,34 @@ func (_m *MockQuerier) UpdateUser(ctx context.Context, arg repository.UpdateUser
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, repository.UpdateUserParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// UpdateWorkerTaskStatus provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) UpdateWorkerTaskStatus(ctx context.Context, arg repository.UpdateWorkerTaskStatusParams) (repository.DocumentTask, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateWorkerTaskStatus")
+	}
+
+	var r0 repository.DocumentTask
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpdateWorkerTaskStatusParams) (repository.DocumentTask, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpdateWorkerTaskStatusParams) repository.DocumentTask); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.DocumentTask)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.UpdateWorkerTaskStatusParams) error); ok {
 		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)

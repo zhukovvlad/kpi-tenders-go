@@ -7,8 +7,10 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createDocumentTask = `-- name: CreateDocumentTask :one
@@ -27,6 +29,36 @@ type CreateDocumentTaskParams struct {
 
 func (q *Queries) CreateDocumentTask(ctx context.Context, arg CreateDocumentTaskParams) (DocumentTask, error) {
 	row := q.db.QueryRow(ctx, createDocumentTask, arg.DocumentID, arg.ModuleName, arg.OrganizationID)
+	var i DocumentTask
+	err := row.Scan(
+		&i.ID,
+		&i.DocumentID,
+		&i.ModuleName,
+		&i.Status,
+		&i.CeleryTaskID,
+		&i.ResultPayload,
+		&i.ErrorMessage,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createDocumentTaskInternal = `-- name: CreateDocumentTaskInternal :one
+INSERT INTO document_tasks (document_id, module_name)
+VALUES ($1, $2)
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at
+`
+
+type CreateDocumentTaskInternalParams struct {
+	DocumentID uuid.UUID `json:"document_id"`
+	ModuleName string    `json:"module_name"`
+}
+
+// Internal: creates a task directly by document_id without tenant org-check.
+// Use only from trusted internal paths (worker service); never expose publicly.
+func (q *Queries) CreateDocumentTaskInternal(ctx context.Context, arg CreateDocumentTaskInternalParams) (DocumentTask, error) {
+	row := q.db.QueryRow(ctx, createDocumentTaskInternal, arg.DocumentID, arg.ModuleName)
 	var i DocumentTask
 	err := row.Scan(
 		&i.ID,
@@ -153,6 +185,50 @@ type UpdateDocumentTaskStatusParams struct {
 
 func (q *Queries) UpdateDocumentTaskStatus(ctx context.Context, arg UpdateDocumentTaskStatusParams) (DocumentTask, error) {
 	row := q.db.QueryRow(ctx, updateDocumentTaskStatus, arg.ID, arg.OrganizationID, arg.Status)
+	var i DocumentTask
+	err := row.Scan(
+		&i.ID,
+		&i.DocumentID,
+		&i.ModuleName,
+		&i.Status,
+		&i.CeleryTaskID,
+		&i.ResultPayload,
+		&i.ErrorMessage,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateWorkerTaskStatus = `-- name: UpdateWorkerTaskStatus :one
+UPDATE document_tasks
+SET
+    status         = $2,
+    celery_task_id = COALESCE($3, celery_task_id),
+    result_payload = COALESCE($4, result_payload),
+    error_message  = COALESCE($5, error_message),
+    updated_at     = now()
+WHERE id = $1
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at
+`
+
+type UpdateWorkerTaskStatusParams struct {
+	ID            uuid.UUID       `json:"id"`
+	Status        string          `json:"status"`
+	CeleryTaskID  pgtype.Text     `json:"celery_task_id"`
+	ResultPayload json.RawMessage `json:"result_payload"`
+	ErrorMessage  pgtype.Text     `json:"error_message"`
+}
+
+// Internal: no org-check; callers must be authenticated via SERVICE_TOKEN.
+func (q *Queries) UpdateWorkerTaskStatus(ctx context.Context, arg UpdateWorkerTaskStatusParams) (DocumentTask, error) {
+	row := q.db.QueryRow(ctx, updateWorkerTaskStatus,
+		arg.ID,
+		arg.Status,
+		arg.CeleryTaskID,
+		arg.ResultPayload,
+		arg.ErrorMessage,
+	)
 	var i DocumentTask
 	err := row.Scan(
 		&i.ID,

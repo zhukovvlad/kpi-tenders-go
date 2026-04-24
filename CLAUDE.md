@@ -17,6 +17,7 @@ internal/repository/          — SQLC-генерируемый слой БД (�
 internal/store/               — Store interface + SQLStore (transaction support)
 internal/store/mock/          — MockStore для unit-тестов сервисов
 internal/storage/             — MinIO/S3 клиент (upload, presigned URL, delete, SafeExt)
+internal/pythonworker/        — HTTP-клиент для Python-воркера (POST /process)
 internal/pgutil/              — утилиты PostgreSQL (IsUniqueViolation)
 pkg/errs/                     — структурированные ошибки приложения
 pkg/logging/                  — slog-логгер
@@ -53,6 +54,7 @@ type Server struct {
 - **Сервисы с транзакциями** (OrganizationService) принимают `store.Store`.
 - **Сервисы без транзакций** (AuthService, DocumentService) принимают `repository.Querier`.
 - `DocumentService` дополнительно принимает consumer-side interface `documentStorage` (только `PresignedURLWithParams`); `nil`-safe — при отсутствии S3 возвращает 500.
+- `WorkerService` принимает `repository.Querier` и consumer-side interface `workerPythonClient` (только `Process`); реализован `*pythonworker.Client`.
 - `store.SQLStore` — production-реализация поверх `*pgxpool.Pool`.
 - `mock.MockStore` — testify-mock для unit-тестов; `ExecTx` hand-written: вызывает `fn(m)` для propagation ошибок из транзакции.
 
@@ -101,15 +103,15 @@ GET              /api/v1/documents/:id/url   (?download=true|false → presigned
 POST/GET         /api/v1/tasks
 GET/PATCH/DELETE /api/v1/tasks/:id      (status update)
 
+PATCH            /internal/worker/tasks/:id/status  (worker callback, ServiceBearerAuth)
+
 POST/GET         /api/v1/sites
 GET/PATCH/DELETE /api/v1/sites/:id
 ```
 
 ### Заглушки / TODO
 
-```text
-/internal/worker/*  — ServiceBearerAuth подключён, нужен PATCH /internal/worker/tasks/{id}/status
-```
+_Нет активных заглушек._
 
 ### Не реализовано
 

@@ -15,6 +15,9 @@ type Querier interface {
 	CreateConstructionSite(ctx context.Context, arg CreateConstructionSiteParams) (ConstructionSite, error)
 	CreateDocument(ctx context.Context, arg CreateDocumentParams) (Document, error)
 	CreateDocumentTask(ctx context.Context, arg CreateDocumentTaskParams) (DocumentTask, error)
+	// Internal: creates a task directly by document_id without tenant org-check.
+	// Use only from trusted internal paths (worker service); never expose publicly.
+	CreateDocumentTaskInternal(ctx context.Context, arg CreateDocumentTaskInternalParams) (DocumentTask, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteConstructionSite(ctx context.Context, arg DeleteConstructionSiteParams) (int64, error)
@@ -42,6 +45,8 @@ type Querier interface {
 	UpdateDocumentTaskStatus(ctx context.Context, arg UpdateDocumentTaskStatusParams) (DocumentTask, error)
 	UpdateOrganization(ctx context.Context, arg UpdateOrganizationParams) (Organization, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (UpdateUserRow, error)
+	// Internal: no org-check; callers must be authenticated via SERVICE_TOKEN.
+	UpdateWorkerTaskStatus(ctx context.Context, arg UpdateWorkerTaskStatusParams) (DocumentTask, error)
 }
 
 var _ Querier = (*Queries)(nil)
