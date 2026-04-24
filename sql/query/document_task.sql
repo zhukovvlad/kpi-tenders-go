@@ -49,13 +49,17 @@ RETURNING *;
 -- name: CreateDocumentTaskInternal :one
 -- Internal: creates a task directly by document_id without tenant org-check.
 -- Use only from trusted internal paths (worker service); never expose publicly.
+-- ON CONFLICT DO NOTHING makes this idempotent: duplicate (document_id, module_name)
+-- returns pgx.ErrNoRows, which callers should treat as "task already exists".
 INSERT INTO document_tasks (document_id, module_name)
 VALUES ($1, $2)
+ON CONFLICT (document_id, module_name) DO NOTHING
 RETURNING *;
 
 -- name: GetDocumentTaskByDocumentModule :one
 -- Internal: find an existing task by (document_id, module_name) without org-check.
--- Used to enforce idempotency in task chaining — prevents duplicate tasks on retry.
+-- Returns the oldest task deterministically via ORDER BY.
 SELECT * FROM document_tasks
 WHERE document_id = $1 AND module_name = $2
+ORDER BY created_at ASC, id ASC
 LIMIT 1;

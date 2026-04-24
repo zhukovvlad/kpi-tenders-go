@@ -17,6 +17,8 @@ type Querier interface {
 	CreateDocumentTask(ctx context.Context, arg CreateDocumentTaskParams) (DocumentTask, error)
 	// Internal: creates a task directly by document_id without tenant org-check.
 	// Use only from trusted internal paths (worker service); never expose publicly.
+	// ON CONFLICT DO NOTHING makes this idempotent: duplicate (document_id, module_name)
+	// returns pgx.ErrNoRows, which callers should treat as "task already exists".
 	CreateDocumentTaskInternal(ctx context.Context, arg CreateDocumentTaskInternalParams) (DocumentTask, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
@@ -32,7 +34,7 @@ type Querier interface {
 	GetDocumentByID(ctx context.Context, id uuid.UUID) (Document, error)
 	GetDocumentTask(ctx context.Context, arg GetDocumentTaskParams) (DocumentTask, error)
 	// Internal: find an existing task by (document_id, module_name) without org-check.
-	// Used to enforce idempotency in task chaining — prevents duplicate tasks on retry.
+	// Returns the oldest task deterministically via ORDER BY.
 	GetDocumentTaskByDocumentModule(ctx context.Context, arg GetDocumentTaskByDocumentModuleParams) (DocumentTask, error)
 	GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organization, error)
 	GetOrganizationByINN(ctx context.Context, inn pgtype.Text) (Organization, error)

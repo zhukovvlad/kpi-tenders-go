@@ -47,6 +47,7 @@ func (q *Queries) CreateDocumentTask(ctx context.Context, arg CreateDocumentTask
 const createDocumentTaskInternal = `-- name: CreateDocumentTaskInternal :one
 INSERT INTO document_tasks (document_id, module_name)
 VALUES ($1, $2)
+ON CONFLICT (document_id, module_name) DO NOTHING
 RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at
 `
 
@@ -57,6 +58,8 @@ type CreateDocumentTaskInternalParams struct {
 
 // Internal: creates a task directly by document_id without tenant org-check.
 // Use only from trusted internal paths (worker service); never expose publicly.
+// ON CONFLICT DO NOTHING makes this idempotent: duplicate (document_id, module_name)
+// returns pgx.ErrNoRows, which callers should treat as "task already exists".
 func (q *Queries) CreateDocumentTaskInternal(ctx context.Context, arg CreateDocumentTaskInternalParams) (DocumentTask, error) {
 	row := q.db.QueryRow(ctx, createDocumentTaskInternal, arg.DocumentID, arg.ModuleName)
 	var i DocumentTask
@@ -126,6 +129,7 @@ func (q *Queries) GetDocumentTask(ctx context.Context, arg GetDocumentTaskParams
 const getDocumentTaskByDocumentModule = `-- name: GetDocumentTaskByDocumentModule :one
 SELECT id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at FROM document_tasks
 WHERE document_id = $1 AND module_name = $2
+ORDER BY created_at ASC, id ASC
 LIMIT 1
 `
 
@@ -135,7 +139,7 @@ type GetDocumentTaskByDocumentModuleParams struct {
 }
 
 // Internal: find an existing task by (document_id, module_name) without org-check.
-// Used to enforce idempotency in task chaining — prevents duplicate tasks on retry.
+// Returns the oldest task deterministically via ORDER BY.
 func (q *Queries) GetDocumentTaskByDocumentModule(ctx context.Context, arg GetDocumentTaskByDocumentModuleParams) (DocumentTask, error) {
 	row := q.db.QueryRow(ctx, getDocumentTaskByDocumentModule, arg.DocumentID, arg.ModuleName)
 	var i DocumentTask

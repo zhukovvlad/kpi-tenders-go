@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -17,9 +18,10 @@ type Client struct {
 }
 
 // New creates a new Client for the given base URL.
+// Trailing slashes are stripped so path concatenation is always clean.
 func New(baseURL string) *Client {
 	return &Client{
-		baseURL:    baseURL,
+		baseURL:    strings.TrimRight(baseURL, "/"),
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}
 }
@@ -54,7 +56,7 @@ func (c *Client) Process(ctx context.Context, req ProcessRequest) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("pythonworker: process returned %d: %s", resp.StatusCode, bytes.TrimSpace(body))
 	}
 	return nil

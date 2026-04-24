@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 
 	"github.com/ilyakaznacheev/cleanenv"
 )
@@ -59,6 +60,9 @@ func (c *Config) validate() error {
 	}
 	if len(c.ServiceToken) < minSecretLen {
 		return fmt.Errorf("SERVICE_TOKEN must be at least %d characters", minSecretLen)
+	}
+	if _, err := url.ParseRequestURI(c.PythonServiceURL); err != nil {
+		return fmt.Errorf("PYTHON_SERVICE_URL is not a valid URL: %s", c.PythonServiceURL)
 	}
 	return nil
 }

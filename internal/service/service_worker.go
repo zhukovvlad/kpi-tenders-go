@@ -23,6 +23,18 @@ type workerPythonClient interface {
 	Process(ctx context.Context, req pythonworker.ProcessRequest) error
 }
 
+// Module names used in task chaining.
+const (
+	moduleConvert   = "convert"
+	moduleAnonymize = "anonymize"
+)
+
+// Task status constants used for chaining checks and orphan cleanup.
+const (
+	statusCompleted = "completed"
+	statusFailed    = "failed"
+)
+
 // WorkerService handles callbacks from the Python worker and implements task
 // chaining (e.g. convert → anonymize).
 type WorkerService struct {
@@ -32,7 +44,11 @@ type WorkerService struct {
 }
 
 // NewWorkerService creates a new WorkerService.
+// Panics if pythonClient is nil — it is a required dependency.
 func NewWorkerService(repo repository.Querier, pythonClient workerPythonClient, log *slog.Logger) *WorkerService {
+	if pythonClient == nil {
+		panic("WorkerService: pythonClient is required")
+	}
 	return &WorkerService{repo: repo, pythonClient: pythonClient, log: log}
 }
 
@@ -73,7 +89,7 @@ func (s *WorkerService) HandleStatusUpdate(ctx context.Context, taskID uuid.UUID
 	}
 
 	// Chain: convert completed → trigger anonymize.
-	if task.ModuleName == "convert" && task.Status == "completed" {
+	if task.ModuleName == moduleConvert && task.Status == statusCompleted {
 		if err := s.triggerAnonymize(ctx, task); err != nil {
 			// Log but do not fail — the callback has already been persisted.
 			s.log.Error("worker: failed to trigger anonymize", "task_id", task.ID, "err", err)
@@ -96,33 +112,43 @@ func (s *WorkerService) triggerAnonymize(ctx context.Context, convertTask reposi
 		return fmt.Errorf("md_storage_path is empty in convert result_payload")
 	}
 
-	// Idempotency guard: if an anonymize task already exists for this document,
-	// skip creation. This prevents duplicate tasks when the worker retries a
-	// "convert completed" callback.
-	_, err := s.repo.GetDocumentTaskByDocumentModule(ctx, repository.GetDocumentTaskByDocumentModuleParams{
+	// Create the anonymize task. ON CONFLICT (document_id, module_name) DO NOTHING
+	// makes this atomic: if the task already exists pgx returns ErrNoRows.
+	anonTask, err := s.repo.CreateDocumentTaskInternal(ctx, repository.CreateDocumentTaskInternalParams{
 		DocumentID: convertTask.DocumentID,
-		ModuleName: "anonymize",
+		ModuleName: moduleAnonymize,
 	})
-	if err == nil {
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Task already exists — idempotent skip.
 		s.log.Info("worker: anonymize task already exists, skipping", "document_id", convertTask.DocumentID)
 		return nil
 	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("check existing anonymize task: %w", err)
-	}
-
-	anonTask, err := s.repo.CreateDocumentTaskInternal(ctx, repository.CreateDocumentTaskInternalParams{
-		DocumentID: convertTask.DocumentID,
-		ModuleName: "anonymize",
-	})
 	if err != nil {
 		return fmt.Errorf("create anonymize task: %w", err)
 	}
 
-	return s.pythonClient.Process(ctx, pythonworker.ProcessRequest{
+	if err := s.pythonClient.Process(ctx, pythonworker.ProcessRequest{
 		TaskID:      anonTask.ID.String(),
 		DocumentID:  anonTask.DocumentID.String(),
-		ModuleName:  "anonymize",
+		ModuleName:  moduleAnonymize,
 		StoragePath: payload.MDStoragePath,
+	}); err != nil {
+		// Mark orphaned task as failed so it does not linger in pending forever.
+		if markErr := s.markTaskFailed(ctx, anonTask.ID, err.Error()); markErr != nil {
+			s.log.Error("worker: failed to mark orphaned anonymize task as failed",
+				"task_id", anonTask.ID, "err", markErr)
+		}
+		return fmt.Errorf("trigger anonymize: %w", err)
+	}
+	return nil
+}
+
+// markTaskFailed sets a task's status to "failed" with the provided error message.
+func (s *WorkerService) markTaskFailed(ctx context.Context, taskID uuid.UUID, msg string) error {
+	_, err := s.repo.UpdateWorkerTaskStatus(ctx, repository.UpdateWorkerTaskStatusParams{
+		ID:           taskID,
+		Status:       statusFailed,
+		ErrorMessage: pgtype.Text{String: msg, Valid: true},
 	})
+	return err
 }

@@ -123,13 +123,16 @@ _Нет активных заглушек._
 Миграции: `sql/migrations/`, `make migrate_up`.  
 После изменения SQL-запросов — `make sqlc`.
 
-| Миграция | Таблицы |
-|----------|---------|
+| Миграция | Таблицы / изменения |
+|----------|---------------------|
 | 000001 | organizations, users, projects, documents, document_tasks |
-| 000002 | catalog_positions (vector + JSONB для RAG-поиска) |
+| 000002 | UNIQUE constraint на document_tasks(document_id, module_name) — идемпотентность ON CONFLICT |
 
 `catalog_positions.embedding` — тип `vector` без фиксированной размерности  
 (зафиксируй как `vector(1536)` когда определишься с моделью эмбеддингов).
+
+> **Примечание:** мигрция 000002 для `catalog_positions` (pgvector RAG) перенесена на следующий этап.  
+> Текущая 000002 — constraint на `document_tasks`. `catalog_positions` будет 000003.
 
 ## Стратегия тестирования
 
@@ -183,7 +186,7 @@ make gen-secrets      # сгенерировать JWT/service секреты
 ## Конфигурация
 
 Загружается из `.env` через `cleanenv`. Ключевые переменные:
-`APP_ENV`, `APP_PORT`, `DB_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `SERVICE_TOKEN`, `S3_*`.
+`APP_ENV`, `APP_PORT`, `DB_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `SERVICE_TOKEN`, `PYTHON_SERVICE_URL`, `S3_*`.
 
 ## Frontend
 
