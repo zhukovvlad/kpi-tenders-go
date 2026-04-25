@@ -78,16 +78,24 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 		userService:             service.NewUserService(db, log),
 		constructionSiteService: service.NewConstructionSiteService(db, log),
 		documentService:         service.NewDocumentService(db, docStorage, log),
-		documentTaskService:     service.NewDocumentTaskService(db, log),
 	}
 
-	// workerService requires a valid PythonServiceURL. When the URL is absent
-	// (e.g. unit-test helpers that build Config manually) the service is left
-	// nil and the callback endpoint returns 500 rather than panicking.
+	// pythonClient is shared between documentTaskService and workerService so
+	// both use the same HTTP client instance. nil is passed when the URL is
+	// absent; both services guard the nil case internally.
+	var pythonClient *pythonworker.Client
 	if cfg.PythonServiceURL != "" {
-		srv.workerService = service.NewWorkerService(db, pythonworker.New(cfg.PythonServiceURL), log)
+		pythonClient = pythonworker.New(cfg.PythonServiceURL)
 	} else {
 		log.Warn("worker: PYTHON_SERVICE_URL not set — worker callback endpoint disabled")
+	}
+
+	srv.documentTaskService = service.NewDocumentTaskService(db, pythonClient, log)
+
+	// workerService requires a valid pythonClient. Leave it nil when the URL is
+	// absent so the callback endpoint returns 500 rather than panicking.
+	if pythonClient != nil {
+		srv.workerService = service.NewWorkerService(db, pythonClient, log)
 	}
 	if sc != nil {
 		// storageClient is set after struct creation to avoid storing a

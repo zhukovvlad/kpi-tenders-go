@@ -54,7 +54,9 @@ type Server struct {
 - **Сервисы с транзакциями** (OrganizationService) принимают `store.Store`.
 - **Сервисы без транзакций** (AuthService, DocumentService) принимают `repository.Querier`.
 - `DocumentService` дополнительно принимает consumer-side interface `documentStorage` (только `PresignedURLWithParams`); `nil`-safe — при отсутствии S3 возвращает 500.
-- `WorkerService` принимает `repository.Querier` и consumer-side interface `workerPythonClient` (только `Process`); реализован `*pythonworker.Client`.
+- `DocumentTaskService` принимает `repository.Querier` и тот же consumer-side interface `workerPythonClient`; `nil`-safe — при отсутствии Python-клиента триггер пропускается. После INSERT вызывает `GetDocument` для получения `storage_path`, затем `pythonClient.Process` (best-effort: ошибки логируются, наружу не пробрасываются).
+- `WorkerService` принимает `repository.Querier` и consumer-side interface `workerPythonClient` (только `Process`); реализован `*pythonworker.Client`. Требует ненулевой pythonClient — если `PYTHON_SERVICE_URL` пустой, сервис не инициализируется.
+- В `NewServer()` экземпляр `*pythonworker.Client` создаётся **один раз** и передаётся в оба сервиса (`DocumentTaskService` и `WorkerService`).
 - `store.SQLStore` — production-реализация поверх `*pgxpool.Pool`.
 - `mock.MockStore` — testify-mock для unit-тестов; `ExecTx` hand-written: вызывает `fn(m)` для propagation ошибок из транзакции.
 
@@ -139,6 +141,7 @@ _Нет активных заглушек._
 internal/service/service_auth_test.go               — AuthService: login, timing, JWT
 internal/service/service_organization_test.go       — OrganizationService: register, conflicts
 internal/service/service_user_test.go               — UserService: GetProfile, tenant isolation
+internal/service/service_document_task_test.go      — DocumentTaskService: Create success, not found, conflict, db error, python trigger, python error best-effort (6 кейсов)
 internal/service/service_worker_test.go             — WorkerService: chaining, idempotency, errors, python client (7 кейсов)
 internal/server/errors_test.go                      — respondWithError маппинг
 internal/server/health_test.go                      — health endpoint

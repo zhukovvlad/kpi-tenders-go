@@ -9,17 +9,19 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"go-kpi-tenders/internal/pgutil"
+	"go-kpi-tenders/internal/pythonworker"
 	"go-kpi-tenders/internal/repository"
 	"go-kpi-tenders/pkg/errs"
 )
 
 type DocumentTaskService struct {
-	repo repository.Querier
-	log  *slog.Logger
+	repo         repository.Querier
+	pythonClient workerPythonClient // nil when Python worker is not configured
+	log          *slog.Logger
 }
 
-func NewDocumentTaskService(repo repository.Querier, log *slog.Logger) *DocumentTaskService {
-	return &DocumentTaskService{repo: repo, log: log}
+func NewDocumentTaskService(repo repository.Querier, pythonClient workerPythonClient, log *slog.Logger) *DocumentTaskService {
+	return &DocumentTaskService{repo: repo, pythonClient: pythonClient, log: log}
 }
 
 func (s *DocumentTaskService) Create(ctx context.Context, params repository.CreateDocumentTaskParams) (repository.DocumentTask, error) {
@@ -33,6 +35,30 @@ func (s *DocumentTaskService) Create(ctx context.Context, params repository.Crea
 		}
 		return repository.DocumentTask{}, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
+
+	// Fetch the document to get storage_path for the Python worker trigger.
+	doc, err := s.repo.GetDocument(ctx, repository.GetDocumentParams{
+		ID:             params.DocumentID,
+		OrganizationID: params.OrganizationID,
+	})
+	if err != nil {
+		// Task is already persisted — log and return without triggering Python.
+		s.log.Error("documentTask: failed to fetch document for trigger", "err", err)
+		return task, nil
+	}
+
+	if s.pythonClient != nil {
+		if err := s.pythonClient.Process(ctx, pythonworker.ProcessRequest{
+			TaskID:      task.ID.String(),
+			DocumentID:  task.DocumentID.String(),
+			ModuleName:  task.ModuleName,
+			StoragePath: doc.StoragePath,
+		}); err != nil {
+			// Best-effort: task is already in DB, caller can retry.
+			s.log.Error("documentTask: failed to trigger python worker", "task_id", task.ID, "err", err)
+		}
+	}
+
 	return task, nil
 }
 
