@@ -13,8 +13,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"go-kpi-tenders/internal/config"
-	"go-kpi-tenders/pkg/logging"
 	"go-kpi-tenders/internal/server"
+	"go-kpi-tenders/pkg/logging"
 )
 
 func main() {
@@ -48,7 +48,11 @@ func main() {
 	log.Info("database connected")
 
 	// ── Server ──────────────────────────────────────
-	srv := server.NewServer(cfg, log, pool)
+	srv, err := server.NewServer(cfg, log, pool)
+	if err != nil {
+		log.Error("failed to init server", "err", err)
+		os.Exit(1)
+	}
 
 	httpSrv := &http.Server{
 		Addr:         ":" + cfg.AppPort,
@@ -79,7 +83,12 @@ func main() {
 
 	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
 		log.Error("forced shutdown", slog.String("error", err.Error()))
+		_ = srv.Close()
 		os.Exit(1)
+	}
+
+	if err := srv.Close(); err != nil {
+		log.Error("redis: failed to close publisher", "err", err)
 	}
 
 	log.Info("server stopped gracefully")

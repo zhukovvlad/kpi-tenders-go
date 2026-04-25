@@ -3,26 +3,36 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"go-kpi-tenders/internal/pgutil"
+	"go-kpi-tenders/internal/pythonworker"
 	"go-kpi-tenders/internal/repository"
 	"go-kpi-tenders/pkg/errs"
 )
 
 type DocumentTaskService struct {
-	repo repository.Querier
-	log  *slog.Logger
+	repo         repository.Querier
+	pythonClient workerPythonClient // nil when Python worker is not configured
+	log          *slog.Logger
 }
 
-func NewDocumentTaskService(repo repository.Querier, log *slog.Logger) *DocumentTaskService {
-	return &DocumentTaskService{repo: repo, log: log}
+func NewDocumentTaskService(repo repository.Querier, pythonClient workerPythonClient, log *slog.Logger) *DocumentTaskService {
+	return &DocumentTaskService{repo: repo, pythonClient: pythonClient, log: log}
 }
 
 func (s *DocumentTaskService) Create(ctx context.Context, params repository.CreateDocumentTaskParams) (repository.DocumentTask, error) {
+	// Validate before INSERT so callers get a clear validation_failed error
+	// instead of a persisted task that can never be queued.
+	if err := pythonworker.ValidateModule(params.ModuleName); err != nil {
+		return repository.DocumentTask{}, errs.New(errs.CodeValidationFailed, fmt.Sprintf("unsupported module: %q", params.ModuleName), err)
+	}
+
 	task, err := s.repo.CreateDocumentTask(ctx, params)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -33,6 +43,37 @@ func (s *DocumentTaskService) Create(ctx context.Context, params repository.Crea
 		}
 		return repository.DocumentTask{}, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
+
+	if s.pythonClient == nil {
+		return task, nil
+	}
+
+	// Detach from the request context so a client disconnect does not cancel
+	// the best-effort trigger. Apply a short timeout to avoid stalling.
+	triggerCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
+	// Fetch the document to get storage_path for the Python worker trigger.
+	doc, err := s.repo.GetDocument(triggerCtx, repository.GetDocumentParams{
+		ID:             params.DocumentID,
+		OrganizationID: params.OrganizationID,
+	})
+	if err != nil {
+		// Task is already persisted — log and return without triggering Python.
+		s.log.Error("documentTask: failed to fetch document for trigger", "task_id", task.ID, "document_id", params.DocumentID, "err", err)
+		return task, nil
+	}
+
+	if err := s.pythonClient.Process(triggerCtx, pythonworker.ProcessRequest{
+		TaskID:      task.ID.String(),
+		DocumentID:  task.DocumentID.String(),
+		ModuleName:  task.ModuleName,
+		StoragePath: doc.StoragePath,
+	}); err != nil {
+		// Best-effort: task is already in DB, caller can retry.
+		s.log.Error("documentTask: failed to trigger python worker", "task_id", task.ID, "err", err)
+	}
+
 	return task, nil
 }
 

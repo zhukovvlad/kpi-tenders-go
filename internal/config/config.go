@@ -21,8 +21,6 @@ type Config struct {
 	JWTRefreshSecret string `env:"JWT_REFRESH_SECRET" env-required:"true"`
 	ServiceToken     string `env:"SERVICE_TOKEN"      env-required:"true"`
 
-	PythonServiceURL string `env:"PYTHON_SERVICE_URL"`
-
 	S3Endpoint  string `env:"S3_ENDPOINT"   env-default:"localhost:9000"`
 	S3Region    string `env:"S3_REGION"     env-default:"us-east-1"`
 	S3AccessKey string `env:"S3_ACCESS_KEY"`
@@ -61,11 +59,12 @@ func (c *Config) validate() error {
 	if len(c.ServiceToken) < minSecretLen {
 		return fmt.Errorf("SERVICE_TOKEN must be at least %d characters", minSecretLen)
 	}
-	if c.PythonServiceURL != "" {
-		pythonURL, err := url.Parse(c.PythonServiceURL)
-		if err != nil || !pythonURL.IsAbs() || (pythonURL.Scheme != "http" && pythonURL.Scheme != "https") || pythonURL.Host == "" || pythonURL.Fragment != "" {
-			return fmt.Errorf("PYTHON_SERVICE_URL must be an absolute http/https URL with a host and no fragment: %q", c.PythonServiceURL)
-		}
+	redisURL, err := url.Parse(c.RedisURL)
+	if err != nil {
+		return fmt.Errorf("REDIS_URL is not a valid URL: %w", err)
+	}
+	if (redisURL.Scheme != "redis" && redisURL.Scheme != "rediss") || redisURL.Host == "" {
+		return fmt.Errorf("REDIS_URL must be a valid redis:// or rediss:// URL (got scheme=%q host=%q)", redisURL.Scheme, redisURL.Host)
 	}
 	return nil
 }

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -21,6 +22,7 @@ type Server struct {
 	store                   store.Store
 	storageClient           storageClient // nil when S3 not configured
 	router                  *gin.Engine
+	pythonClient            *pythonworker.Publisher // closed on server shutdown
 	authService             *service.AuthService
 	organizationService     *service.OrganizationService
 	userService             *service.UserService
@@ -30,7 +32,7 @@ type Server struct {
 	workerService           *service.WorkerService
 }
 
-func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server {
+func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) (*Server, error) {
 	// pool may be nil in unit tests that only exercise routing/middleware.
 	// In that case services receive a nil querier/store, which is safe as long
 	// as no handler that reaches the service layer is called in those tests.
@@ -78,17 +80,19 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 		userService:             service.NewUserService(db, log),
 		constructionSiteService: service.NewConstructionSiteService(db, log),
 		documentService:         service.NewDocumentService(db, docStorage, log),
-		documentTaskService:     service.NewDocumentTaskService(db, log),
 	}
 
-	// workerService requires a valid PythonServiceURL. When the URL is absent
-	// (e.g. unit-test helpers that build Config manually) the service is left
-	// nil and the callback endpoint returns 500 rather than panicking.
-	if cfg.PythonServiceURL != "" {
-		srv.workerService = service.NewWorkerService(db, pythonworker.New(cfg.PythonServiceURL), log)
-	} else {
-		log.Warn("worker: PYTHON_SERVICE_URL not set — worker callback endpoint disabled")
+	// pythonClient publishes Celery tasks directly to Redis, shared by both
+	// documentTaskService (initial trigger) and workerService (chained tasks).
+	// Redis is mandatory — invalid URL is a misconfiguration, caller must handle.
+	pythonClient, err := pythonworker.New(cfg.RedisURL)
+	if err != nil {
+		return nil, fmt.Errorf("server: init redis publisher: %w", err)
 	}
+
+	srv.pythonClient = pythonClient
+	srv.documentTaskService = service.NewDocumentTaskService(db, pythonClient, log)
+	srv.workerService = service.NewWorkerService(db, pythonClient, log)
 	if sc != nil {
 		// storageClient is set after struct creation to avoid storing a
 		// (*storage.Client)(nil) as a non-nil interface value.
@@ -96,7 +100,16 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 	}
 
 	srv.setupRouter()
-	return srv
+	return srv, nil
+}
+
+// Close releases resources held by the server (Redis connection pool).
+// Call this during graceful shutdown after the HTTP server has drained.
+func (s *Server) Close() error {
+	if s == nil || s.pythonClient == nil {
+		return nil
+	}
+	return s.pythonClient.Close()
 }
 
 func (s *Server) setupRouter() {

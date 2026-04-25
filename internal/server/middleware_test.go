@@ -27,14 +27,19 @@ const (
 
 // newTestServerWithJWT creates a server with real JWT secrets but no DB
 // connection — sufficient for middleware validation tests.
-func newTestServerWithJWT() *Server {
+func newTestServerWithJWT(t *testing.T) *Server {
+	t.Helper()
 	cfg := &config.Config{
 		AppEnv:           "local",
+		RedisURL:         "redis://localhost:6379/0",
 		JWTAccessSecret:  testJWTAccessSecret,
 		JWTRefreshSecret: testJWTRefreshSecret,
 		ServiceToken:     testServiceToken,
 	}
-	return NewServer(cfg, slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError})), nil)
+	s, err := NewServer(cfg, slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError})), nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	return s
 }
 
 // generateExpiredToken builds a syntactically valid but already-expired JWT.
@@ -59,7 +64,7 @@ func generateExpiredToken(t *testing.T, secret string) string {
 
 func TestAuthMiddleware_ValidToken_PassesThrough(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	s := newTestServerWithJWT()
+	s := newTestServerWithJWT(t)
 
 	// Register a dedicated no-op route so the test only depends on middleware
 	// behaviour and not on any business handler logic.
@@ -83,7 +88,7 @@ func TestAuthMiddleware_ValidToken_PassesThrough(t *testing.T) {
 
 func TestAuthMiddleware_MissingToken_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	s := newTestServerWithJWT()
+	s := newTestServerWithJWT(t)
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/documents", nil)
 	w := httptest.NewRecorder()
@@ -94,7 +99,7 @@ func TestAuthMiddleware_MissingToken_Returns401(t *testing.T) {
 
 func TestAuthMiddleware_InvalidToken_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	s := newTestServerWithJWT()
+	s := newTestServerWithJWT(t)
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/documents", nil)
 	req.AddCookie(&http.Cookie{Name: "access_token", Value: "not.a.valid.jwt"})
@@ -107,7 +112,7 @@ func TestAuthMiddleware_InvalidToken_Returns401(t *testing.T) {
 
 func TestAuthMiddleware_ExpiredToken_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	s := newTestServerWithJWT()
+	s := newTestServerWithJWT(t)
 
 	expired := generateExpiredToken(t, testJWTAccessSecret)
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/documents", nil)
@@ -121,7 +126,7 @@ func TestAuthMiddleware_ExpiredToken_Returns401(t *testing.T) {
 
 func TestAuthMiddleware_WrongSigningKey_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	s := newTestServerWithJWT()
+	s := newTestServerWithJWT(t)
 
 	// Token signed with a different secret
 	claims := service.Claims{
@@ -150,7 +155,7 @@ func TestAuthMiddleware_WrongSigningKey_Returns401(t *testing.T) {
 // middleware behaviour and not on any business handler logic.
 func TestServiceBearerAuth_ValidToken_NotRejectedByMiddleware(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	s := newTestServerWithJWT()
+	s := newTestServerWithJWT(t)
 
 	// Register a no-op endpoint protected only by ServiceBearerAuth.
 	s.Router().GET("/test/service-ping", s.ServiceBearerAuth(), func(c *gin.Context) {
@@ -168,7 +173,7 @@ func TestServiceBearerAuth_ValidToken_NotRejectedByMiddleware(t *testing.T) {
 
 func TestServiceBearerAuth_MissingHeader_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	s := newTestServerWithJWT()
+	s := newTestServerWithJWT(t)
 
 	taskID := uuid.New()
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch,
@@ -181,7 +186,7 @@ func TestServiceBearerAuth_MissingHeader_Returns401(t *testing.T) {
 
 func TestServiceBearerAuth_WrongToken_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	s := newTestServerWithJWT()
+	s := newTestServerWithJWT(t)
 
 	taskID := uuid.New()
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch,
@@ -196,7 +201,7 @@ func TestServiceBearerAuth_WrongToken_Returns401(t *testing.T) {
 
 func TestServiceBearerAuth_MalformedHeader_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	s := newTestServerWithJWT()
+	s := newTestServerWithJWT(t)
 
 	taskID := uuid.New()
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch,
@@ -213,8 +218,8 @@ func TestServiceBearerAuth_MalformedHeader_Returns401(t *testing.T) {
 
 // newTestServerWithAdminRoute returns a server with a dedicated no-op route
 // protected by AuthMiddleware + AdminOnly, so tests get a clean 200/403 signal.
-func newTestServerWithAdminRoute() *Server {
-	s := newTestServerWithJWT()
+func newTestServerWithAdminRoute(t *testing.T) *Server {
+	s := newTestServerWithJWT(t)
 	s.Router().GET("/test/admin-ping", s.AuthMiddleware(), s.AdminOnly(), func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
@@ -231,7 +236,7 @@ func adminToken(t *testing.T, s *Server, role string) string {
 
 func TestAdminOnly_AdminRole_PassesThrough(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	s := newTestServerWithAdminRoute()
+	s := newTestServerWithAdminRoute(t)
 
 	tok := adminToken(t, s, "admin")
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test/admin-ping", nil)
@@ -245,7 +250,7 @@ func TestAdminOnly_AdminRole_PassesThrough(t *testing.T) {
 
 func TestAdminOnly_MemberRole_Returns403(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	s := newTestServerWithAdminRoute()
+	s := newTestServerWithAdminRoute(t)
 
 	tok := adminToken(t, s, "member")
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test/admin-ping", nil)
@@ -259,7 +264,7 @@ func TestAdminOnly_MemberRole_Returns403(t *testing.T) {
 
 func TestAdminOnly_EmptyRole_Returns403(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	s := newTestServerWithAdminRoute()
+	s := newTestServerWithAdminRoute(t)
 
 	tok := adminToken(t, s, "")
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test/admin-ping", nil)

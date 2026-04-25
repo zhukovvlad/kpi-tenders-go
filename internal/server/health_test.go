@@ -13,14 +13,20 @@ import (
 	"go-kpi-tenders/internal/config"
 )
 
-func newTestServer() *Server {
-	cfg := &config.Config{AppEnv: "local", AppPort: "8080"}
+func newTestServer(t *testing.T) *Server {
+	t.Helper()
+	cfg := &config.Config{AppEnv: "local", AppPort: "8080", RedisURL: "redis://localhost:6379/0"}
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	return NewServer(cfg, log, nil)
+	s, err := NewServer(cfg, log, nil)
+	if err != nil {
+		t.Fatalf("NewServer failed: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	return s
 }
 
 func TestHealthCheck(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 
 	req, _ := http.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
@@ -36,7 +42,7 @@ func TestHealthCheck(t *testing.T) {
 }
 
 func TestHealthCheckV1(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 
 	req, _ := http.NewRequest(http.MethodGet, "/api/v1/health", nil)
 	w := httptest.NewRecorder()
@@ -47,7 +53,7 @@ func TestHealthCheckV1(t *testing.T) {
 }
 
 func TestProtectedRouteRequiresAuth(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 
 	req, _ := http.NewRequest(http.MethodGet, "/api/v1/documents", nil)
 	w := httptest.NewRecorder()

@@ -1,62 +1,150 @@
 package pythonworker
 
 import (
-	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"strings"
+	"strconv"
+
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 )
 
-// Client is an HTTP client for the internal Python worker service.
-type Client struct {
-	baseURL    string
-	httpClient *http.Client
+// Publisher publishes Celery tasks directly to Redis queues.
+// This bypasses the Python HTTP API and ensures tasks are queued even when
+// Python workers are temporarily unavailable.
+type Publisher struct {
+	rdb *redis.Client
 }
 
-// New creates a new Client for the given base URL.
-// Trailing slashes are stripped so path concatenation is always clean.
-func New(baseURL string) *Client {
-	return &Client{
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		httpClient: &http.Client{},
+// New creates a Publisher connected to the given Redis URL.
+func New(redisURL string) (*Publisher, error) {
+	opts, err := redis.ParseURL(redisURL)
+	if err != nil {
+		return nil, fmt.Errorf("pythonworker: parse redis URL: %w", err)
 	}
+	return &Publisher{rdb: redis.NewClient(opts)}, nil
 }
 
-// ProcessRequest is the payload sent to POST /process on the Python worker.
+// Close releases resources held by the underlying Redis client.
+// Call this after graceful HTTP shutdown to drain the connection pool.
+func (p *Publisher) Close() error {
+	if p == nil || p.rdb == nil {
+		return nil
+	}
+	return p.rdb.Close()
+}
+
+// ValidateModule returns a non-nil error when the module name is not supported.
+// Use this before persisting a task so callers get a clear validation error
+// instead of a successfully stored task that can never be queued.
+func ValidateModule(name string) error {
+	_, _, err := resolveModule(name)
+	return err
+}
+
+// ProcessRequest describes the Celery task payload.
 type ProcessRequest struct {
-	TaskID      string `json:"task_id"`
-	DocumentID  string `json:"document_id"`
-	ModuleName  string `json:"module_name"`
-	StoragePath string `json:"storage_path"`
+	TaskID      string
+	DocumentID  string
+	ModuleName  string
+	StoragePath string
 }
 
-// Process calls POST /process on the Python worker.
-// No auth header is set — the Python service is internal and unreachable
-// from outside the private network.
-func (c *Client) Process(ctx context.Context, req ProcessRequest) error {
-	body, err := json.Marshal(req)
+// Process publishes a Celery v2 task message to the appropriate Redis queue.
+func (p *Publisher) Process(ctx context.Context, req ProcessRequest) error {
+	queue, taskName, err := resolveModule(req.ModuleName)
 	if err != nil {
-		return fmt.Errorf("pythonworker: marshal: %w", err)
+		return err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/process", bytes.NewReader(body))
+	msgJSON, err := buildCeleryMessage(req, queue, taskName, uuid.New().String(), uuid.New().String())
 	if err != nil {
-		return fmt.Errorf("pythonworker: new request: %w", err)
+		return err
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return fmt.Errorf("pythonworker: do: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("pythonworker: process returned %d: %s", resp.StatusCode, bytes.TrimSpace(body))
+	if err := p.rdb.LPush(ctx, queue, string(msgJSON)).Err(); err != nil {
+		return fmt.Errorf("pythonworker: lpush %s: %w", queue, err)
 	}
 	return nil
+}
+
+// buildCeleryMessage constructs a Celery v2 protocol message for the given
+// request and resolved queue/taskName. The caller supplies replyTo and
+// deliveryTag (unique per-message UUIDs) so that the function itself is
+// deterministic and straightforward to unit test.
+func buildCeleryMessage(req ProcessRequest, queue, taskName, replyTo, deliveryTag string) ([]byte, error) {
+	// Celery protocol v2 body: [args, kwargs, embed]
+	bodyArgs := []any{
+		[]any{req.TaskID, req.DocumentID, req.StoragePath},
+		map[string]any{},
+		map[string]any{
+			"callbacks": nil,
+			"errbacks":  nil,
+			"chain":     nil,
+			"chord":     nil,
+		},
+	}
+	bodyJSON, err := json.Marshal(bodyArgs)
+	if err != nil {
+		return nil, fmt.Errorf("pythonworker: marshal body: %w", err)
+	}
+
+	msg := map[string]any{
+		"body":             base64.StdEncoding.EncodeToString(bodyJSON),
+		"content-encoding": "utf-8",
+		"content-type":     "application/json",
+		"headers": map[string]any{
+			"lang":        "py",
+			"task":        taskName,
+			"id":          req.TaskID,
+			"shadow":      nil,
+			"eta":         nil,
+			"expires":     nil,
+			"group":       nil,
+			"group_index": nil,
+			"retries":     0,
+			"timelimit":   []any{nil, nil},
+			"root_id":     req.TaskID,
+			"parent_id":   nil,
+			"argsrepr":    fmt.Sprintf("(%s, %s, %s)", strconv.Quote(req.TaskID), strconv.Quote(req.DocumentID), strconv.Quote(req.StoragePath)),
+			"kwargsrepr":  "{}",
+			"origin":      "go-kpi-tenders",
+		},
+		"properties": map[string]any{
+			"correlation_id": req.TaskID,
+			"reply_to":       replyTo,
+			"delivery_mode":  2,
+			"delivery_info": map[string]any{
+				"exchange":    "",
+				"routing_key": queue,
+			},
+			"priority":      0,
+			"body_encoding": "base64",
+			"delivery_tag":  deliveryTag,
+		},
+	}
+
+	msgJSON, err := json.Marshal(msg)
+	if err != nil {
+		return nil, fmt.Errorf("pythonworker: marshal message: %w", err)
+	}
+	return msgJSON, nil
+}
+
+// resolveModule maps a module name to its Redis queue and Celery task name.
+func resolveModule(module string) (queue, taskName string, err error) {
+	switch module {
+	case "convert":
+		return "io", "app.workers.convert.convert_task", nil
+	case "parse_invoice":
+		return "io", "app.workers.parse_invoice.parse_invoice_task", nil
+	case "anonymize":
+		return "llm", "app.workers.anonymize.anonymize_task", nil
+	case "extract":
+		return "llm", "app.workers.extract.extract_task", nil
+	default:
+		return "", "", fmt.Errorf("pythonworker: unknown module %q", module)
+	}
 }

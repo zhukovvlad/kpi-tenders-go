@@ -54,8 +54,9 @@ func (m *mockStorageClient) Delete(ctx context.Context, storagePath string) erro
 
 // newServerWithMockDocumentService creates a JWT-capable server whose
 // documentService is backed by the supplied MockQuerier.
-func newServerWithMockDocumentService(mq *storemock.MockQuerier) *Server {
-	s := newTestServerWithJWT()
+func newServerWithMockDocumentService(t *testing.T, mq *storemock.MockQuerier) *Server {
+	t.Helper()
+	s := newTestServerWithJWT(t)
 	s.documentService = service.NewDocumentService(mq, nil, s.log)
 	return s
 }
@@ -140,7 +141,7 @@ func TestCreateDocument_Success(t *testing.T) {
 		return p.FileName == "tender.pdf" && p.StoragePath == "tenders/abc.pdf"
 	})).Return(sampleDocument(docID, orgID), nil)
 
-	s := newServerWithMockDocumentService(mq)
+	s := newServerWithMockDocumentService(t, mq)
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
 
@@ -162,7 +163,7 @@ func TestCreateDocument_Success(t *testing.T) {
 func TestCreateDocument_MissingFields_Returns400(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	s := newServerWithMockDocumentService(new(storemock.MockQuerier))
+	s := newServerWithMockDocumentService(t, new(storemock.MockQuerier))
 	userID, orgID := uuid.New(), uuid.New()
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
@@ -181,7 +182,7 @@ func TestCreateDocument_MissingFields_Returns400(t *testing.T) {
 func TestCreateDocument_NoAuth_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	s := newServerWithMockDocumentService(new(storemock.MockQuerier))
+	s := newServerWithMockDocumentService(t, new(storemock.MockQuerier))
 	body := `{"file_name":"f.pdf","storage_path":"tenders/f.pdf"}`
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/documents", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -201,7 +202,7 @@ func TestCreateDocument_DBError_Returns500(t *testing.T) {
 	mq.On("CreateDocument", mock.Anything, mock.Anything).
 		Return(repository.Document{}, errors.New("db error"))
 
-	s := newServerWithMockDocumentService(mq)
+	s := newServerWithMockDocumentService(t, mq)
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
 
@@ -228,7 +229,7 @@ func TestListDocuments_ByOrg_Success(t *testing.T) {
 	mq.On("ListDocumentsByOrganization", mock.Anything, orgID).
 		Return([]repository.Document{sampleDocument(uuid.New(), orgID)}, nil)
 
-	s := newServerWithMockDocumentService(mq)
+	s := newServerWithMockDocumentService(t, mq)
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
 
@@ -249,7 +250,7 @@ func TestListDocuments_InvalidSiteID_Returns400(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	userID, orgID := uuid.New(), uuid.New()
-	s := newServerWithMockDocumentService(new(storemock.MockQuerier))
+	s := newServerWithMockDocumentService(t, new(storemock.MockQuerier))
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
 
@@ -265,7 +266,7 @@ func TestListDocuments_InvalidSiteID_Returns400(t *testing.T) {
 func TestListDocuments_NoAuth_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	s := newServerWithMockDocumentService(new(storemock.MockQuerier))
+	s := newServerWithMockDocumentService(t, new(storemock.MockQuerier))
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/documents", nil)
 
 	w := httptest.NewRecorder()
@@ -288,7 +289,7 @@ func TestGetDocument_Success(t *testing.T) {
 		OrganizationID: orgID,
 	}).Return(sampleDocument(docID, orgID), nil)
 
-	s := newServerWithMockDocumentService(mq)
+	s := newServerWithMockDocumentService(t, mq)
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
 
@@ -315,7 +316,7 @@ func TestGetDocument_NotFound_Returns404(t *testing.T) {
 	mq.On("GetDocument", mock.Anything, mock.Anything).
 		Return(repository.Document{}, pgx.ErrNoRows)
 
-	s := newServerWithMockDocumentService(mq)
+	s := newServerWithMockDocumentService(t, mq)
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
 
@@ -338,7 +339,7 @@ func TestGetDocument_InvalidID_Returns400(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	userID, orgID := uuid.New(), uuid.New()
-	s := newServerWithMockDocumentService(new(storemock.MockQuerier))
+	s := newServerWithMockDocumentService(t, new(storemock.MockQuerier))
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
 
@@ -354,7 +355,7 @@ func TestGetDocument_InvalidID_Returns400(t *testing.T) {
 func TestGetDocument_NoAuth_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	s := newServerWithMockDocumentService(new(storemock.MockQuerier))
+	s := newServerWithMockDocumentService(t, new(storemock.MockQuerier))
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/documents/"+uuid.New().String(), nil)
 
 	w := httptest.NewRecorder()
@@ -377,7 +378,7 @@ func TestDeleteDocument_Success(t *testing.T) {
 		OrganizationID: orgID,
 	}).Return(int64(1), nil)
 
-	s := newServerWithMockDocumentService(mq)
+	s := newServerWithMockDocumentService(t, mq)
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
 
@@ -400,7 +401,7 @@ func TestDeleteDocument_NotFound_Returns404(t *testing.T) {
 	mq := new(storemock.MockQuerier)
 	mq.On("DeleteDocument", mock.Anything, mock.Anything).Return(int64(0), nil)
 
-	s := newServerWithMockDocumentService(mq)
+	s := newServerWithMockDocumentService(t, mq)
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
 
@@ -418,7 +419,7 @@ func TestDeleteDocument_InvalidID_Returns400(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	userID, orgID := uuid.New(), uuid.New()
-	s := newServerWithMockDocumentService(new(storemock.MockQuerier))
+	s := newServerWithMockDocumentService(t, new(storemock.MockQuerier))
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
 
@@ -434,7 +435,7 @@ func TestDeleteDocument_InvalidID_Returns400(t *testing.T) {
 func TestDeleteDocument_NoAuth_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	s := newServerWithMockDocumentService(new(storemock.MockQuerier))
+	s := newServerWithMockDocumentService(t, new(storemock.MockQuerier))
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/api/v1/documents/"+uuid.New().String(), nil)
 
 	w := httptest.NewRecorder()
@@ -450,7 +451,7 @@ func TestDeleteDocument_NoAuth_Returns401(t *testing.T) {
 func TestUploadDocument_NoAuth_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	s := newTestServerWithJWT()
+	s := newTestServerWithJWT(t)
 
 	req := emptyMultipartRequest(t, "/api/v1/documents/upload", "")
 	w := httptest.NewRecorder()
@@ -466,7 +467,7 @@ func TestUploadDocument_StorageNotConfigured_Returns500(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	// newTestServerWithJWT leaves storageClient nil (S3AccessKey is empty).
-	s := newTestServerWithJWT()
+	s := newTestServerWithJWT(t)
 	assert.Nil(t, s.storageClient, "pre-condition: storageClient must be nil")
 
 	userID := uuid.New()
@@ -486,7 +487,7 @@ func TestUploadDocument_StorageNotConfigured_Returns500(t *testing.T) {
 func TestUploadDocument_MissingFile_Returns400(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	s := newTestServerWithJWT()
+	s := newTestServerWithJWT(t)
 	s.storageClient = newTestStorageClient(t)
 
 	userID := uuid.New()
@@ -519,7 +520,7 @@ func TestUploadDocument_HappyPath_Returns201(t *testing.T) {
 	msc.On("Upload", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(storagePath, nil)
 
-	s := newTestServerWithJWT()
+	s := newTestServerWithJWT(t)
 	s.storageClient = msc
 	s.documentService = service.NewDocumentService(mq, msc, s.log)
 
@@ -556,7 +557,7 @@ func TestUploadDocument_DBError_CleansUpS3Object(t *testing.T) {
 		Return(storagePath, nil)
 	msc.On("Delete", mock.Anything, storagePath).Return(nil)
 
-	s := newTestServerWithJWT()
+	s := newTestServerWithJWT(t)
 	s.storageClient = msc
 	s.documentService = service.NewDocumentService(mq, msc, s.log)
 
@@ -580,7 +581,7 @@ func TestUploadDocument_InvalidFileName_Returns400(t *testing.T) {
 
 	msc := new(mockStorageClient) // Upload must NOT be called.
 
-	s := newTestServerWithJWT()
+	s := newTestServerWithJWT(t)
 	s.storageClient = msc
 
 	userID, orgID := uuid.New(), uuid.New()
@@ -603,7 +604,7 @@ func TestUploadDocument_FileTooLarge_Returns400(t *testing.T) {
 
 	msc := new(mockStorageClient) // Upload must NOT be called.
 
-	s := newTestServerWithJWT()
+	s := newTestServerWithJWT(t)
 	s.storageClient = msc
 
 	userID, orgID := uuid.New(), uuid.New()
@@ -649,8 +650,9 @@ func (zeroReader) Read(p []byte) (int, error) {
 
 // newServerWithMockDocumentServiceAndStorage creates a JWT-capable server whose
 // documentService is backed by the supplied MockQuerier and mockStorageClient.
-func newServerWithMockDocumentServiceAndStorage(mq *storemock.MockQuerier, msc *mockStorageClient) *Server {
-	s := newTestServerWithJWT()
+func newServerWithMockDocumentServiceAndStorage(t *testing.T, mq *storemock.MockQuerier, msc *mockStorageClient) *Server {
+	t.Helper()
+	s := newTestServerWithJWT(t)
 	s.documentService = service.NewDocumentService(mq, msc, s.log)
 	return s
 }
@@ -662,7 +664,7 @@ func TestGetDocumentPresignedURL_StorageNil_Returns500(t *testing.T) {
 	docID := uuid.New()
 
 	// documentService is created with nil storage (default in newServerWithMockDocumentService)
-	s := newServerWithMockDocumentService(new(storemock.MockQuerier))
+	s := newServerWithMockDocumentService(t, new(storemock.MockQuerier))
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
 
@@ -681,7 +683,7 @@ func TestGetDocumentPresignedURL_InvalidID_Returns400(t *testing.T) {
 
 	userID, orgID := uuid.New(), uuid.New()
 
-	s := newServerWithMockDocumentService(new(storemock.MockQuerier))
+	s := newServerWithMockDocumentService(t, new(storemock.MockQuerier))
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
 
@@ -706,7 +708,7 @@ func TestGetDocumentPresignedURL_NotFound_Returns404(t *testing.T) {
 		Return(repository.Document{}, pgx.ErrNoRows)
 
 	msc := new(mockStorageClient)
-	s := newServerWithMockDocumentServiceAndStorage(mq, msc)
+	s := newServerWithMockDocumentServiceAndStorage(t, mq, msc)
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
 
@@ -734,7 +736,7 @@ func TestGetDocumentPresignedURL_CrossOrgDoc_Returns404(t *testing.T) {
 		Return(sampleDocument(docID, otherOrgID), nil)
 
 	msc := new(mockStorageClient)
-	s := newServerWithMockDocumentServiceAndStorage(mq, msc)
+	s := newServerWithMockDocumentServiceAndStorage(t, mq, msc)
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
 
@@ -765,7 +767,7 @@ func TestGetDocumentPresignedURL_InlineMode_Returns200(t *testing.T) {
 	msc.On("PresignedURLWithParams", mock.Anything, doc.StoragePath, mock.Anything, url.Values(nil)).
 		Return(presignedURL, nil)
 
-	s := newServerWithMockDocumentServiceAndStorage(mq, msc)
+	s := newServerWithMockDocumentServiceAndStorage(t, mq, msc)
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
 
@@ -803,7 +805,7 @@ func TestGetDocumentPresignedURL_DownloadMode_Returns200(t *testing.T) {
 	msc.On("PresignedURLWithParams", mock.Anything, doc.StoragePath, mock.Anything, expectedParams).
 		Return(presignedURL, nil)
 
-	s := newServerWithMockDocumentServiceAndStorage(mq, msc)
+	s := newServerWithMockDocumentServiceAndStorage(t, mq, msc)
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
 
@@ -830,7 +832,7 @@ func TestGetDocumentPresignedURL_InvalidDownloadParam_Returns400(t *testing.T) {
 
 	mq := new(storemock.MockQuerier)
 	msc := new(mockStorageClient)
-	s := newServerWithMockDocumentServiceAndStorage(mq, msc)
+	s := newServerWithMockDocumentServiceAndStorage(t, mq, msc)
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
 
