@@ -30,6 +30,7 @@ const (
 func newTestServerWithJWT() *Server {
 	cfg := &config.Config{
 		AppEnv:           "local",
+		RedisURL:         "redis://localhost:6379/0",
 		JWTAccessSecret:  testJWTAccessSecret,
 		JWTRefreshSecret: testJWTRefreshSecret,
 		ServiceToken:     testServiceToken,

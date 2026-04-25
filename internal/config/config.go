@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"net/url"
 
 	"github.com/ilyakaznacheev/cleanenv"
 )
@@ -20,8 +19,6 @@ type Config struct {
 	JWTAccessSecret  string `env:"JWT_ACCESS_SECRET"  env-required:"true"`
 	JWTRefreshSecret string `env:"JWT_REFRESH_SECRET" env-required:"true"`
 	ServiceToken     string `env:"SERVICE_TOKEN"      env-required:"true"`
-
-	PythonServiceURL string `env:"PYTHON_SERVICE_URL"`
 
 	S3Endpoint  string `env:"S3_ENDPOINT"   env-default:"localhost:9000"`
 	S3Region    string `env:"S3_REGION"     env-default:"us-east-1"`
@@ -60,12 +57,6 @@ func (c *Config) validate() error {
 	}
 	if len(c.ServiceToken) < minSecretLen {
 		return fmt.Errorf("SERVICE_TOKEN must be at least %d characters", minSecretLen)
-	}
-	if c.PythonServiceURL != "" {
-		pythonURL, err := url.Parse(c.PythonServiceURL)
-		if err != nil || !pythonURL.IsAbs() || (pythonURL.Scheme != "http" && pythonURL.Scheme != "https") || pythonURL.Host == "" || pythonURL.Fragment != "" {
-			return fmt.Errorf("PYTHON_SERVICE_URL must be an absolute http/https URL with a host and no fragment: %q", c.PythonServiceURL)
-		}
 	}
 	return nil
 }

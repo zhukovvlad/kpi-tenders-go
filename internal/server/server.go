@@ -2,6 +2,7 @@ package server
 
 import (
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -80,24 +81,17 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 		documentService:         service.NewDocumentService(db, docStorage, log),
 	}
 
-	// pythonClient is shared between documentTaskService and workerService so
-	// both use the same HTTP client instance. nil is passed when the URL is
-	// absent; DocumentTaskService is nil-safe (skips trigger), WorkerService is
-	// left nil entirely (callback endpoint returns 500).
-	var pythonClient *pythonworker.Client
-	if cfg.PythonServiceURL != "" {
-		pythonClient = pythonworker.New(cfg.PythonServiceURL)
-	} else {
-		log.Warn("python: PYTHON_SERVICE_URL not set — task auto-trigger and worker callback endpoint disabled")
+	// pythonClient publishes Celery tasks directly to Redis, shared by both
+	// documentTaskService (initial trigger) and workerService (chained tasks).
+	// Redis is mandatory — if the URL is invalid the server exits immediately.
+	pythonClient, err := pythonworker.New(cfg.RedisURL)
+	if err != nil {
+		log.Error("redis: failed to init publisher", "err", err)
+		os.Exit(1)
 	}
 
 	srv.documentTaskService = service.NewDocumentTaskService(db, pythonClient, log)
-
-	// workerService requires a valid pythonClient. Leave it nil when the URL is
-	// absent so the callback endpoint returns 500 rather than panicking.
-	if pythonClient != nil {
-		srv.workerService = service.NewWorkerService(db, pythonClient, log)
-	}
+	srv.workerService = service.NewWorkerService(db, pythonClient, log)
 	if sc != nil {
 		// storageClient is set after struct creation to avoid storing a
 		// (*storage.Client)(nil) as a non-nil interface value.

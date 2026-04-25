@@ -14,7 +14,7 @@ import (
 )
 
 func newTestServer() *Server {
-	cfg := &config.Config{AppEnv: "local", AppPort: "8080"}
+	cfg := &config.Config{AppEnv: "local", AppPort: "8080", RedisURL: "redis://localhost:6379/0"}
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	return NewServer(cfg, log, nil)
 }
