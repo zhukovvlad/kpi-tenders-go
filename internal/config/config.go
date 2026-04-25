@@ -60,8 +60,11 @@ func (c *Config) validate() error {
 		return fmt.Errorf("SERVICE_TOKEN must be at least %d characters", minSecretLen)
 	}
 	redisURL, err := url.Parse(c.RedisURL)
-	if err != nil || (redisURL.Scheme != "redis" && redisURL.Scheme != "rediss") || redisURL.Host == "" {
-		return fmt.Errorf("REDIS_URL must be a valid redis:// or rediss:// URL: %q", c.RedisURL)
+	if err != nil {
+		return fmt.Errorf("REDIS_URL is not a valid URL: %w", err)
+	}
+	if (redisURL.Scheme != "redis" && redisURL.Scheme != "rediss") || redisURL.Host == "" {
+		return fmt.Errorf("REDIS_URL must be a valid redis:// or rediss:// URL (got scheme=%q host=%q)", redisURL.Scheme, redisURL.Host)
 	}
 	return nil
 }

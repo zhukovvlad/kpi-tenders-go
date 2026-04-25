@@ -26,7 +26,7 @@ func TestBuildCeleryMessage_FieldsMatchRequest(t *testing.T) {
 	queue, taskName, err := resolveModule(req.ModuleName)
 	require.NoError(t, err)
 
-	msgBytes, err := buildCeleryMessage(req, queue, taskName)
+	msgBytes, err := buildCeleryMessage(req, queue, taskName, "reply-uuid", "delivery-uuid")
 	require.NoError(t, err)
 
 	var msg map[string]any
@@ -46,6 +46,7 @@ func TestBuildCeleryMessage_FieldsMatchRequest(t *testing.T) {
 	require.True(t, ok, "properties must be a JSON object")
 
 	assert.Equal(t, req.TaskID, props["correlation_id"], "correlation_id must equal req.TaskID")
+	assert.Equal(t, "reply-uuid", props["reply_to"], "reply_to must equal the value passed by caller")
 	assert.Equal(t, float64(2), props["delivery_mode"], "delivery_mode must be 2 (persistent)")
 
 	di, ok := props["delivery_info"].(map[string]any)
@@ -99,7 +100,7 @@ func TestBuildCeleryMessage_AllModules(t *testing.T) {
 			assert.Equal(t, tc.expectedTask, taskName)
 
 			req.ModuleName = tc.module
-			msgBytes, err := buildCeleryMessage(req, queue, taskName)
+			msgBytes, err := buildCeleryMessage(req, queue, taskName, "reply-uuid", "delivery-uuid")
 			require.NoError(t, err)
 
 			var msg map[string]any

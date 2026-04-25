@@ -106,7 +106,7 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) (*Serve
 // Close releases resources held by the server (Redis connection pool).
 // Call this during graceful shutdown after the HTTP server has drained.
 func (s *Server) Close() error {
-	if s == nil {
+	if s == nil || s.pythonClient == nil {
 		return nil
 	}
 	return s.pythonClient.Close()

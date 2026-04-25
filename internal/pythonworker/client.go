@@ -59,7 +59,7 @@ func (p *Publisher) Process(ctx context.Context, req ProcessRequest) error {
 		return err
 	}
 
-	msgJSON, err := buildCeleryMessage(req, queue, taskName)
+	msgJSON, err := buildCeleryMessage(req, queue, taskName, uuid.New().String(), uuid.New().String())
 	if err != nil {
 		return err
 	}
@@ -71,9 +71,10 @@ func (p *Publisher) Process(ctx context.Context, req ProcessRequest) error {
 }
 
 // buildCeleryMessage constructs a Celery v2 protocol message for the given
-// request and resolved queue/taskName. It is a pure function — no I/O, no
-// random UUIDs for the task identity — making it straightforward to unit test.
-func buildCeleryMessage(req ProcessRequest, queue, taskName string) ([]byte, error) {
+// request and resolved queue/taskName. The caller supplies replyTo and
+// deliveryTag (unique per-message UUIDs) so that the function itself is
+// deterministic and straightforward to unit test.
+func buildCeleryMessage(req ProcessRequest, queue, taskName, replyTo, deliveryTag string) ([]byte, error) {
 	// Celery protocol v2 body: [args, kwargs, embed]
 	bodyArgs := []any{
 		[]any{req.TaskID, req.DocumentID, req.StoragePath},
@@ -113,7 +114,7 @@ func buildCeleryMessage(req ProcessRequest, queue, taskName string) ([]byte, err
 		},
 		"properties": map[string]any{
 			"correlation_id": req.TaskID,
-			"reply_to":       uuid.New().String(),
+			"reply_to":       replyTo,
 			"delivery_mode":  2,
 			"delivery_info": map[string]any{
 				"exchange":    "",
@@ -121,7 +122,7 @@ func buildCeleryMessage(req ProcessRequest, queue, taskName string) ([]byte, err
 			},
 			"priority":      0,
 			"body_encoding": "base64",
-			"delivery_tag":  uuid.New().String(),
+			"delivery_tag":  deliveryTag,
 		},
 	}
 
