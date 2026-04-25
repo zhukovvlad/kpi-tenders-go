@@ -13,8 +13,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"go-kpi-tenders/internal/config"
-	"go-kpi-tenders/pkg/logging"
 	"go-kpi-tenders/internal/server"
+	"go-kpi-tenders/pkg/logging"
 )
 
 func main() {
@@ -48,7 +48,11 @@ func main() {
 	log.Info("database connected")
 
 	// ── Server ──────────────────────────────────────
-	srv := server.NewServer(cfg, log, pool)
+	srv, err := server.NewServer(cfg, log, pool)
+	if err != nil {
+		log.Error("failed to init server", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
 
 	httpSrv := &http.Server{
 		Addr:         ":" + cfg.AppPort,

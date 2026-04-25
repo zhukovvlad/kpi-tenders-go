@@ -16,7 +16,11 @@ import (
 func newTestServer() *Server {
 	cfg := &config.Config{AppEnv: "local", AppPort: "8080", RedisURL: "redis://localhost:6379/0"}
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	return NewServer(cfg, log, nil)
+	s, err := NewServer(cfg, log, nil)
+	if err != nil {
+		panic(err)
+	}
+	return s
 }
 
 func TestHealthCheck(t *testing.T) {

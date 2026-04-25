@@ -1,8 +1,8 @@
 package server
 
 import (
+	"fmt"
 	"log/slog"
-	"os"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -31,7 +31,7 @@ type Server struct {
 	workerService           *service.WorkerService
 }
 
-func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server {
+func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) (*Server, error) {
 	// pool may be nil in unit tests that only exercise routing/middleware.
 	// In that case services receive a nil querier/store, which is safe as long
 	// as no handler that reaches the service layer is called in those tests.
@@ -83,11 +83,10 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 
 	// pythonClient publishes Celery tasks directly to Redis, shared by both
 	// documentTaskService (initial trigger) and workerService (chained tasks).
-	// Redis is mandatory — if the URL is invalid the server exits immediately.
+	// Redis is mandatory — invalid URL is a misconfiguration, caller must handle.
 	pythonClient, err := pythonworker.New(cfg.RedisURL)
 	if err != nil {
-		log.Error("redis: failed to init publisher", "err", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("server: init redis publisher: %w", err)
 	}
 
 	srv.documentTaskService = service.NewDocumentTaskService(db, pythonClient, log)
@@ -99,7 +98,7 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 	}
 
 	srv.setupRouter()
-	return srv
+	return srv, nil
 }
 
 func (s *Server) setupRouter() {

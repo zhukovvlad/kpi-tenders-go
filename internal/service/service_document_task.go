@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -40,8 +41,13 @@ func (s *DocumentTaskService) Create(ctx context.Context, params repository.Crea
 		return task, nil
 	}
 
+	// Detach from the request context so a client disconnect does not cancel
+	// the best-effort trigger. Apply a short timeout to avoid stalling.
+	triggerCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
 	// Fetch the document to get storage_path for the Python worker trigger.
-	doc, err := s.repo.GetDocument(ctx, repository.GetDocumentParams{
+	doc, err := s.repo.GetDocument(triggerCtx, repository.GetDocumentParams{
 		ID:             params.DocumentID,
 		OrganizationID: params.OrganizationID,
 	})
@@ -51,7 +57,7 @@ func (s *DocumentTaskService) Create(ctx context.Context, params repository.Crea
 		return task, nil
 	}
 
-	if err := s.pythonClient.Process(ctx, pythonworker.ProcessRequest{
+	if err := s.pythonClient.Process(triggerCtx, pythonworker.ProcessRequest{
 		TaskID:      task.ID.String(),
 		DocumentID:  task.DocumentID.String(),
 		ModuleName:  task.ModuleName,

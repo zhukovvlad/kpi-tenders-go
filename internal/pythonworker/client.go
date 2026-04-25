@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -76,7 +77,7 @@ func (p *Publisher) Process(ctx context.Context, req ProcessRequest) error {
 			"timelimit":   []any{nil, nil},
 			"root_id":     taskUUID,
 			"parent_id":   nil,
-			"argsrepr":    fmt.Sprintf("('%s', '%s', '%s')", req.TaskID, req.DocumentID, req.StoragePath),
+			"argsrepr":    fmt.Sprintf("(%s, %s, %s)", strconv.Quote(req.TaskID), strconv.Quote(req.DocumentID), strconv.Quote(req.StoragePath)),
 			"kwargsrepr":  "{}",
 			"origin":      "go-kpi-tenders",
 		},

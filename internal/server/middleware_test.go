@@ -35,7 +35,11 @@ func newTestServerWithJWT() *Server {
 		JWTRefreshSecret: testJWTRefreshSecret,
 		ServiceToken:     testServiceToken,
 	}
-	return NewServer(cfg, slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError})), nil)
+	s, err := NewServer(cfg, slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError})), nil)
+	if err != nil {
+		panic(err)
+	}
+	return s
 }
 
 // generateExpiredToken builds a syntactically valid but already-expired JWT.
