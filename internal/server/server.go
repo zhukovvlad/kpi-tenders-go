@@ -22,6 +22,7 @@ type Server struct {
 	store                   store.Store
 	storageClient           storageClient // nil when S3 not configured
 	router                  *gin.Engine
+	pythonClient            *pythonworker.Publisher // closed on server shutdown
 	authService             *service.AuthService
 	organizationService     *service.OrganizationService
 	userService             *service.UserService
@@ -89,6 +90,7 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) (*Serve
 		return nil, fmt.Errorf("server: init redis publisher: %w", err)
 	}
 
+	srv.pythonClient = pythonClient
 	srv.documentTaskService = service.NewDocumentTaskService(db, pythonClient, log)
 	srv.workerService = service.NewWorkerService(db, pythonClient, log)
 	if sc != nil {
@@ -99,6 +101,12 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) (*Serve
 
 	srv.setupRouter()
 	return srv, nil
+}
+
+// Close releases resources held by the server (Redis connection pool).
+// Call this during graceful shutdown after the HTTP server has drained.
+func (s *Server) Close() error {
+	return s.pythonClient.Close()
 }
 
 func (s *Server) setupRouter() {

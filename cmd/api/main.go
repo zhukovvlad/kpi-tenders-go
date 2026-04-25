@@ -50,7 +50,7 @@ func main() {
 	// ── Server ──────────────────────────────────────
 	srv, err := server.NewServer(cfg, log, pool)
 	if err != nil {
-		log.Error("failed to init server", slog.String("error", err.Error()))
+		log.Error("failed to init server", "err", err)
 		os.Exit(1)
 	}
 
@@ -84,6 +84,10 @@ func main() {
 	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
 		log.Error("forced shutdown", slog.String("error", err.Error()))
 		os.Exit(1)
+	}
+
+	if err := srv.Close(); err != nil {
+		log.Error("redis: failed to close publisher", "err", err)
 	}
 
 	log.Info("server stopped gracefully")

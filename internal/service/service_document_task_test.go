@@ -104,6 +104,24 @@ func TestDocumentTaskService_Create_DBError_ReturnsInternalError(t *testing.T) {
 	mq.AssertExpectations(t)
 }
 
+func TestDocumentTaskService_Create_UnknownModule_ReturnsValidationFailed(t *testing.T) {
+	mq := new(storemock.MockQuerier)
+	svc := NewDocumentTaskService(mq, nil, newTestLogger())
+
+	_, err := svc.Create(context.Background(), repository.CreateDocumentTaskParams{
+		DocumentID:     uuid.New(),
+		ModuleName:     "totally_unknown",
+		OrganizationID: uuid.New(),
+	})
+
+	require.Error(t, err)
+	var appErr *errs.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, errs.CodeValidationFailed, appErr.Code)
+	// INSERT must NOT happen for unsupported modules.
+	mq.AssertNotCalled(t, "CreateDocumentTask")
+}
+
 func TestDocumentTaskService_Create_TriggersPython_WithCorrectFields(t *testing.T) {
 	mq := new(storemock.MockQuerier)
 	pc := new(mockPythonClient)

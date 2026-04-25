@@ -26,6 +26,12 @@ func NewDocumentTaskService(repo repository.Querier, pythonClient workerPythonCl
 }
 
 func (s *DocumentTaskService) Create(ctx context.Context, params repository.CreateDocumentTaskParams) (repository.DocumentTask, error) {
+	// Validate before INSERT so callers get a clear validation_failed error
+	// instead of a persisted task that can never be queued.
+	if err := pythonworker.ValidateModule(params.ModuleName); err != nil {
+		return repository.DocumentTask{}, errs.New(errs.CodeValidationFailed, "unsupported module", err)
+	}
+
 	task, err := s.repo.CreateDocumentTask(ctx, params)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

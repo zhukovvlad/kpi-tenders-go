@@ -27,6 +27,23 @@ func New(redisURL string) (*Publisher, error) {
 	return &Publisher{rdb: redis.NewClient(opts)}, nil
 }
 
+// Close releases resources held by the underlying Redis client.
+// Call this after graceful HTTP shutdown to drain the connection pool.
+func (p *Publisher) Close() error {
+	if p == nil || p.rdb == nil {
+		return nil
+	}
+	return p.rdb.Close()
+}
+
+// ValidateModule returns a non-nil error when the module name is not supported.
+// Use this before persisting a task so callers get a clear validation error
+// instead of a successfully stored task that can never be queued.
+func ValidateModule(name string) error {
+	_, _, err := resolveModule(name)
+	return err
+}
+
 // ProcessRequest describes the Celery task payload.
 type ProcessRequest struct {
 	TaskID      string
