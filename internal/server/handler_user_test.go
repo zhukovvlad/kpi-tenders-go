@@ -25,8 +25,9 @@ import (
 // userService with one backed by the supplied MockQuerier.
 // The server's own logger (configured in newTestServerWithJWT) is reused so
 // tests share a single log configuration.
-func newServerWithMockUserService(mq *storemock.MockQuerier) *Server {
-	s := newTestServerWithJWT()
+func newServerWithMockUserService(t *testing.T, mq *storemock.MockQuerier) *Server {
+	t.Helper()
+	s := newTestServerWithJWT(t)
 	s.userService = service.NewUserService(mq, s.log)
 	return s
 }
@@ -52,7 +53,7 @@ func TestGetMe_Success(t *testing.T) {
 		IsActive:       true,
 	}, nil)
 
-	s := newServerWithMockUserService(mq)
+	s := newServerWithMockUserService(t, mq)
 
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "member")
 	require.NoError(t, err)
@@ -80,7 +81,7 @@ func TestGetMe_Success(t *testing.T) {
 func TestGetMe_NoToken_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	s := newServerWithMockUserService(new(storemock.MockQuerier))
+	s := newServerWithMockUserService(t, new(storemock.MockQuerier))
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/auth/me", nil)
 	w := httptest.NewRecorder()
@@ -99,7 +100,7 @@ func TestGetMe_UserNotFound_Returns404(t *testing.T) {
 	mq.On("GetUserByIDAndOrg", mock.Anything, mock.Anything).
 		Return(repository.GetUserByIDAndOrgRow{}, pgx.ErrNoRows)
 
-	s := newServerWithMockUserService(mq)
+	s := newServerWithMockUserService(t, mq)
 
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "member")
 	require.NoError(t, err)
@@ -130,7 +131,7 @@ func TestGetMe_InactiveUser_Returns401(t *testing.T) {
 	mq.On("GetUserByIDAndOrg", mock.Anything, mock.Anything).
 		Return(repository.GetUserByIDAndOrgRow{ID: userID, IsActive: false}, nil)
 
-	s := newServerWithMockUserService(mq)
+	s := newServerWithMockUserService(t, mq)
 
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
 	require.NoError(t, err)
@@ -162,7 +163,7 @@ func TestGetMe_DBError_Returns500(t *testing.T) {
 	mq.On("GetUserByIDAndOrg", mock.Anything, mock.Anything).
 		Return(repository.GetUserByIDAndOrgRow{}, errors.New("connection reset"))
 
-	s := newServerWithMockUserService(mq)
+	s := newServerWithMockUserService(t, mq)
 
 	access, _, err := s.authService.GenerateTokens(userID, orgID, "member")
 	require.NoError(t, err)

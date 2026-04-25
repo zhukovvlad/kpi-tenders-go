@@ -83,6 +83,7 @@ func main() {
 
 	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
 		log.Error("forced shutdown", slog.String("error", err.Error()))
+		_ = srv.Close()
 		os.Exit(1)
 	}
 

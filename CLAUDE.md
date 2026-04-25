@@ -187,7 +187,7 @@ make gen-secrets      # сгенерировать JWT/service секреты
 ## Конфигурация
 
 Загружается из `.env` через `cleanenv`. Ключевые переменные:
-`APP_ENV`, `APP_PORT`, `DB_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `SERVICE_TOKEN`, `PYTHON_SERVICE_URL`, `S3_*`.
+`APP_ENV`, `APP_PORT`, `DB_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `SERVICE_TOKEN`, `S3_*`.
 
 ## Frontend
 
