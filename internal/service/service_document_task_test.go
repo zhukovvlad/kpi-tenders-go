@@ -30,10 +30,6 @@ func TestDocumentTaskService_Create_Success(t *testing.T) {
 	expected := repository.DocumentTask{ID: uuid.New(), ModuleName: "convert"}
 
 	mq.On("CreateDocumentTask", mock.Anything, params).Return(expected, nil)
-	mq.On("GetDocument", mock.Anything, repository.GetDocumentParams{
-		ID:             params.DocumentID,
-		OrganizationID: params.OrganizationID,
-	}).Return(repository.Document{StoragePath: "docs/file.pdf"}, nil)
 
 	task, err := svc.Create(context.Background(), params)
 

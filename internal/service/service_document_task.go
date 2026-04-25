@@ -36,6 +36,10 @@ func (s *DocumentTaskService) Create(ctx context.Context, params repository.Crea
 		return repository.DocumentTask{}, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
 
+	if s.pythonClient == nil {
+		return task, nil
+	}
+
 	// Fetch the document to get storage_path for the Python worker trigger.
 	doc, err := s.repo.GetDocument(ctx, repository.GetDocumentParams{
 		ID:             params.DocumentID,
@@ -43,20 +47,18 @@ func (s *DocumentTaskService) Create(ctx context.Context, params repository.Crea
 	})
 	if err != nil {
 		// Task is already persisted — log and return without triggering Python.
-		s.log.Error("documentTask: failed to fetch document for trigger", "err", err)
+		s.log.Error("documentTask: failed to fetch document for trigger", "task_id", task.ID, "document_id", params.DocumentID, "err", err)
 		return task, nil
 	}
 
-	if s.pythonClient != nil {
-		if err := s.pythonClient.Process(ctx, pythonworker.ProcessRequest{
-			TaskID:      task.ID.String(),
-			DocumentID:  task.DocumentID.String(),
-			ModuleName:  task.ModuleName,
-			StoragePath: doc.StoragePath,
-		}); err != nil {
-			// Best-effort: task is already in DB, caller can retry.
-			s.log.Error("documentTask: failed to trigger python worker", "task_id", task.ID, "err", err)
-		}
+	if err := s.pythonClient.Process(ctx, pythonworker.ProcessRequest{
+		TaskID:      task.ID.String(),
+		DocumentID:  task.DocumentID.String(),
+		ModuleName:  task.ModuleName,
+		StoragePath: doc.StoragePath,
+	}); err != nil {
+		// Best-effort: task is already in DB, caller can retry.
+		s.log.Error("documentTask: failed to trigger python worker", "task_id", task.ID, "err", err)
 	}
 
 	return task, nil

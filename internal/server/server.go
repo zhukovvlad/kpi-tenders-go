@@ -82,12 +82,13 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) *Server
 
 	// pythonClient is shared between documentTaskService and workerService so
 	// both use the same HTTP client instance. nil is passed when the URL is
-	// absent; both services guard the nil case internally.
+	// absent; DocumentTaskService is nil-safe (skips trigger), WorkerService is
+	// left nil entirely (callback endpoint returns 500).
 	var pythonClient *pythonworker.Client
 	if cfg.PythonServiceURL != "" {
 		pythonClient = pythonworker.New(cfg.PythonServiceURL)
 	} else {
-		log.Warn("worker: PYTHON_SERVICE_URL not set — worker callback endpoint disabled")
+		log.Warn("python: PYTHON_SERVICE_URL not set — task auto-trigger and worker callback endpoint disabled")
 	}
 
 	srv.documentTaskService = service.NewDocumentTaskService(db, pythonClient, log)
