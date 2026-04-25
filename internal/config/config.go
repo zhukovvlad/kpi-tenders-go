@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 
 	"github.com/ilyakaznacheev/cleanenv"
 )
@@ -57,6 +58,10 @@ func (c *Config) validate() error {
 	}
 	if len(c.ServiceToken) < minSecretLen {
 		return fmt.Errorf("SERVICE_TOKEN must be at least %d characters", minSecretLen)
+	}
+	redisURL, err := url.Parse(c.RedisURL)
+	if err != nil || (redisURL.Scheme != "redis" && redisURL.Scheme != "rediss") || redisURL.Host == "" {
+		return fmt.Errorf("REDIS_URL must be a valid redis:// or rediss:// URL: %q", c.RedisURL)
 	}
 	return nil
 }

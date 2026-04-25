@@ -149,6 +149,7 @@ internal/server/middleware_test.go                  — AuthMiddleware, ServiceB
 internal/server/handler_user_test.go                — GET /api/v1/auth/me
 internal/server/handler_document_test.go            — POST /api/v1/documents/upload
 internal/storage/client_test.go                     — PresignedURL, Upload, Delete error wrapping + TestSafeExt (10 кейсов)
+internal/pythonworker/client_test.go                — buildCeleryMessage: поля, маршрутизация модулей, неизвестный модуль (3 кейса)
 ```
 
 **Паттерн:**

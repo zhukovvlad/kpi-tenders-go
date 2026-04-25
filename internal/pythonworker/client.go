@@ -59,8 +59,21 @@ func (p *Publisher) Process(ctx context.Context, req ProcessRequest) error {
 		return err
 	}
 
-	taskUUID := uuid.New().String()
+	msgJSON, err := buildCeleryMessage(req, queue, taskName)
+	if err != nil {
+		return err
+	}
 
+	if err := p.rdb.LPush(ctx, queue, string(msgJSON)).Err(); err != nil {
+		return fmt.Errorf("pythonworker: lpush %s: %w", queue, err)
+	}
+	return nil
+}
+
+// buildCeleryMessage constructs a Celery v2 protocol message for the given
+// request and resolved queue/taskName. It is a pure function — no I/O, no
+// random UUIDs for the task identity — making it straightforward to unit test.
+func buildCeleryMessage(req ProcessRequest, queue, taskName string) ([]byte, error) {
 	// Celery protocol v2 body: [args, kwargs, embed]
 	bodyArgs := []any{
 		[]any{req.TaskID, req.DocumentID, req.StoragePath},
@@ -74,7 +87,7 @@ func (p *Publisher) Process(ctx context.Context, req ProcessRequest) error {
 	}
 	bodyJSON, err := json.Marshal(bodyArgs)
 	if err != nil {
-		return fmt.Errorf("pythonworker: marshal body: %w", err)
+		return nil, fmt.Errorf("pythonworker: marshal body: %w", err)
 	}
 
 	msg := map[string]any{
@@ -84,7 +97,7 @@ func (p *Publisher) Process(ctx context.Context, req ProcessRequest) error {
 		"headers": map[string]any{
 			"lang":        "py",
 			"task":        taskName,
-			"id":          taskUUID,
+			"id":          req.TaskID,
 			"shadow":      nil,
 			"eta":         nil,
 			"expires":     nil,
@@ -92,14 +105,14 @@ func (p *Publisher) Process(ctx context.Context, req ProcessRequest) error {
 			"group_index": nil,
 			"retries":     0,
 			"timelimit":   []any{nil, nil},
-			"root_id":     taskUUID,
+			"root_id":     req.TaskID,
 			"parent_id":   nil,
 			"argsrepr":    fmt.Sprintf("(%s, %s, %s)", strconv.Quote(req.TaskID), strconv.Quote(req.DocumentID), strconv.Quote(req.StoragePath)),
 			"kwargsrepr":  "{}",
 			"origin":      "go-kpi-tenders",
 		},
 		"properties": map[string]any{
-			"correlation_id": taskUUID,
+			"correlation_id": req.TaskID,
 			"reply_to":       uuid.New().String(),
 			"delivery_mode":  2,
 			"delivery_info": map[string]any{
@@ -114,13 +127,9 @@ func (p *Publisher) Process(ctx context.Context, req ProcessRequest) error {
 
 	msgJSON, err := json.Marshal(msg)
 	if err != nil {
-		return fmt.Errorf("pythonworker: marshal message: %w", err)
+		return nil, fmt.Errorf("pythonworker: marshal message: %w", err)
 	}
-
-	if err := p.rdb.LPush(ctx, queue, string(msgJSON)).Err(); err != nil {
-		return fmt.Errorf("pythonworker: lpush %s: %w", queue, err)
-	}
-	return nil
+	return msgJSON, nil
 }
 
 // resolveModule maps a module name to its Redis queue and Celery task name.
