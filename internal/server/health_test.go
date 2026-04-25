@@ -19,7 +19,7 @@ func newTestServer(t *testing.T) *Server {
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	s, err := NewServer(cfg, log, nil)
 	if err != nil {
-		panic(err)
+		t.Fatalf("NewServer failed: %v", err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
 	return s

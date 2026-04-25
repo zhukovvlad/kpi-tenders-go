@@ -37,9 +37,7 @@ func newTestServerWithJWT(t *testing.T) *Server {
 		ServiceToken:     testServiceToken,
 	}
 	s, err := NewServer(cfg, slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError})), nil)
-	if err != nil {
-		panic(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 	return s
 }

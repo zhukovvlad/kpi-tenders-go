@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -29,7 +30,7 @@ func (s *DocumentTaskService) Create(ctx context.Context, params repository.Crea
 	// Validate before INSERT so callers get a clear validation_failed error
 	// instead of a persisted task that can never be queued.
 	if err := pythonworker.ValidateModule(params.ModuleName); err != nil {
-		return repository.DocumentTask{}, errs.New(errs.CodeValidationFailed, "unsupported module: "+params.ModuleName, err)
+		return repository.DocumentTask{}, errs.New(errs.CodeValidationFailed, fmt.Sprintf("unsupported module: %q", params.ModuleName), err)
 	}
 
 	task, err := s.repo.CreateDocumentTask(ctx, params)
