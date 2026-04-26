@@ -24,6 +24,8 @@ type Config struct {
 	WatchdogThreshold time.Duration `env:"WATCHDOG_THRESHOLD" env-default:"10m"`
 	// Watchdog: max number of re-queue attempts before permanently failing the task.
 	WatchdogMaxRetries int `env:"WATCHDOG_MAX_RETRIES" env-default:"5"`
+	// Watchdog: max number of stale tasks fetched per scan cycle.
+	WatchdogBatchSize int `env:"WATCHDOG_BATCH_SIZE" env-default:"100"`
 
 	JWTAccessSecret  string `env:"JWT_ACCESS_SECRET"  env-required:"true"`
 	JWTRefreshSecret string `env:"JWT_REFRESH_SECRET" env-required:"true"`
@@ -82,6 +84,9 @@ func (c *Config) validate() error {
 	}
 	if c.WatchdogMaxRetries < 0 {
 		return fmt.Errorf("WATCHDOG_MAX_RETRIES must be >= 0 (got %d)", c.WatchdogMaxRetries)
+	}
+	if c.WatchdogBatchSize <= 0 {
+		return fmt.Errorf("WATCHDOG_BATCH_SIZE must be > 0 (got %d)", c.WatchdogBatchSize)
 	}
 	return nil
 }

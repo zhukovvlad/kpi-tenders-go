@@ -32,6 +32,9 @@ type CreateDocumentTaskParams struct {
 // Public API: only 'convert' tasks may be created here; the input is always the
 // original document's storage_path. Other modules (e.g. anonymize) read a derived
 // artifact path and must be created internally via CreateDocumentTaskInternal.
+// Callers MUST map pgx.ErrNoRows to 404/403: the INSERT ... SELECT returns no rows
+// when the document is missing or belongs to another organization. This is distinct
+// from unique-constraint violations on (document_id, module_name).
 func (q *Queries) CreateDocumentTask(ctx context.Context, arg CreateDocumentTaskParams) (DocumentTask, error) {
 	row := q.db.QueryRow(ctx, createDocumentTask, arg.DocumentID, arg.ModuleName, arg.OrganizationID)
 	var i DocumentTask
@@ -148,7 +151,13 @@ FROM document_tasks dt
 WHERE dt.status IN ('pending', 'processing')
   AND dt.updated_at < $1
 ORDER BY dt.updated_at ASC
+LIMIT $2
 `
+
+type ListStaleTasksParams struct {
+	UpdatedAt time.Time `json:"updated_at"`
+	Limit     int32     `json:"limit"`
+}
 
 type ListStaleTasksRow struct {
 	ID               uuid.UUID `json:"id"`
@@ -165,8 +174,8 @@ type ListStaleTasksRow struct {
 // Covers two failure modes: worker died mid-processing (processing) and
 // Redis message was lost before worker picked it up (pending).
 // No org-check; caller must be trusted (watchdog goroutine only).
-func (q *Queries) ListStaleTasks(ctx context.Context, updatedAt time.Time) ([]ListStaleTasksRow, error) {
-	rows, err := q.db.Query(ctx, listStaleTasks, updatedAt)
+func (q *Queries) ListStaleTasks(ctx context.Context, arg ListStaleTasksParams) ([]ListStaleTasksRow, error) {
+	rows, err := q.db.Query(ctx, listStaleTasks, arg.UpdatedAt, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +248,7 @@ func (q *Queries) ListTasksByDocument(ctx context.Context, arg ListTasksByDocume
 const markStaleTaskFailed = `-- name: MarkStaleTaskFailed :execrows
 UPDATE document_tasks
 SET status        = 'failed',
-    error_message = 'stale task: exceeded max retry attempts',
+    error_message = $3,
     updated_at    = now()
 WHERE id        = $1
   AND status IN ('pending', 'processing')
@@ -247,14 +256,15 @@ WHERE id        = $1
 `
 
 type MarkStaleTaskFailedParams struct {
-	ID        uuid.UUID `json:"id"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID           uuid.UUID   `json:"id"`
+	UpdatedAt    time.Time   `json:"updated_at"`
+	ErrorMessage pgtype.Text `json:"error_message"`
 }
 
 // Watchdog: permanently fails a task that has exhausted all retry attempts.
 // updated_at < $2 prevents failing a task that was refreshed after ListStaleTasks.
 func (q *Queries) MarkStaleTaskFailed(ctx context.Context, arg MarkStaleTaskFailedParams) (int64, error) {
-	result, err := q.db.Exec(ctx, markStaleTaskFailed, arg.ID, arg.UpdatedAt)
+	result, err := q.db.Exec(ctx, markStaleTaskFailed, arg.ID, arg.UpdatedAt, arg.ErrorMessage)
 	if err != nil {
 		return 0, err
 	}
@@ -263,9 +273,11 @@ func (q *Queries) MarkStaleTaskFailed(ctx context.Context, arg MarkStaleTaskFail
 
 const markStaleTaskPending = `-- name: MarkStaleTaskPending :execrows
 UPDATE document_tasks
-SET status      = 'pending',
-    retry_count = retry_count + 1,
-    updated_at  = now()
+SET status         = 'pending',
+    retry_count    = retry_count + 1,
+    celery_task_id = NULL,
+    error_message  = NULL,
+    updated_at     = now()
 WHERE id        = $1
   AND status IN ('pending', 'processing')
   AND updated_at < $2
@@ -307,6 +319,41 @@ type UpdateDocumentTaskStatusParams struct {
 
 func (q *Queries) UpdateDocumentTaskStatus(ctx context.Context, arg UpdateDocumentTaskStatusParams) (DocumentTask, error) {
 	row := q.db.QueryRow(ctx, updateDocumentTaskStatus, arg.ID, arg.OrganizationID, arg.Status)
+	var i DocumentTask
+	err := row.Scan(
+		&i.ID,
+		&i.DocumentID,
+		&i.ModuleName,
+		&i.Status,
+		&i.CeleryTaskID,
+		&i.ResultPayload,
+		&i.ErrorMessage,
+		&i.RetryCount,
+		&i.InputStoragePath,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateTaskResultPayload = `-- name: UpdateTaskResultPayload :one
+UPDATE document_tasks
+SET result_payload = $2,
+    updated_at     = now()
+WHERE id = $1
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, retry_count, input_storage_path, created_at, updated_at
+`
+
+type UpdateTaskResultPayloadParams struct {
+	ID            uuid.UUID       `json:"id"`
+	ResultPayload json.RawMessage `json:"result_payload"`
+}
+
+// Updates result_payload only; does not change status, celery_task_id, or error_message.
+// Used by WorkerService after registering artifacts so updated_at is touched
+// only for payload changes, not for status semantics.
+func (q *Queries) UpdateTaskResultPayload(ctx context.Context, arg UpdateTaskResultPayloadParams) (DocumentTask, error) {
+	row := q.db.QueryRow(ctx, updateTaskResultPayload, arg.ID, arg.ResultPayload)
 	var i DocumentTask
 	err := row.Scan(
 		&i.ID,

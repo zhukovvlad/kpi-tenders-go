@@ -99,20 +99,14 @@ func (s *WorkerService) HandleStatusUpdate(ctx context.Context, taskID uuid.UUID
 			s.log.Error("worker: failed to trigger anonymize", "task_id", task.ID, "err", err)
 		}
 
-		// Detach from the HTTP request context: artifact registration must complete
-		// even if the client disconnects after UpdateWorkerTaskStatus returns.
-		artifactCtx, artifactCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-		defer artifactCancel()
-		if err := s.registerConvertArtifacts(artifactCtx, task); err != nil {
+		if err := runWithArtifactTimeout(ctx, task, s.registerConvertArtifacts); err != nil {
 			s.log.Error("worker: failed to register convert artifacts", "task_id", task.ID, "err", err)
 		}
 	}
 
 	// Регистрация артефактов anonymize
 	if task.ModuleName == moduleAnonymize && task.Status == statusCompleted {
-		artifactCtx, artifactCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-		defer artifactCancel()
-		if err := s.registerAnonymizeArtifacts(artifactCtx, task); err != nil {
+		if err := runWithArtifactTimeout(ctx, task, s.registerAnonymizeArtifacts); err != nil {
 			s.log.Error("worker: failed to register anonymize artifacts", "task_id", task.ID, "err", err)
 		}
 	}
@@ -267,9 +261,8 @@ func (s *WorkerService) registerConvertArtifacts(ctx context.Context, task repos
 	if err != nil {
 		return fmt.Errorf("marshal final convert payload: %w", err)
 	}
-	_, err = s.repo.UpdateWorkerTaskStatus(ctx, repository.UpdateWorkerTaskStatusParams{
+	_, err = s.repo.UpdateTaskResultPayload(ctx, repository.UpdateTaskResultPayloadParams{
 		ID:            task.ID,
-		Status:        task.Status,
 		ResultPayload: raw,
 	})
 	return err
@@ -329,10 +322,22 @@ func (s *WorkerService) registerAnonymizeArtifacts(ctx context.Context, task rep
 	if err != nil {
 		return fmt.Errorf("marshal final anonymize payload: %w", err)
 	}
-	_, err = s.repo.UpdateWorkerTaskStatus(ctx, repository.UpdateWorkerTaskStatusParams{
+	_, err = s.repo.UpdateTaskResultPayload(ctx, repository.UpdateTaskResultPayloadParams{
 		ID:            task.ID,
-		Status:        task.Status,
 		ResultPayload: raw,
 	})
 	return err
+}
+
+// runWithArtifactTimeout runs fn in a new context detached from ctx
+// (so client disconnect does not cancel it) with a 30 s deadline.
+// The cancel function is called immediately when fn returns, preventing context leak.
+func runWithArtifactTimeout(
+	ctx context.Context,
+	task repository.DocumentTask,
+	fn func(context.Context, repository.DocumentTask) error,
+) error {
+	artifactCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	return fn(artifactCtx, task)
 }

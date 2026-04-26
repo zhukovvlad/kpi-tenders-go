@@ -192,7 +192,7 @@ make gen-secrets      # сгенерировать JWT/service секреты
 
 Загружается из `.env` через `cleanenv`. Ключевые переменные:
 `APP_ENV`, `APP_PORT`, `DB_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `SERVICE_TOKEN`, `S3_*`.  
-Watchdog: `WATCHDOG_INTERVAL` (default `2m`), `WATCHDOG_THRESHOLD` (default `10m`), `WATCHDOG_MAX_RETRIES` (default `5`).
+Watchdog: `WATCHDOG_INTERVAL` (default `2m`), `WATCHDOG_THRESHOLD` (default `10m`), `WATCHDOG_MAX_RETRIES` (default `5`), `WATCHDOG_BATCH_SIZE` (default `100`).
 
 ## Frontend
 

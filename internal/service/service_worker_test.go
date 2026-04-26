@@ -110,6 +110,9 @@ func TestWorkerService_HandleStatusUpdate_ConvertCompleted_TriggersAnonymize(t *
 	}).Return(anonTask, nil)
 	ms.On("GetDocumentByID", mock.Anything, docID).Return(parentDoc, nil)
 	ms.On("CreateArtifactDocument", mock.Anything, mock.Anything).Return(artifactDoc, nil)
+	ms.On("UpdateTaskResultPayload", mock.Anything, mock.MatchedBy(func(p repository.UpdateTaskResultPayloadParams) bool {
+		return p.ID == taskID
+	})).Return(returnedTask, nil)
 
 	pc.On("Process", mock.Anything, pythonworker.ProcessRequest{
 		TaskID:      anonTaskID.String(),
@@ -206,6 +209,9 @@ func TestWorkerService_HandleStatusUpdate_PythonClientError_NoErrorPropagated(t 
 	})).Return(repository.DocumentTask{}, nil)
 	ms.On("GetDocumentByID", mock.Anything, docID).Return(parentDoc, nil)
 	ms.On("CreateArtifactDocument", mock.Anything, mock.Anything).Return(artifactDoc, nil)
+	ms.On("UpdateTaskResultPayload", mock.Anything, mock.MatchedBy(func(p repository.UpdateTaskResultPayloadParams) bool {
+		return p.ID == taskID
+	})).Return(returnedTask, nil)
 	pc.On("Process", mock.Anything, mock.Anything).Return(errors.New("python worker down"))
 
 	svc := newTestWorkerService(ms, pc)
@@ -265,6 +271,9 @@ func TestWorkerService_HandleStatusUpdate_ConvertCompleted_AnonAlreadyExists_Ide
 	}).Return(repository.DocumentTask{}, pgx.ErrNoRows)
 	ms.On("GetDocumentByID", mock.Anything, docID).Return(parentDoc, nil)
 	ms.On("CreateArtifactDocument", mock.Anything, mock.Anything).Return(artifactDoc, nil)
+	ms.On("UpdateTaskResultPayload", mock.Anything, mock.MatchedBy(func(p repository.UpdateTaskResultPayloadParams) bool {
+		return p.ID == taskID
+	})).Return(returnedTask, nil)
 
 	svc := newTestWorkerService(ms, pc)
 	task, err := svc.HandleStatusUpdate(ctx, taskID, WorkerStatusUpdate{
@@ -305,6 +314,9 @@ func TestWorkerService_HandleStatusUpdate_ConvertCompleted_RegistersArtifact(t *
 			p.FileName == "test.md" &&
 			p.ParentID == (pgtype.UUID{Bytes: docID, Valid: true})
 	})).Return(artifactDoc, nil)
+	ms.On("UpdateTaskResultPayload", mock.Anything, mock.MatchedBy(func(p repository.UpdateTaskResultPayloadParams) bool {
+		return p.ID == taskID
+	})).Return(returnedTask, nil)
 	pc.On("Process", mock.Anything, mock.Anything).Return(nil)
 
 	svc := newTestWorkerService(ms, pc)
@@ -344,6 +356,9 @@ func TestWorkerService_HandleStatusUpdate_AnonymizeCompleted_RegistersArtifacts(
 	ms.On("CreateArtifactDocument", mock.Anything, mock.MatchedBy(func(p repository.CreateArtifactDocumentParams) bool {
 		return p.ArtifactKind.String == "anonymize_entities"
 	})).Return(repository.Document{ID: entitiesArtifactID}, nil).Once()
+	ms.On("UpdateTaskResultPayload", mock.Anything, mock.MatchedBy(func(p repository.UpdateTaskResultPayloadParams) bool {
+		return p.ID == taskID
+	})).Return(returnedTask, nil)
 
 	svc := newTestWorkerService(ms, pc)
 	_, err := svc.HandleStatusUpdate(ctx, taskID, WorkerStatusUpdate{

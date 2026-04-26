@@ -2,6 +2,9 @@
 -- Public API: only 'convert' tasks may be created here; the input is always the
 -- original document's storage_path. Other modules (e.g. anonymize) read a derived
 -- artifact path and must be created internally via CreateDocumentTaskInternal.
+-- Callers MUST map pgx.ErrNoRows to 404/403: the INSERT ... SELECT returns no rows
+-- when the document is missing or belongs to another organization. This is distinct
+-- from unique-constraint violations on (document_id, module_name).
 INSERT INTO document_tasks (document_id, module_name, input_storage_path)
 SELECT $1, $2, d.storage_path
 FROM documents d
@@ -59,6 +62,16 @@ VALUES ($1, $2, $3)
 ON CONFLICT (document_id, module_name) DO NOTHING
 RETURNING *;
 
+-- name: UpdateTaskResultPayload :one
+-- Updates result_payload only; does not change status, celery_task_id, or error_message.
+-- Used by WorkerService after registering artifacts so updated_at is touched
+-- only for payload changes, not for status semantics.
+UPDATE document_tasks
+SET result_payload = $2,
+    updated_at     = now()
+WHERE id = $1
+RETURNING *;
+
 -- name: ListStaleTasks :many
 -- Watchdog: returns stuck tasks (pending or processing) whose updated_at is older than $1
 -- (cutoff timestamp). Uses dt.input_storage_path so the correct file path is returned
@@ -75,7 +88,8 @@ SELECT dt.id,
 FROM document_tasks dt
 WHERE dt.status IN ('pending', 'processing')
   AND dt.updated_at < $1
-ORDER BY dt.updated_at ASC;
+ORDER BY dt.updated_at ASC
+LIMIT $2;
 
 -- name: MarkStaleTaskPending :execrows
 -- Watchdog: atomically resets a stale task to pending and increments retry_count.
@@ -84,9 +98,11 @@ ORDER BY dt.updated_at ASC;
 -- cannot double-claim the same task, and a task that was refreshed between
 -- ListStaleTasks and this UPDATE will not be incorrectly reset.
 UPDATE document_tasks
-SET status      = 'pending',
-    retry_count = retry_count + 1,
-    updated_at  = now()
+SET status         = 'pending',
+    retry_count    = retry_count + 1,
+    celery_task_id = NULL,
+    error_message  = NULL,
+    updated_at     = now()
 WHERE id        = $1
   AND status IN ('pending', 'processing')
   AND updated_at < $2;
@@ -96,7 +112,7 @@ WHERE id        = $1
 -- updated_at < $2 prevents failing a task that was refreshed after ListStaleTasks.
 UPDATE document_tasks
 SET status        = 'failed',
-    error_message = 'stale task: exceeded max retry attempts',
+    error_message = $3,
     updated_at    = now()
 WHERE id        = $1
   AND status IN ('pending', 'processing')

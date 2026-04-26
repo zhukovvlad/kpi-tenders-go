@@ -2,8 +2,11 @@ package watchdog
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"go-kpi-tenders/internal/config"
 	"go-kpi-tenders/internal/pythonworker"
@@ -60,7 +63,10 @@ func runOnce(
 	log *slog.Logger,
 ) {
 	cutoff := time.Now().Add(-cfg.WatchdogThreshold)
-	tasks, err := q.ListStaleTasks(ctx, cutoff)
+	tasks, err := q.ListStaleTasks(ctx, repository.ListStaleTasksParams{
+		UpdatedAt: cutoff,
+		Limit:     int32(cfg.WatchdogBatchSize),
+	})
 	if err != nil {
 		log.Error("watchdog: failed to list stale tasks", "err", err)
 		return
@@ -96,8 +102,9 @@ func processTask(
 
 	if int(task.RetryCount) >= cfg.WatchdogMaxRetries {
 		rows, err := q.MarkStaleTaskFailed(ctx, repository.MarkStaleTaskFailedParams{
-			ID:        task.ID,
-			UpdatedAt: cutoff,
+			ID:           task.ID,
+			UpdatedAt:    cutoff,
+			ErrorMessage: pgtype.Text{String: fmt.Sprintf("stale task: exceeded max retry attempts (%d/%d)", task.RetryCount, cfg.WatchdogMaxRetries), Valid: true},
 		})
 		if err != nil {
 			taskLog.Error("watchdog: failed to mark task as failed", "err", err)

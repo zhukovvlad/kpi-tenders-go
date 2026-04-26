@@ -101,10 +101,7 @@ COMMENT ON COLUMN documents.parent_id          IS 'Исходный докуме
 COMMENT ON COLUMN documents.storage_path       IS 'Путь к файлу в MinIO: bucket/prefix/uuid.ext';
 COMMENT ON COLUMN documents.mime_type          IS 'MIME-тип файла, определяется при загрузке; NULL если не определён';
 COMMENT ON COLUMN documents.file_size_bytes    IS 'Размер файла в байтах; NULL если не известен на момент создания записи';
-COMMENT ON COLUMN documents.artifact_kind      IS 'Тип артефакта: NULL — загружен пользователем; '
-                                                  'convert_md — результат конвертации в Markdown; '
-                                                  'anonymize_doc — анонимизированный документ; '
-                                                  'anonymize_entities — карта сущностей анонимизации';
+COMMENT ON COLUMN documents.artifact_kind      IS 'Тип артефакта: NULL — загружен пользователем; convert_md — результат конвертации в Markdown; anonymize_doc — анонимизированный документ; anonymize_entities — карта сущностей анонимизации';
 
 -- ==========================================
 -- ЗАДАЧИ AI-ВОРКЕРА

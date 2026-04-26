@@ -24,6 +24,7 @@ func testCfg() *config.Config {
 		WatchdogInterval:   2 * time.Minute,
 		WatchdogThreshold:  10 * time.Minute,
 		WatchdogMaxRetries: 3,
+		WatchdogBatchSize:  100,
 	}
 }
 
@@ -60,7 +61,9 @@ func TestRunOnce_RequeuesStaleTask(t *testing.T) {
 		InputStoragePath: "bucket/docs/test.pdf",
 	}
 
-	mq.On("ListStaleTasks", mock.Anything, mock.AnythingOfType("time.Time")).
+	mq.On("ListStaleTasks", mock.Anything, mock.MatchedBy(func(p repository.ListStaleTasksParams) bool {
+		return p.Limit == int32(cfg.WatchdogBatchSize)
+	})).
 		Return([]repository.ListStaleTasksRow{staleTask}, nil)
 	mq.On("MarkStaleTaskPending", mock.Anything, mock.MatchedBy(func(p repository.MarkStaleTaskPendingParams) bool {
 		return p.ID == taskID
@@ -93,10 +96,12 @@ func TestRunOnce_FailsTaskWhenMaxRetriesExceeded(t *testing.T) {
 		RetryCount: int32(cfg.WatchdogMaxRetries), // exhausted
 	}
 
-	mq.On("ListStaleTasks", mock.Anything, mock.AnythingOfType("time.Time")).
+	mq.On("ListStaleTasks", mock.Anything, mock.MatchedBy(func(p repository.ListStaleTasksParams) bool {
+		return p.Limit == int32(cfg.WatchdogBatchSize)
+	})).
 		Return([]repository.ListStaleTasksRow{staleTask}, nil)
 	mq.On("MarkStaleTaskFailed", mock.Anything, mock.MatchedBy(func(p repository.MarkStaleTaskFailedParams) bool {
-		return p.ID == taskID
+		return p.ID == taskID && p.ErrorMessage.Valid
 	})).Return(int64(1), nil)
 
 	runOnce(context.Background(), mq, pub, cfg, testLog())
@@ -113,7 +118,9 @@ func TestRunOnce_SkipsWhenNoStaleTasks(t *testing.T) {
 	pub := new(mockPublisher)
 	cfg := testCfg()
 
-	mq.On("ListStaleTasks", mock.Anything, mock.AnythingOfType("time.Time")).
+	mq.On("ListStaleTasks", mock.Anything, mock.MatchedBy(func(p repository.ListStaleTasksParams) bool {
+		return p.Limit == int32(cfg.WatchdogBatchSize)
+	})).
 		Return([]repository.ListStaleTasksRow{}, nil)
 
 	runOnce(context.Background(), mq, pub, cfg, testLog())
@@ -139,7 +146,9 @@ func TestRunOnce_SkipsAlreadyClaimedTask(t *testing.T) {
 		RetryCount: 1,
 	}
 
-	mq.On("ListStaleTasks", mock.Anything, mock.AnythingOfType("time.Time")).
+	mq.On("ListStaleTasks", mock.Anything, mock.MatchedBy(func(p repository.ListStaleTasksParams) bool {
+		return p.Limit == int32(cfg.WatchdogBatchSize)
+	})).
 		Return([]repository.ListStaleTasksRow{staleTask}, nil)
 	// 0 rows = another watchdog instance claimed it first.
 	mq.On("MarkStaleTaskPending", mock.Anything, mock.MatchedBy(func(p repository.MarkStaleTaskPendingParams) bool {
@@ -169,7 +178,9 @@ func TestRunOnce_BestEffortOnPublishError(t *testing.T) {
 		InputStoragePath: "bucket/docs/test.pdf",
 	}
 
-	mq.On("ListStaleTasks", mock.Anything, mock.AnythingOfType("time.Time")).
+	mq.On("ListStaleTasks", mock.Anything, mock.MatchedBy(func(p repository.ListStaleTasksParams) bool {
+		return p.Limit == int32(cfg.WatchdogBatchSize)
+	})).
 		Return([]repository.ListStaleTasksRow{staleTask}, nil)
 	mq.On("MarkStaleTaskPending", mock.Anything, mock.MatchedBy(func(p repository.MarkStaleTaskPendingParams) bool {
 		return p.ID == taskID
@@ -183,6 +194,7 @@ func TestRunOnce_BestEffortOnPublishError(t *testing.T) {
 	})
 
 	mq.AssertExpectations(t)
+	pub.AssertExpectations(t)
 }
 
 // TestRunOnce_RequeuesStaleTaskInPendingStatus verifies that a task stuck in
@@ -203,7 +215,9 @@ func TestRunOnce_RequeuesStaleTaskInPendingStatus(t *testing.T) {
 		InputStoragePath: "bucket/docs/test.pdf",
 	}
 
-	mq.On("ListStaleTasks", mock.Anything, mock.AnythingOfType("time.Time")).
+	mq.On("ListStaleTasks", mock.Anything, mock.MatchedBy(func(p repository.ListStaleTasksParams) bool {
+		return p.Limit == int32(cfg.WatchdogBatchSize)
+	})).
 		Return([]repository.ListStaleTasksRow{staleTask}, nil)
 	mq.On("MarkStaleTaskPending", mock.Anything, mock.MatchedBy(func(p repository.MarkStaleTaskPendingParams) bool {
 		return p.ID == taskID

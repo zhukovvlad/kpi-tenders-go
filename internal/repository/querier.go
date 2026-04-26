@@ -6,7 +6,6 @@ package repository
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -22,6 +21,9 @@ type Querier interface {
 	// Public API: only 'convert' tasks may be created here; the input is always the
 	// original document's storage_path. Other modules (e.g. anonymize) read a derived
 	// artifact path and must be created internally via CreateDocumentTaskInternal.
+	// Callers MUST map pgx.ErrNoRows to 404/403: the INSERT ... SELECT returns no rows
+	// when the document is missing or belongs to another organization. This is distinct
+	// from unique-constraint violations on (document_id, module_name).
 	CreateDocumentTask(ctx context.Context, arg CreateDocumentTaskParams) (DocumentTask, error)
 	// Internal: creates a task directly by document_id without tenant org-check.
 	// Use only from trusted internal paths (worker service); never expose publicly.
@@ -60,7 +62,7 @@ type Querier interface {
 	// Covers two failure modes: worker died mid-processing (processing) and
 	// Redis message was lost before worker picked it up (pending).
 	// No org-check; caller must be trusted (watchdog goroutine only).
-	ListStaleTasks(ctx context.Context, updatedAt time.Time) ([]ListStaleTasksRow, error)
+	ListStaleTasks(ctx context.Context, arg ListStaleTasksParams) ([]ListStaleTasksRow, error)
 	ListTasksByDocument(ctx context.Context, arg ListTasksByDocumentParams) ([]DocumentTask, error)
 	ListUsersByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ListUsersByOrganizationRow, error)
 	// Watchdog: permanently fails a task that has exhausted all retry attempts.
@@ -75,6 +77,10 @@ type Querier interface {
 	UpdateConstructionSite(ctx context.Context, arg UpdateConstructionSiteParams) (ConstructionSite, error)
 	UpdateDocumentTaskStatus(ctx context.Context, arg UpdateDocumentTaskStatusParams) (DocumentTask, error)
 	UpdateOrganization(ctx context.Context, arg UpdateOrganizationParams) (Organization, error)
+	// Updates result_payload only; does not change status, celery_task_id, or error_message.
+	// Used by WorkerService after registering artifacts so updated_at is touched
+	// only for payload changes, not for status semantics.
+	UpdateTaskResultPayload(ctx context.Context, arg UpdateTaskResultPayloadParams) (DocumentTask, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (UpdateUserRow, error)
 	// Internal: no org-check; callers must be authenticated via SERVICE_TOKEN.
 	UpdateWorkerTaskStatus(ctx context.Context, arg UpdateWorkerTaskStatusParams) (DocumentTask, error)

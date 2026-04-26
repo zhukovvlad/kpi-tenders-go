@@ -10,8 +10,6 @@ import (
 
 	repository "go-kpi-tenders/internal/repository"
 
-	time "time"
-
 	uuid "github.com/google/uuid"
 )
 
@@ -700,9 +698,9 @@ func (_m *MockQuerier) ListRootDocumentsBySite(ctx context.Context, arg reposito
 	return r0, r1
 }
 
-// ListStaleTasks provides a mock function with given fields: ctx, updatedAt
-func (_m *MockQuerier) ListStaleTasks(ctx context.Context, updatedAt time.Time) ([]repository.ListStaleTasksRow, error) {
-	ret := _m.Called(ctx, updatedAt)
+// ListStaleTasks provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) ListStaleTasks(ctx context.Context, arg repository.ListStaleTasksParams) ([]repository.ListStaleTasksRow, error) {
+	ret := _m.Called(ctx, arg)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListStaleTasks")
@@ -710,19 +708,19 @@ func (_m *MockQuerier) ListStaleTasks(ctx context.Context, updatedAt time.Time) 
 
 	var r0 []repository.ListStaleTasksRow
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, time.Time) ([]repository.ListStaleTasksRow, error)); ok {
-		return rf(ctx, updatedAt)
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListStaleTasksParams) ([]repository.ListStaleTasksRow, error)); ok {
+		return rf(ctx, arg)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, time.Time) []repository.ListStaleTasksRow); ok {
-		r0 = rf(ctx, updatedAt)
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListStaleTasksParams) []repository.ListStaleTasksRow); ok {
+		r0 = rf(ctx, arg)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]repository.ListStaleTasksRow)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, time.Time) error); ok {
-		r1 = rf(ctx, updatedAt)
+	if rf, ok := ret.Get(1).(func(context.Context, repository.ListStaleTasksParams) error); ok {
+		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -922,6 +920,34 @@ func (_m *MockQuerier) UpdateOrganization(ctx context.Context, arg repository.Up
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, repository.UpdateOrganizationParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// UpdateTaskResultPayload provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) UpdateTaskResultPayload(ctx context.Context, arg repository.UpdateTaskResultPayloadParams) (repository.DocumentTask, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateTaskResultPayload")
+	}
+
+	var r0 repository.DocumentTask
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpdateTaskResultPayloadParams) (repository.DocumentTask, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpdateTaskResultPayloadParams) repository.DocumentTask); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.DocumentTask)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.UpdateTaskResultPayloadParams) error); ok {
 		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)

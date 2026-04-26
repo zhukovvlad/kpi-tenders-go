@@ -290,7 +290,7 @@ func TestListDocuments_ByParentID_Success(t *testing.T) {
 	}).Return(sampleDocument(parentID, orgID), nil)
 	// Then lists its artifacts.
 	mq.On("ListDocumentsByParent", mock.Anything, mock.MatchedBy(func(p repository.ListDocumentsByParentParams) bool {
-		return p.OrganizationID == orgID
+		return p.OrganizationID == orgID && p.ParentID.Bytes == parentID && p.ParentID.Valid
 	})).Return([]repository.Document{sampleDocument(artifactID, orgID)}, nil)
 
 	s := newServerWithMockDocumentService(t, mq)
