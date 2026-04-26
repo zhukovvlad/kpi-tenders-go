@@ -149,7 +149,7 @@ internal/server/errors_test.go                      — respondWithError мап�
 internal/server/health_test.go                      — health endpoint
 internal/server/middleware_test.go                  — AuthMiddleware, ServiceBearerAuth
 internal/server/handler_user_test.go                — GET /api/v1/auth/me
-internal/server/handler_document_test.go            — POST /api/v1/documents/upload
+internal/server/handler_document_test.go            — POST /api/v1/documents/upload; GET ?parent_id= (valid, invalid UUID, parent not found)
 internal/storage/client_test.go                     — PresignedURL, Upload, Delete error wrapping + TestSafeExt (10 кейсов)
 internal/pythonworker/client_test.go                — buildCeleryMessage: поля, маршрутизация модулей, неизвестный модуль (3 кейса)
 internal/watchdog/watchdog_test.go                  — runOnce: re-queue, maxRetries exceeded, no tasks, CAS skip, best-effort publish error, pending status re-queue (6 кейсов)

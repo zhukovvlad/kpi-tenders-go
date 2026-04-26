@@ -275,6 +275,88 @@ func TestListDocuments_NoAuth_Returns401(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
+func TestListDocuments_ByParentID_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	parentID := uuid.New()
+	artifactID := uuid.New()
+	userID, orgID := uuid.New(), uuid.New()
+
+	mq := new(storemock.MockQuerier)
+	// Handler first verifies the parent belongs to the org.
+	mq.On("GetDocument", mock.Anything, repository.GetDocumentParams{
+		ID:             parentID,
+		OrganizationID: orgID,
+	}).Return(sampleDocument(parentID, orgID), nil)
+	// Then lists its artifacts.
+	mq.On("ListDocumentsByParent", mock.Anything, mock.MatchedBy(func(p repository.ListDocumentsByParentParams) bool {
+		return p.OrganizationID == orgID
+	})).Return([]repository.Document{sampleDocument(artifactID, orgID)}, nil)
+
+	s := newServerWithMockDocumentService(t, mq)
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+		"/api/v1/documents?parent_id="+parentID.String(), nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var got []any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	assert.Len(t, got, 1)
+	mq.AssertExpectations(t)
+}
+
+func TestListDocuments_InvalidParentID_Returns400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	userID, orgID := uuid.New(), uuid.New()
+	s := newServerWithMockDocumentService(t, new(storemock.MockQuerier))
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+		"/api/v1/documents?parent_id=not-a-uuid", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestListDocuments_ParentNotFound_Returns404(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	parentID := uuid.New()
+	userID, orgID := uuid.New(), uuid.New()
+
+	mq := new(storemock.MockQuerier)
+	// Parent document does not exist in this org → GetDocument returns ErrNoRows.
+	mq.On("GetDocument", mock.Anything, repository.GetDocumentParams{
+		ID:             parentID,
+		OrganizationID: orgID,
+	}).Return(repository.Document{}, pgx.ErrNoRows)
+
+	s := newServerWithMockDocumentService(t, mq)
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+		"/api/v1/documents?parent_id="+parentID.String(), nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	mq.AssertExpectations(t)
+}
+
 // ── GET /api/v1/documents/:id ─────────────────────────────────────────────────
 
 func TestGetDocument_Success(t *testing.T) {
