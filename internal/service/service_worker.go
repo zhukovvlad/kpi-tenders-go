@@ -238,7 +238,7 @@ func (s *WorkerService) registerConvertArtifacts(ctx context.Context, task repos
 		return fmt.Errorf("parse convert payload: %w", err)
 	}
 	if payload.MDStoragePath == "" {
-		return nil // воркер не вернул путь — пропустить
+		return nil // worker did not return a path; skip
 	}
 
 	parent, err := s.repo.GetDocumentByID(ctx, task.DocumentID)
