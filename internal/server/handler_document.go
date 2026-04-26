@@ -33,7 +33,6 @@ const (
 
 type createDocumentRequest struct {
 	SiteID        *string `json:"site_id"`
-	ParentID      *string `json:"parent_id"`
 	FileName      string  `json:"file_name"      binding:"required"`
 	StoragePath   string  `json:"storage_path"   binding:"required"`
 	MimeType      *string `json:"mime_type"`
@@ -75,20 +74,6 @@ func (s *Server) CreateDocument(c *gin.Context) {
 			return
 		}
 		params.SiteID = pgtype.UUID{Bytes: id, Valid: true}
-	}
-
-	if req.ParentID != nil {
-		id, err := uuid.Parse(*req.ParentID)
-		if err != nil {
-			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid parent_id", err))
-			return
-		}
-		// Verify the parent document belongs to the authenticated org.
-		if _, err := s.documentService.Get(c.Request.Context(), id, orgID); err != nil {
-			s.respondWithError(c, err)
-			return
-		}
-		params.ParentID = pgtype.UUID{Bytes: id, Valid: true}
 	}
 
 	if req.MimeType != nil {
