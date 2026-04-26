@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -74,7 +75,12 @@ func main() {
 
 	// ── Watchdog ────────────────────────────────────
 	watchdogCtx, watchdogCancel := context.WithCancel(context.Background())
-	go watchdog.Start(watchdogCtx, srv.DB(), srv.PythonPublisher(), cfg, log)
+	var watchdogDone sync.WaitGroup
+	watchdogDone.Add(1)
+	go func() {
+		defer watchdogDone.Done()
+		watchdog.Start(watchdogCtx, srv.DB(), srv.PythonPublisher(), cfg, log)
+	}()
 
 	// ── Graceful Shutdown ───────────────────────────
 	quit := make(chan os.Signal, 1)
@@ -87,6 +93,7 @@ func main() {
 	// If watchdogCancel were only called via defer, the watchdog could tick
 	// into a closed Redis pool during the shutdown window.
 	watchdogCancel()
+	watchdogDone.Wait() // ensure goroutine has exited before Redis is closed
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()

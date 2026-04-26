@@ -36,9 +36,9 @@ func (s *DocumentTaskService) Create(ctx context.Context, params repository.Crea
 	// The public API only accepts 'convert' tasks. Modules like 'anonymize'
 	// require a derived artifact path as input and are triggered internally
 	// by the worker service after convert completes.
-	if params.ModuleName != "convert" {
+	if params.ModuleName != moduleConvert {
 		return repository.DocumentTask{}, errs.New(errs.CodeValidationFailed,
-			fmt.Sprintf("module %q cannot be created via the public API; only 'convert' is allowed", params.ModuleName), nil)
+			fmt.Sprintf("module %q cannot be created via the public API; only %q is allowed", params.ModuleName, moduleConvert), nil)
 	}
 
 	task, err := s.repo.CreateDocumentTask(ctx, params)
