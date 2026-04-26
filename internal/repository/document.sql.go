@@ -20,8 +20,9 @@ DO UPDATE SET
     file_name       = EXCLUDED.file_name,
     storage_path    = EXCLUDED.storage_path,
     mime_type       = EXCLUDED.mime_type,
-    file_size_bytes = EXCLUDED.file_size_bytes
-RETURNING id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at, artifact_kind
+    file_size_bytes = EXCLUDED.file_size_bytes,
+    updated_at      = now()
+RETURNING id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at
 `
 
 type CreateArtifactDocumentParams struct {
@@ -62,9 +63,9 @@ func (q *Queries) CreateArtifactDocument(ctx context.Context, arg CreateArtifact
 		&i.StoragePath,
 		&i.MimeType,
 		&i.FileSizeBytes,
+		&i.ArtifactKind,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.ArtifactKind,
 	)
 	return i, err
 }
@@ -72,7 +73,7 @@ func (q *Queries) CreateArtifactDocument(ctx context.Context, arg CreateArtifact
 const createDocument = `-- name: CreateDocument :one
 INSERT INTO documents (organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at, artifact_kind
+RETURNING id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at
 `
 
 type CreateDocumentParams struct {
@@ -110,9 +111,9 @@ func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) 
 		&i.StoragePath,
 		&i.MimeType,
 		&i.FileSizeBytes,
+		&i.ArtifactKind,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.ArtifactKind,
 	)
 	return i, err
 }
@@ -135,7 +136,7 @@ func (q *Queries) DeleteDocument(ctx context.Context, arg DeleteDocumentParams) 
 }
 
 const getDocument = `-- name: GetDocument :one
-SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at, artifact_kind FROM documents
+SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at FROM documents
 WHERE id = $1 AND organization_id = $2
 `
 
@@ -157,15 +158,15 @@ func (q *Queries) GetDocument(ctx context.Context, arg GetDocumentParams) (Docum
 		&i.StoragePath,
 		&i.MimeType,
 		&i.FileSizeBytes,
+		&i.ArtifactKind,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.ArtifactKind,
 	)
 	return i, err
 }
 
 const getDocumentByID = `-- name: GetDocumentByID :one
-SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at, artifact_kind FROM documents WHERE id = $1
+SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at FROM documents WHERE id = $1
 `
 
 // WARNING: This lookup is intentionally unscoped by organization_id.
@@ -184,15 +185,15 @@ func (q *Queries) GetDocumentByID(ctx context.Context, id uuid.UUID) (Document, 
 		&i.StoragePath,
 		&i.MimeType,
 		&i.FileSizeBytes,
+		&i.ArtifactKind,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.ArtifactKind,
 	)
 	return i, err
 }
 
 const listDocumentsByParent = `-- name: ListDocumentsByParent :many
-SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at, artifact_kind FROM documents
+SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at FROM documents
 WHERE parent_id = $1 AND organization_id = $2
 ORDER BY created_at ASC
 `
@@ -222,9 +223,9 @@ func (q *Queries) ListDocumentsByParent(ctx context.Context, arg ListDocumentsBy
 			&i.StoragePath,
 			&i.MimeType,
 			&i.FileSizeBytes,
+			&i.ArtifactKind,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.ArtifactKind,
 		); err != nil {
 			return nil, err
 		}
@@ -237,7 +238,7 @@ func (q *Queries) ListDocumentsByParent(ctx context.Context, arg ListDocumentsBy
 }
 
 const listRootDocumentsByOrganization = `-- name: ListRootDocumentsByOrganization :many
-SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at, artifact_kind FROM documents
+SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at FROM documents
 WHERE organization_id = $1 AND parent_id IS NULL
 ORDER BY created_at DESC
 `
@@ -262,9 +263,9 @@ func (q *Queries) ListRootDocumentsByOrganization(ctx context.Context, organizat
 			&i.StoragePath,
 			&i.MimeType,
 			&i.FileSizeBytes,
+			&i.ArtifactKind,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.ArtifactKind,
 		); err != nil {
 			return nil, err
 		}
@@ -277,7 +278,7 @@ func (q *Queries) ListRootDocumentsByOrganization(ctx context.Context, organizat
 }
 
 const listRootDocumentsBySite = `-- name: ListRootDocumentsBySite :many
-SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at, artifact_kind FROM documents
+SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at FROM documents
 WHERE organization_id = $1 AND site_id = $2 AND parent_id IS NULL
 ORDER BY created_at DESC
 `
@@ -306,9 +307,9 @@ func (q *Queries) ListRootDocumentsBySite(ctx context.Context, arg ListRootDocum
 			&i.StoragePath,
 			&i.MimeType,
 			&i.FileSizeBytes,
+			&i.ArtifactKind,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.ArtifactKind,
 		); err != nil {
 			return nil, err
 		}

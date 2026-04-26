@@ -175,11 +175,7 @@ make mock   # регенерировать internal/store/mock/ из repository.
 
 | Миграция | Изменения |
 |----------|-----------|
-| 000001 | organizations, users, projects, documents, document_tasks |
-| 000002 | document_tasks.retry_count + watchdog index |
-| 000003 | watchdog index расширен на статус `pending` |
-| 000004 | documents.artifact_kind, CASCADE delete, root index |
-| 000005 | document_tasks.input_storage_path, UNIQUE artifact constraint |
+| 000001 | Сквош: organizations, users, construction_sites, documents (`artifact_kind`, CASCADE delete), document_tasks (`retry_count`, `input_storage_path`, UNIQUE), watchdog-индекс, root-индекс, UNIQUE-индекс артефактов, триггеры tenant isolation |
 
 ## CI
 

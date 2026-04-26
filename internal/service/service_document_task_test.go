@@ -138,21 +138,13 @@ func TestDocumentTaskService_Create_TriggersPython_WithCorrectFields(t *testing.
 		OrganizationID: orgID,
 	}
 	task := repository.DocumentTask{
-		ID:         taskID,
-		DocumentID: docID,
-		ModuleName: "convert",
-	}
-	doc := repository.Document{
-		ID:             docID,
-		OrganizationID: orgID,
-		StoragePath:    storagePath,
+		ID:               taskID,
+		DocumentID:       docID,
+		ModuleName:       "convert",
+		InputStoragePath: storagePath,
 	}
 
 	mq.On("CreateDocumentTask", mock.Anything, params).Return(task, nil)
-	mq.On("GetDocument", mock.Anything, repository.GetDocumentParams{
-		ID:             docID,
-		OrganizationID: orgID,
-	}).Return(doc, nil)
 	pc.On("Process", mock.Anything, pythonworker.ProcessRequest{
 		TaskID:      taskID.String(),
 		DocumentID:  docID.String(),
@@ -183,17 +175,13 @@ func TestDocumentTaskService_Create_PythonError_ReturnsTaskWithoutError(t *testi
 		OrganizationID: orgID,
 	}
 	task := repository.DocumentTask{
-		ID:         taskID,
-		DocumentID: docID,
-		ModuleName: "convert",
+		ID:               taskID,
+		DocumentID:       docID,
+		ModuleName:       "convert",
+		InputStoragePath: "orgs/abc/file.pdf",
 	}
-	doc := repository.Document{StoragePath: "orgs/abc/file.pdf"}
 
 	mq.On("CreateDocumentTask", mock.Anything, params).Return(task, nil)
-	mq.On("GetDocument", mock.Anything, repository.GetDocumentParams{
-		ID:             docID,
-		OrganizationID: orgID,
-	}).Return(doc, nil)
 	pc.On("Process", mock.Anything, mock.Anything).Return(errors.New("python unavailable"))
 
 	result, err := svc.Create(context.Background(), params)

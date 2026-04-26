@@ -98,14 +98,21 @@ func (s *WorkerService) HandleStatusUpdate(ctx context.Context, taskID uuid.UUID
 			// Log but do not fail — the callback has already been persisted.
 			s.log.Error("worker: failed to trigger anonymize", "task_id", task.ID, "err", err)
 		}
-		if err := s.registerConvertArtifacts(ctx, task); err != nil {
+
+		// Detach from the HTTP request context: artifact registration must complete
+		// even if the client disconnects after UpdateWorkerTaskStatus returns.
+		artifactCtx, artifactCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer artifactCancel()
+		if err := s.registerConvertArtifacts(artifactCtx, task); err != nil {
 			s.log.Error("worker: failed to register convert artifacts", "task_id", task.ID, "err", err)
 		}
 	}
 
 	// Регистрация артефактов anonymize
 	if task.ModuleName == moduleAnonymize && task.Status == statusCompleted {
-		if err := s.registerAnonymizeArtifacts(ctx, task); err != nil {
+		artifactCtx, artifactCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer artifactCancel()
+		if err := s.registerAnonymizeArtifacts(artifactCtx, task); err != nil {
 			s.log.Error("worker: failed to register anonymize artifacts", "task_id", task.ID, "err", err)
 		}
 	}

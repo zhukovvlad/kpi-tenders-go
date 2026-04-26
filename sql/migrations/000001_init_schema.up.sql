@@ -86,7 +86,13 @@ CREATE TABLE documents (
     -- Вместе с parent_id формирует UNIQUE: один вид артефакта на один исходный документ.
     artifact_kind   VARCHAR(50),
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    -- Инвариант: оригинал (parent_id IS NULL) обязан иметь artifact_kind IS NULL;
+    -- артефакт (parent_id IS NOT NULL) обязан иметь artifact_kind IS NOT NULL.
+    CONSTRAINT documents_parent_artifact_kind_chk CHECK (
+        (parent_id IS NULL AND artifact_kind IS NULL) OR
+        (parent_id IS NOT NULL AND artifact_kind IS NOT NULL)
+    )
 );
 
 COMMENT ON TABLE  documents                    IS 'Метаданные загруженных файлов и AI-артефактов; физические файлы — в MinIO';

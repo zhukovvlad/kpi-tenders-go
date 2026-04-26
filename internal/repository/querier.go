@@ -19,6 +19,9 @@ type Querier interface {
 	CreateArtifactDocument(ctx context.Context, arg CreateArtifactDocumentParams) (Document, error)
 	CreateConstructionSite(ctx context.Context, arg CreateConstructionSiteParams) (ConstructionSite, error)
 	CreateDocument(ctx context.Context, arg CreateDocumentParams) (Document, error)
+	// Public API: only 'convert' tasks may be created here; the input is always the
+	// original document's storage_path. Other modules (e.g. anonymize) read a derived
+	// artifact path and must be created internally via CreateDocumentTaskInternal.
 	CreateDocumentTask(ctx context.Context, arg CreateDocumentTaskParams) (DocumentTask, error)
 	// Internal: creates a task directly by document_id without tenant org-check.
 	// Use only from trusted internal paths (worker service); never expose publicly.

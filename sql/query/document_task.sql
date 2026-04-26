@@ -1,8 +1,12 @@
 -- name: CreateDocumentTask :one
+-- Public API: only 'convert' tasks may be created here; the input is always the
+-- original document's storage_path. Other modules (e.g. anonymize) read a derived
+-- artifact path and must be created internally via CreateDocumentTaskInternal.
 INSERT INTO document_tasks (document_id, module_name, input_storage_path)
 SELECT $1, $2, d.storage_path
 FROM documents d
-WHERE d.id = $1 AND d.organization_id = $3
+WHERE d.id = $1
+  AND d.organization_id = $3
 RETURNING *;
 
 -- name: GetDocumentTask :one

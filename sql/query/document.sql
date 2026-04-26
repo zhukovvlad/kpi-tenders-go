@@ -44,5 +44,6 @@ DO UPDATE SET
     file_name       = EXCLUDED.file_name,
     storage_path    = EXCLUDED.storage_path,
     mime_type       = EXCLUDED.mime_type,
-    file_size_bytes = EXCLUDED.file_size_bytes
+    file_size_bytes = EXCLUDED.file_size_bytes,
+    updated_at      = now()
 RETURNING *;
