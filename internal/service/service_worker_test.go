@@ -191,13 +191,10 @@ func TestWorkerService_HandleStatusUpdate_PythonClientError_NoErrorPropagated(t 
 	taskID := uuid.New()
 	docID := uuid.New()
 	anonTaskID := uuid.New()
-	artifactID := uuid.New()
 	mdPath := "tenders/docs/test.md"
 
 	returnedTask := makeDocumentTask(taskID, docID, "convert", "completed", convertPayloadJSON(mdPath))
 	anonTask := makeDocumentTask(anonTaskID, docID, "anonymize", "pending", nil)
-	parentDoc := repository.Document{ID: docID, OrganizationID: uuid.New()}
-	artifactDoc := repository.Document{ID: artifactID}
 
 	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.MatchedBy(func(p repository.UpdateWorkerTaskStatusParams) bool {
 		return p.ID == taskID
@@ -207,11 +204,8 @@ func TestWorkerService_HandleStatusUpdate_PythonClientError_NoErrorPropagated(t 
 	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.MatchedBy(func(p repository.UpdateWorkerTaskStatusParams) bool {
 		return p.ID == anonTaskID && p.Status == statusFailed
 	})).Return(repository.DocumentTask{}, nil)
-	ms.On("GetDocumentByID", mock.Anything, docID).Return(parentDoc, nil)
-	ms.On("CreateArtifactDocument", mock.Anything, mock.Anything).Return(artifactDoc, nil)
-	ms.On("UpdateTaskResultPayload", mock.Anything, mock.MatchedBy(func(p repository.UpdateTaskResultPayloadParams) bool {
-		return p.ID == taskID
-	})).Return(returnedTask, nil)
+	// registerConvertArtifacts must NOT run when triggerAnonymize fails —
+	// so GetDocumentByID, CreateArtifactDocument, UpdateTaskResultPayload are not expected.
 	pc.On("Process", mock.Anything, mock.Anything).Return(errors.New("python worker down"))
 
 	svc := newTestWorkerService(ms, pc)

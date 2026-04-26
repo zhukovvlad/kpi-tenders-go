@@ -93,14 +93,18 @@ func (s *WorkerService) HandleStatusUpdate(ctx context.Context, taskID uuid.UUID
 	// Chain: convert completed → trigger anonymize, then register artifact.
 	// triggerAnonymize must run first: it reads md_storage_path from the original
 	// result_payload, which registerConvertArtifacts will overwrite in the DB.
+	// If triggering anonymize fails, skip artifact registration so that
+	// md_storage_path remains in result_payload and the chain can be retried.
 	if task.ModuleName == moduleConvert && task.Status == statusCompleted {
 		if err := s.triggerAnonymize(ctx, task); err != nil {
 			// Log but do not fail — the callback has already been persisted.
+			// Intentionally skip artifact registration here to preserve the
+			// original result_payload (md_storage_path) for a future retry.
 			s.log.Error("worker: failed to trigger anonymize", "task_id", task.ID, "err", err)
-		}
-
-		if err := runWithArtifactTimeout(ctx, task, s.registerConvertArtifacts); err != nil {
-			s.log.Error("worker: failed to register convert artifacts", "task_id", task.ID, "err", err)
+		} else {
+			if err := runWithArtifactTimeout(ctx, task, s.registerConvertArtifacts); err != nil {
+				s.log.Error("worker: failed to register convert artifacts", "task_id", task.ID, "err", err)
+			}
 		}
 	}
 
