@@ -118,6 +118,26 @@ func (s *Server) ListDocuments(c *gin.Context) {
 		return
 	}
 
+	if parentIDStr := c.Query("parent_id"); parentIDStr != "" {
+		parentID, err := uuid.Parse(parentIDStr)
+		if err != nil {
+			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid parent_id", err))
+			return
+		}
+		// Verify the parent document belongs to the authenticated org.
+		if _, err := s.documentService.Get(c.Request.Context(), parentID, orgID); err != nil {
+			s.respondWithError(c, err)
+			return
+		}
+		docs, err := s.documentService.ListByParent(c.Request.Context(), parentID)
+		if err != nil {
+			s.respondWithError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, docs)
+		return
+	}
+
 	if siteIDStr := c.Query("site_id"); siteIDStr != "" {
 		siteID, err := uuid.Parse(siteIDStr)
 		if err != nil {

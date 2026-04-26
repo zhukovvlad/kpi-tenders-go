@@ -10,6 +10,8 @@ import (
 
 	repository "go-kpi-tenders/internal/repository"
 
+	time "time"
+
 	uuid "github.com/google/uuid"
 )
 
@@ -580,12 +582,42 @@ func (_m *MockQuerier) ListConstructionSitesByOrganization(ctx context.Context, 
 	return r0, r1
 }
 
-// ListDocumentsByOrganization provides a mock function with given fields: ctx, organizationID
-func (_m *MockQuerier) ListDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]repository.Document, error) {
+// ListDocumentsByParent provides a mock function with given fields: ctx, parentID
+func (_m *MockQuerier) ListDocumentsByParent(ctx context.Context, parentID pgtype.UUID) ([]repository.Document, error) {
+	ret := _m.Called(ctx, parentID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListDocumentsByParent")
+	}
+
+	var r0 []repository.Document
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, pgtype.UUID) ([]repository.Document, error)); ok {
+		return rf(ctx, parentID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, pgtype.UUID) []repository.Document); ok {
+		r0 = rf(ctx, parentID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.Document)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, pgtype.UUID) error); ok {
+		r1 = rf(ctx, parentID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListRootDocumentsByOrganization provides a mock function with given fields: ctx, organizationID
+func (_m *MockQuerier) ListRootDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]repository.Document, error) {
 	ret := _m.Called(ctx, organizationID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for ListDocumentsByOrganization")
+		panic("no return value specified for ListRootDocumentsByOrganization")
 	}
 
 	var r0 []repository.Document
@@ -610,20 +642,20 @@ func (_m *MockQuerier) ListDocumentsByOrganization(ctx context.Context, organiza
 	return r0, r1
 }
 
-// ListDocumentsBySite provides a mock function with given fields: ctx, arg
-func (_m *MockQuerier) ListDocumentsBySite(ctx context.Context, arg repository.ListDocumentsBySiteParams) ([]repository.Document, error) {
+// ListRootDocumentsBySite provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) ListRootDocumentsBySite(ctx context.Context, arg repository.ListRootDocumentsBySiteParams) ([]repository.Document, error) {
 	ret := _m.Called(ctx, arg)
 
 	if len(ret) == 0 {
-		panic("no return value specified for ListDocumentsBySite")
+		panic("no return value specified for ListRootDocumentsBySite")
 	}
 
 	var r0 []repository.Document
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, repository.ListDocumentsBySiteParams) ([]repository.Document, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListRootDocumentsBySiteParams) ([]repository.Document, error)); ok {
 		return rf(ctx, arg)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, repository.ListDocumentsBySiteParams) []repository.Document); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListRootDocumentsBySiteParams) []repository.Document); ok {
 		r0 = rf(ctx, arg)
 	} else {
 		if ret.Get(0) != nil {
@@ -631,8 +663,38 @@ func (_m *MockQuerier) ListDocumentsBySite(ctx context.Context, arg repository.L
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, repository.ListDocumentsBySiteParams) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, repository.ListRootDocumentsBySiteParams) error); ok {
 		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListStaleTasks provides a mock function with given fields: ctx, updatedAt
+func (_m *MockQuerier) ListStaleTasks(ctx context.Context, updatedAt time.Time) ([]repository.ListStaleTasksRow, error) {
+	ret := _m.Called(ctx, updatedAt)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListStaleTasks")
+	}
+
+	var r0 []repository.ListStaleTasksRow
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, time.Time) ([]repository.ListStaleTasksRow, error)); ok {
+		return rf(ctx, updatedAt)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, time.Time) []repository.ListStaleTasksRow); ok {
+		r0 = rf(ctx, updatedAt)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.ListStaleTasksRow)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, time.Time) error); ok {
+		r1 = rf(ctx, updatedAt)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -693,6 +755,62 @@ func (_m *MockQuerier) ListUsersByOrganization(ctx context.Context, organization
 
 	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
 		r1 = rf(ctx, organizationID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MarkStaleTaskFailed provides a mock function with given fields: ctx, id
+func (_m *MockQuerier) MarkStaleTaskFailed(ctx context.Context, id uuid.UUID) (int64, error) {
+	ret := _m.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for MarkStaleTaskFailed")
+	}
+
+	var r0 int64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) (int64, error)); ok {
+		return rf(ctx, id)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) int64); ok {
+		r0 = rf(ctx, id)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = rf(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MarkStaleTaskPending provides a mock function with given fields: ctx, id
+func (_m *MockQuerier) MarkStaleTaskPending(ctx context.Context, id uuid.UUID) (int64, error) {
+	ret := _m.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for MarkStaleTaskPending")
+	}
+
+	var r0 int64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) (int64, error)); ok {
+		return rf(ctx, id)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) int64); ok {
+		r0 = rf(ctx, id)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = rf(ctx, id)
 	} else {
 		r1 = ret.Error(1)
 	}

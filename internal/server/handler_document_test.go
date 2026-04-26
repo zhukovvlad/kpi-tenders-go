@@ -226,7 +226,7 @@ func TestListDocuments_ByOrg_Success(t *testing.T) {
 	userID, orgID := uuid.New(), uuid.New()
 
 	mq := new(storemock.MockQuerier)
-	mq.On("ListDocumentsByOrganization", mock.Anything, orgID).
+	mq.On("ListRootDocumentsByOrganization", mock.Anything, orgID).
 		Return([]repository.Document{sampleDocument(uuid.New(), orgID)}, nil)
 
 	s := newServerWithMockDocumentService(t, mq)

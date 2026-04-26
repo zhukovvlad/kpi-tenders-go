@@ -18,6 +18,7 @@ internal/store/               — Store interface + SQLStore (transaction suppor
 internal/store/mock/          — MockStore для unit-тестов сервисов
 internal/storage/             — MinIO/S3 клиент (upload, presigned URL, delete, SafeExt)
 internal/pythonworker/        — Celery-издатель поверх Redis (LPUSH, protocol v2)
+internal/watchdog/            — сторожевой таймер зависших задач (re-queue / fail после maxRetries)
 internal/pgutil/              — утилиты PostgreSQL (IsUniqueViolation)
 pkg/errs/                     — структурированные ошибки приложения
 pkg/logging/                  — slog-логгер
@@ -98,7 +99,7 @@ GET/PATCH/DELETE /api/v1/organizations/:id
 
 POST             /api/v1/documents           (JSON, storage_path задаётся вручную)
 POST             /api/v1/documents/upload    (multipart/form-data → S3 → БД)
-GET              /api/v1/documents
+GET              /api/v1/documents                  (?parent_id=uuid → список артефактов; ?site_id=uuid → по объекту; иначе — корневые)
 GET/DELETE       /api/v1/documents/:id
 GET              /api/v1/documents/:id/url   (?download=true|false → presigned URL, TTL 15 мин)
 
@@ -118,7 +119,7 @@ _Нет активных заглушек._
 ### Не реализовано
 
 - Projects (таблица есть, хендлеров/сервисов/запросов нет)
-- `catalog_positions` SQLC-запросы (таблица создана в 000002)
+- `catalog_positions` SQLC-запросы (таблица будет создана в 000005)
 
 ## База данных
 
@@ -128,11 +129,14 @@ _Нет активных заглушек._
 | Миграция | Таблицы / изменения |
 |----------|---------------------|
 | 000001 | organizations, users, projects, documents, document_tasks (с UNIQUE на document_id+module_name) |
+| 000002 | document_tasks.retry_count (INT NOT NULL DEFAULT 0) + partial index idx_document_tasks_stale |
+| 000003 | idx_document_tasks_stale расширен: охватывает статусы `pending` и `processing` (watchdog requeue) |
+| 000004 | documents.artifact_kind VARCHAR(50) NULL; FK parent_id → CASCADE; partial index idx_documents_root (WHERE parent_id IS NULL) |
 
 `catalog_positions.embedding` — тип `vector` без фиксированной размерности  
 (зафиксируй как `vector(1536)` когда определишься с моделью эмбеддингов).
 
-> **Примечание:** следующая миграция — `catalog_positions` (pgvector RAG), будет `000002`.
+> **Примечание:** следующая миграция — `catalog_positions` (pgvector RAG), будет `000005`.
 
 ## Стратегия тестирования
 
@@ -142,7 +146,7 @@ internal/service/service_auth_test.go               — AuthService: login, timi
 internal/service/service_organization_test.go       — OrganizationService: register, conflicts
 internal/service/service_user_test.go               — UserService: GetProfile, tenant isolation
 internal/service/service_document_task_test.go      — DocumentTaskService: Create success, not found, conflict, db error, python trigger, python error best-effort (6 кейсов)
-internal/service/service_worker_test.go             — WorkerService: chaining, idempotency, errors, python client (7 кейсов)
+internal/service/service_worker_test.go             — WorkerService: chaining, idempotency, errors, python client, artifact registration (9 кейсов)
 internal/server/errors_test.go                      — respondWithError маппинг
 internal/server/health_test.go                      — health endpoint
 internal/server/middleware_test.go                  — AuthMiddleware, ServiceBearerAuth
@@ -150,6 +154,7 @@ internal/server/handler_user_test.go                — GET /api/v1/auth/me
 internal/server/handler_document_test.go            — POST /api/v1/documents/upload
 internal/storage/client_test.go                     — PresignedURL, Upload, Delete error wrapping + TestSafeExt (10 кейсов)
 internal/pythonworker/client_test.go                — buildCeleryMessage: поля, маршрутизация модулей, неизвестный модуль (3 кейса)
+internal/watchdog/watchdog_test.go                  — runOnce: re-queue, maxRetries exceeded, no tasks, CAS skip, best-effort publish error, pending status re-queue (6 кейсов)
 ```
 
 **Паттерн:**
@@ -163,7 +168,7 @@ svc := service.NewOrganizationService(ms, log)
 ### Интеграционные тесты (требует Docker)
 ```text
 tests/integration/main_test.go        — TestMain: testcontainers pgvector/pgvector:pg16 + миграции
-tests/integration/repository_test.go  — CRUD + RAG cosine search по catalog_positions
+tests/integration/repository_test.go  — CRUD, tenant isolation, artifact parent-child, cascade delete, root-list filtering
 tests/integration/storage_test.go     — Upload + PresignedURL против эфемерного MinIO-контейнера (testcontainers)
 ```
 
@@ -188,7 +193,8 @@ make gen-secrets      # сгенерировать JWT/service секреты
 ## Конфигурация
 
 Загружается из `.env` через `cleanenv`. Ключевые переменные:
-`APP_ENV`, `APP_PORT`, `DB_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `SERVICE_TOKEN`, `S3_*`.
+`APP_ENV`, `APP_PORT`, `DB_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `SERVICE_TOKEN`, `S3_*`.  
+Watchdog: `WATCHDOG_INTERVAL` (default `2m`), `WATCHDOG_THRESHOLD` (default `10m`), `WATCHDOG_MAX_RETRIES` (default `5`).
 
 ## Frontend
 

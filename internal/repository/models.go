@@ -45,6 +45,8 @@ type Document struct {
 	FileSizeBytes pgtype.Int8 `json:"file_size_bytes"`
 	CreatedAt     time.Time   `json:"created_at"`
 	UpdatedAt     time.Time   `json:"updated_at"`
+	// Тип артефакта: NULL — загружен пользователем, convert_md — результат конвертации в Markdown, anonymize_doc — анонимизированный документ, anonymize_entities — карта сущностей анонимизации
+	ArtifactKind pgtype.Text `json:"artifact_kind"`
 }
 
 // Задачи AI-воркера на Python для обработки документов
@@ -63,6 +65,7 @@ type DocumentTask struct {
 	ErrorMessage pgtype.Text `json:"error_message"`
 	CreatedAt    time.Time   `json:"created_at"`
 	UpdatedAt    time.Time   `json:"updated_at"`
+	RetryCount   int32       `json:"retry_count"`
 }
 
 // Организации — изолированные тенанты системы

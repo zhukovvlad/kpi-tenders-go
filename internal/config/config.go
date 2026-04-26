@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net/url"
+	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
 )
@@ -16,6 +17,13 @@ type Config struct {
 	DBURL string `env:"DB_URL" env-required:"true"`
 
 	RedisURL string `env:"REDIS_URL" env-default:"redis://localhost:6379/0"`
+
+	// Watchdog: how often to scan for stuck tasks.
+	WatchdogInterval time.Duration `env:"WATCHDOG_INTERVAL" env-default:"2m"`
+	// Watchdog: a task is considered stale if it has been in 'processing' longer than this.
+	WatchdogThreshold time.Duration `env:"WATCHDOG_THRESHOLD" env-default:"10m"`
+	// Watchdog: max number of re-queue attempts before permanently failing the task.
+	WatchdogMaxRetries int `env:"WATCHDOG_MAX_RETRIES" env-default:"5"`
 
 	JWTAccessSecret  string `env:"JWT_ACCESS_SECRET"  env-required:"true"`
 	JWTRefreshSecret string `env:"JWT_REFRESH_SECRET" env-required:"true"`

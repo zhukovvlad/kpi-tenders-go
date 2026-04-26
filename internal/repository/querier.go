@@ -6,6 +6,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -39,10 +40,25 @@ type Querier interface {
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	GetUserByIDAndOrg(ctx context.Context, arg GetUserByIDAndOrgParams) (GetUserByIDAndOrgRow, error)
 	ListConstructionSitesByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ConstructionSite, error)
-	ListDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]Document, error)
-	ListDocumentsBySite(ctx context.Context, arg ListDocumentsBySiteParams) ([]Document, error)
+	// Все артефакты, порождённые данным документом
+	ListDocumentsByParent(ctx context.Context, parentID pgtype.UUID) ([]Document, error)
+	// Только корневые документы (загруженные пользователем, не артефакты)
+	ListRootDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]Document, error)
+	ListRootDocumentsBySite(ctx context.Context, arg ListRootDocumentsBySiteParams) ([]Document, error)
+	// Watchdog: returns stuck tasks (pending or processing) whose updated_at is older than $1
+	// (cutoff timestamp), joined with their document's storage_path for re-queuing.
+	// Covers two failure modes: worker died mid-processing (processing) and
+	// Redis message was lost before worker picked it up (pending).
+	// No org-check; caller must be trusted (watchdog goroutine only).
+	ListStaleTasks(ctx context.Context, updatedAt time.Time) ([]ListStaleTasksRow, error)
 	ListTasksByDocument(ctx context.Context, arg ListTasksByDocumentParams) ([]DocumentTask, error)
 	ListUsersByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ListUsersByOrganizationRow, error)
+	// Watchdog: permanently fails a task that has exhausted all retry attempts.
+	MarkStaleTaskFailed(ctx context.Context, id uuid.UUID) (int64, error)
+	// Watchdog: atomically resets a stale task to pending and increments retry_count.
+	// The WHERE status IN (...) guard makes this a compare-and-swap, so two
+	// concurrent watchdog instances cannot double-claim the same task.
+	MarkStaleTaskPending(ctx context.Context, id uuid.UUID) (int64, error)
 	UpdateConstructionSite(ctx context.Context, arg UpdateConstructionSiteParams) (ConstructionSite, error)
 	UpdateDocumentTaskStatus(ctx context.Context, arg UpdateDocumentTaskStatusParams) (DocumentTask, error)
 	UpdateOrganization(ctx context.Context, arg UpdateOrganizationParams) (Organization, error)

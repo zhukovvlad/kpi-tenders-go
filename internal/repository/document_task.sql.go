@@ -8,6 +8,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -18,7 +19,7 @@ INSERT INTO document_tasks (document_id, module_name)
 SELECT $1, $2
 FROM documents
 WHERE documents.id = $1 AND documents.organization_id = $3
-RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at, retry_count
 `
 
 type CreateDocumentTaskParams struct {
@@ -40,6 +41,7 @@ func (q *Queries) CreateDocumentTask(ctx context.Context, arg CreateDocumentTask
 		&i.ErrorMessage,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RetryCount,
 	)
 	return i, err
 }
@@ -48,7 +50,7 @@ const createDocumentTaskInternal = `-- name: CreateDocumentTaskInternal :one
 INSERT INTO document_tasks (document_id, module_name)
 VALUES ($1, $2)
 ON CONFLICT (document_id, module_name) DO NOTHING
-RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at, retry_count
 `
 
 type CreateDocumentTaskInternalParams struct {
@@ -73,6 +75,7 @@ func (q *Queries) CreateDocumentTaskInternal(ctx context.Context, arg CreateDocu
 		&i.ErrorMessage,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RetryCount,
 	)
 	return i, err
 }
@@ -97,8 +100,7 @@ func (q *Queries) DeleteDocumentTask(ctx context.Context, arg DeleteDocumentTask
 }
 
 const getDocumentTask = `-- name: GetDocumentTask :one
-SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id,
-       dt.result_payload, dt.error_message, dt.created_at, dt.updated_at
+SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id, dt.result_payload, dt.error_message, dt.created_at, dt.updated_at, dt.retry_count
 FROM document_tasks AS dt
 JOIN documents AS d ON d.id = dt.document_id
 WHERE dt.id = $1 AND d.organization_id = $2
@@ -122,13 +124,65 @@ func (q *Queries) GetDocumentTask(ctx context.Context, arg GetDocumentTaskParams
 		&i.ErrorMessage,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RetryCount,
 	)
 	return i, err
 }
 
+const listStaleTasks = `-- name: ListStaleTasks :many
+SELECT dt.id,
+       dt.document_id,
+       dt.module_name,
+       dt.retry_count,
+       d.storage_path
+FROM document_tasks dt
+JOIN documents d ON d.id = dt.document_id
+WHERE dt.status IN ('pending', 'processing')
+  AND dt.updated_at < $1
+ORDER BY dt.updated_at ASC
+`
+
+type ListStaleTasksRow struct {
+	ID          uuid.UUID `json:"id"`
+	DocumentID  uuid.UUID `json:"document_id"`
+	ModuleName  string    `json:"module_name"`
+	RetryCount  int32     `json:"retry_count"`
+	StoragePath string    `json:"storage_path"`
+}
+
+// Watchdog: returns stuck tasks (pending or processing) whose updated_at is older than $1
+// (cutoff timestamp), joined with their document's storage_path for re-queuing.
+// Covers two failure modes: worker died mid-processing (processing) and
+// Redis message was lost before worker picked it up (pending).
+// No org-check; caller must be trusted (watchdog goroutine only).
+func (q *Queries) ListStaleTasks(ctx context.Context, updatedAt time.Time) ([]ListStaleTasksRow, error) {
+	rows, err := q.db.Query(ctx, listStaleTasks, updatedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListStaleTasksRow{}
+	for rows.Next() {
+		var i ListStaleTasksRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DocumentID,
+			&i.ModuleName,
+			&i.RetryCount,
+			&i.StoragePath,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTasksByDocument = `-- name: ListTasksByDocument :many
-SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id,
-       dt.result_payload, dt.error_message, dt.created_at, dt.updated_at
+SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id, dt.result_payload, dt.error_message, dt.created_at, dt.updated_at, dt.retry_count
 FROM document_tasks AS dt
 JOIN documents AS d ON d.id = dt.document_id
 WHERE dt.document_id = $1 AND d.organization_id = $2
@@ -159,6 +213,7 @@ func (q *Queries) ListTasksByDocument(ctx context.Context, arg ListTasksByDocume
 			&i.ErrorMessage,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.RetryCount,
 		); err != nil {
 			return nil, err
 		}
@@ -170,6 +225,44 @@ func (q *Queries) ListTasksByDocument(ctx context.Context, arg ListTasksByDocume
 	return items, nil
 }
 
+const markStaleTaskFailed = `-- name: MarkStaleTaskFailed :execrows
+UPDATE document_tasks
+SET status        = 'failed',
+    error_message = 'stale task: exceeded max retry attempts',
+    updated_at    = now()
+WHERE id     = $1
+  AND status IN ('pending', 'processing')
+`
+
+// Watchdog: permanently fails a task that has exhausted all retry attempts.
+func (q *Queries) MarkStaleTaskFailed(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, markStaleTaskFailed, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const markStaleTaskPending = `-- name: MarkStaleTaskPending :execrows
+UPDATE document_tasks
+SET status      = 'pending',
+    retry_count = retry_count + 1,
+    updated_at  = now()
+WHERE id     = $1
+  AND status IN ('pending', 'processing')
+`
+
+// Watchdog: atomically resets a stale task to pending and increments retry_count.
+// The WHERE status IN (...) guard makes this a compare-and-swap, so two
+// concurrent watchdog instances cannot double-claim the same task.
+func (q *Queries) MarkStaleTaskPending(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, markStaleTaskPending, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateDocumentTaskStatus = `-- name: UpdateDocumentTaskStatus :one
 UPDATE document_tasks
 SET status = $3, updated_at = now()
@@ -177,7 +270,7 @@ WHERE document_tasks.id = $1
   AND document_tasks.document_id IN (
     SELECT documents.id FROM documents WHERE documents.organization_id = $2
   )
-RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at, retry_count
 `
 
 type UpdateDocumentTaskStatusParams struct {
@@ -199,6 +292,7 @@ func (q *Queries) UpdateDocumentTaskStatus(ctx context.Context, arg UpdateDocume
 		&i.ErrorMessage,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RetryCount,
 	)
 	return i, err
 }
@@ -212,7 +306,7 @@ SET
     error_message  = COALESCE($5, error_message),
     updated_at     = now()
 WHERE id = $1
-RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at, retry_count
 `
 
 type UpdateWorkerTaskStatusParams struct {
@@ -243,6 +337,7 @@ func (q *Queries) UpdateWorkerTaskStatus(ctx context.Context, arg UpdateWorkerTa
 		&i.ErrorMessage,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RetryCount,
 	)
 	return i, err
 }

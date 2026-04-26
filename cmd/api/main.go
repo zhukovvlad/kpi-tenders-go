@@ -14,6 +14,7 @@ import (
 
 	"go-kpi-tenders/internal/config"
 	"go-kpi-tenders/internal/server"
+	"go-kpi-tenders/internal/watchdog"
 	"go-kpi-tenders/pkg/logging"
 )
 
@@ -70,6 +71,11 @@ func main() {
 	}()
 
 	log.Info("server started", slog.String("addr", httpSrv.Addr))
+
+	// ── Watchdog ────────────────────────────────────
+	watchdogCtx, watchdogCancel := context.WithCancel(context.Background())
+	defer watchdogCancel()
+	go watchdog.Start(watchdogCtx, srv.DB(), srv.PythonPublisher(), cfg, log)
 
 	// ── Graceful Shutdown ───────────────────────────
 	quit := make(chan os.Signal, 1)

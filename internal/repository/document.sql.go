@@ -13,9 +13,9 @@ import (
 )
 
 const createDocument = `-- name: CreateDocument :one
-INSERT INTO documents (organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at
+INSERT INTO documents (organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at, artifact_kind
 `
 
 type CreateDocumentParams struct {
@@ -27,6 +27,7 @@ type CreateDocumentParams struct {
 	StoragePath    string      `json:"storage_path"`
 	MimeType       pgtype.Text `json:"mime_type"`
 	FileSizeBytes  pgtype.Int8 `json:"file_size_bytes"`
+	ArtifactKind   pgtype.Text `json:"artifact_kind"`
 }
 
 func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) (Document, error) {
@@ -39,6 +40,7 @@ func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) 
 		arg.StoragePath,
 		arg.MimeType,
 		arg.FileSizeBytes,
+		arg.ArtifactKind,
 	)
 	var i Document
 	err := row.Scan(
@@ -53,6 +55,7 @@ func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) 
 		&i.FileSizeBytes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ArtifactKind,
 	)
 	return i, err
 }
@@ -75,7 +78,7 @@ func (q *Queries) DeleteDocument(ctx context.Context, arg DeleteDocumentParams) 
 }
 
 const getDocument = `-- name: GetDocument :one
-SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at FROM documents
+SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at, artifact_kind FROM documents
 WHERE id = $1 AND organization_id = $2
 `
 
@@ -99,12 +102,13 @@ func (q *Queries) GetDocument(ctx context.Context, arg GetDocumentParams) (Docum
 		&i.FileSizeBytes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ArtifactKind,
 	)
 	return i, err
 }
 
 const getDocumentByID = `-- name: GetDocumentByID :one
-SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at FROM documents WHERE id = $1
+SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at, artifact_kind FROM documents WHERE id = $1
 `
 
 // WARNING: This lookup is intentionally unscoped by organization_id.
@@ -125,18 +129,20 @@ func (q *Queries) GetDocumentByID(ctx context.Context, id uuid.UUID) (Document, 
 		&i.FileSizeBytes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ArtifactKind,
 	)
 	return i, err
 }
 
-const listDocumentsByOrganization = `-- name: ListDocumentsByOrganization :many
-SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at FROM documents
-WHERE organization_id = $1
-ORDER BY created_at DESC
+const listDocumentsByParent = `-- name: ListDocumentsByParent :many
+SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at, artifact_kind FROM documents
+WHERE parent_id = $1
+ORDER BY created_at ASC
 `
 
-func (q *Queries) ListDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]Document, error) {
-	rows, err := q.db.Query(ctx, listDocumentsByOrganization, organizationID)
+// Все артефакты, порождённые данным документом
+func (q *Queries) ListDocumentsByParent(ctx context.Context, parentID pgtype.UUID) ([]Document, error) {
+	rows, err := q.db.Query(ctx, listDocumentsByParent, parentID)
 	if err != nil {
 		return nil, err
 	}
@@ -156,6 +162,7 @@ func (q *Queries) ListDocumentsByOrganization(ctx context.Context, organizationI
 			&i.FileSizeBytes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ArtifactKind,
 		); err != nil {
 			return nil, err
 		}
@@ -167,19 +174,15 @@ func (q *Queries) ListDocumentsByOrganization(ctx context.Context, organizationI
 	return items, nil
 }
 
-const listDocumentsBySite = `-- name: ListDocumentsBySite :many
-SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at FROM documents
-WHERE organization_id = $1 AND site_id = $2
+const listRootDocumentsByOrganization = `-- name: ListRootDocumentsByOrganization :many
+SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at, artifact_kind FROM documents
+WHERE organization_id = $1 AND parent_id IS NULL
 ORDER BY created_at DESC
 `
 
-type ListDocumentsBySiteParams struct {
-	OrganizationID uuid.UUID   `json:"organization_id"`
-	SiteID         pgtype.UUID `json:"site_id"`
-}
-
-func (q *Queries) ListDocumentsBySite(ctx context.Context, arg ListDocumentsBySiteParams) ([]Document, error) {
-	rows, err := q.db.Query(ctx, listDocumentsBySite, arg.OrganizationID, arg.SiteID)
+// Только корневые документы (загруженные пользователем, не артефакты)
+func (q *Queries) ListRootDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]Document, error) {
+	rows, err := q.db.Query(ctx, listRootDocumentsByOrganization, organizationID)
 	if err != nil {
 		return nil, err
 	}
@@ -199,6 +202,51 @@ func (q *Queries) ListDocumentsBySite(ctx context.Context, arg ListDocumentsBySi
 			&i.FileSizeBytes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ArtifactKind,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRootDocumentsBySite = `-- name: ListRootDocumentsBySite :many
+SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at, artifact_kind FROM documents
+WHERE organization_id = $1 AND site_id = $2 AND parent_id IS NULL
+ORDER BY created_at DESC
+`
+
+type ListRootDocumentsBySiteParams struct {
+	OrganizationID uuid.UUID   `json:"organization_id"`
+	SiteID         pgtype.UUID `json:"site_id"`
+}
+
+func (q *Queries) ListRootDocumentsBySite(ctx context.Context, arg ListRootDocumentsBySiteParams) ([]Document, error) {
+	rows, err := q.db.Query(ctx, listRootDocumentsBySite, arg.OrganizationID, arg.SiteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Document{}
+	for rows.Next() {
+		var i Document
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.SiteID,
+			&i.UploadedBy,
+			&i.ParentID,
+			&i.FileName,
+			&i.StoragePath,
+			&i.MimeType,
+			&i.FileSizeBytes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ArtifactKind,
 		); err != nil {
 			return nil, err
 		}

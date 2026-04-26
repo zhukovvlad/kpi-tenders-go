@@ -237,7 +237,7 @@ func TestRepository_CreateDocument(t *testing.T) {
 	assert.False(t, doc.SiteID.Valid)
 }
 
-func TestRepository_ListDocumentsBySite(t *testing.T) {
+func TestRepository_ListRootDocumentsBySite(t *testing.T) {
 	ctx := context.Background()
 	q := repository.New(testPool)
 	org := createTestOrg(t, ctx)
@@ -258,7 +258,7 @@ func TestRepository_ListDocumentsBySite(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	docs, err := q.ListDocumentsBySite(ctx, repository.ListDocumentsBySiteParams{
+	docs, err := q.ListRootDocumentsBySite(ctx, repository.ListRootDocumentsBySiteParams{
 		OrganizationID: org.ID,
 		SiteID:         pgtype.UUID{Bytes: site.ID, Valid: true},
 	})
@@ -481,4 +481,111 @@ func TestRepository_DeleteDocumentTask_OtherOrg_DeletesNothing(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), rows, "must not delete task belonging to another org")
+}
+
+// ── Artifact / parent-child document tests ───────────────────────────────────
+
+func TestRepository_ListRootDocumentsByOrganization_ExcludesArtifacts(t *testing.T) {
+	ctx := context.Background()
+	q := repository.New(testPool)
+	org := createTestOrg(t, ctx)
+	user := createTestUser(t, ctx, org.ID)
+
+	// root document
+	root, err := q.CreateDocument(ctx, repository.CreateDocumentParams{
+		OrganizationID: org.ID,
+		UploadedBy:     user.ID,
+		FileName:       "root.pdf",
+		StoragePath:    "docs/root.pdf",
+	})
+	require.NoError(t, err)
+
+	// artifact (has parent_id → must be excluded from root list)
+	_, err = q.CreateDocument(ctx, repository.CreateDocumentParams{
+		OrganizationID: org.ID,
+		UploadedBy:     user.ID,
+		FileName:       "artifact.md",
+		StoragePath:    "docs/artifact.md",
+		ParentID:       pgtype.UUID{Bytes: root.ID, Valid: true},
+		ArtifactKind:   pgtype.Text{String: "convert_md", Valid: true},
+	})
+	require.NoError(t, err)
+
+	docs, err := q.ListRootDocumentsByOrganization(ctx, org.ID)
+	require.NoError(t, err)
+
+	ids := make([]interface{}, len(docs))
+	for i, d := range docs {
+		ids[i] = d.ID
+	}
+	assert.Contains(t, ids, root.ID)
+	for _, d := range docs {
+		assert.False(t, d.ParentID.Valid, "root list must not contain artifacts")
+	}
+}
+
+func TestRepository_ListDocumentsByParent(t *testing.T) {
+	ctx := context.Background()
+	q := repository.New(testPool)
+	org := createTestOrg(t, ctx)
+	user := createTestUser(t, ctx, org.ID)
+
+	parent, err := q.CreateDocument(ctx, repository.CreateDocumentParams{
+		OrganizationID: org.ID, UploadedBy: user.ID,
+		FileName: "parent.pdf", StoragePath: "docs/parent.pdf",
+	})
+	require.NoError(t, err)
+
+	for i, kind := range []string{"convert_md", "anonymize_doc"} {
+		_, err = q.CreateDocument(ctx, repository.CreateDocumentParams{
+			OrganizationID: org.ID,
+			UploadedBy:     user.ID,
+			FileName:       fmt.Sprintf("artifact%d.md", i),
+			StoragePath:    fmt.Sprintf("docs/artifact%d.md", i),
+			ParentID:       pgtype.UUID{Bytes: parent.ID, Valid: true},
+			ArtifactKind:   pgtype.Text{String: kind, Valid: true},
+		})
+		require.NoError(t, err)
+	}
+
+	artifacts, err := q.ListDocumentsByParent(ctx, pgtype.UUID{Bytes: parent.ID, Valid: true})
+	require.NoError(t, err)
+	assert.Len(t, artifacts, 2)
+	for _, a := range artifacts {
+		assert.Equal(t, parent.ID, uuid.UUID(a.ParentID.Bytes))
+	}
+}
+
+func TestRepository_DeleteDocument_CascadesToArtifacts(t *testing.T) {
+	ctx := context.Background()
+	q := repository.New(testPool)
+	org := createTestOrg(t, ctx)
+	user := createTestUser(t, ctx, org.ID)
+
+	parent, err := q.CreateDocument(ctx, repository.CreateDocumentParams{
+		OrganizationID: org.ID, UploadedBy: user.ID,
+		FileName: "parent.pdf", StoragePath: "docs/parent.pdf",
+	})
+	require.NoError(t, err)
+
+	artifact, err := q.CreateDocument(ctx, repository.CreateDocumentParams{
+		OrganizationID: org.ID,
+		UploadedBy:     user.ID,
+		FileName:       "child.md",
+		StoragePath:    "docs/child.md",
+		ParentID:       pgtype.UUID{Bytes: parent.ID, Valid: true},
+		ArtifactKind:   pgtype.Text{String: "convert_md", Valid: true},
+	})
+	require.NoError(t, err)
+
+	// Delete parent → artifact must also be deleted (CASCADE)
+	rows, err := q.DeleteDocument(ctx, repository.DeleteDocumentParams{
+		ID: parent.ID, OrganizationID: org.ID,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), rows)
+
+	// Artifact must be gone
+	_, err = q.GetDocumentByID(ctx, artifact.ID)
+	require.Error(t, err, "artifact must be cascade-deleted with parent")
 }

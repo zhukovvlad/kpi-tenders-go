@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -48,7 +49,11 @@ func makeDocumentTask(id, docID uuid.UUID, module, status string, payload json.R
 }
 
 func convertPayloadJSON(mdPath string) json.RawMessage {
-	b, err := json.Marshal(map[string]string{"md_storage_path": mdPath})
+	b, err := json.Marshal(map[string]any{
+		"md_storage_path": mdPath,
+		"char_count":      42,
+		"section_count":   3,
+	})
 	if err != nil {
 		panic("convertPayloadJSON: failed to marshal payload: " + err.Error())
 	}
@@ -80,7 +85,7 @@ func TestWorkerService_HandleStatusUpdate_Processing(t *testing.T) {
 	pc.AssertNotCalled(t, "Process")
 }
 
-// 2. status=completed, module=convert — update + trigger anonymize.
+// 2. status=completed, module=convert — update + trigger anonymize + register artifact.
 func TestWorkerService_HandleStatusUpdate_ConvertCompleted_TriggersAnonymize(t *testing.T) {
 	ctx := context.Background()
 	ms := new(storemock.MockStore)
@@ -89,16 +94,21 @@ func TestWorkerService_HandleStatusUpdate_ConvertCompleted_TriggersAnonymize(t *
 	taskID := uuid.New()
 	docID := uuid.New()
 	anonTaskID := uuid.New()
+	artifactID := uuid.New()
 	mdPath := "tenders/docs/test.md"
 
 	returnedTask := makeDocumentTask(taskID, docID, "convert", "completed", convertPayloadJSON(mdPath))
 	anonTask := makeDocumentTask(anonTaskID, docID, "anonymize", "pending", nil)
+	parentDoc := repository.Document{ID: docID, OrganizationID: uuid.New()}
+	artifactDoc := repository.Document{ID: artifactID}
 
 	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.Anything).Return(returnedTask, nil)
 	ms.On("CreateDocumentTaskInternal", mock.Anything, repository.CreateDocumentTaskInternalParams{
 		DocumentID: docID,
 		ModuleName: "anonymize",
 	}).Return(anonTask, nil)
+	ms.On("GetDocumentByID", mock.Anything, docID).Return(parentDoc, nil)
+	ms.On("CreateDocument", mock.Anything, mock.Anything).Return(artifactDoc, nil)
 
 	pc.On("Process", mock.Anything, pythonworker.ProcessRequest{
 		TaskID:      anonTaskID.String(),
@@ -177,10 +187,13 @@ func TestWorkerService_HandleStatusUpdate_PythonClientError_NoErrorPropagated(t 
 	taskID := uuid.New()
 	docID := uuid.New()
 	anonTaskID := uuid.New()
+	artifactID := uuid.New()
 	mdPath := "tenders/docs/test.md"
 
 	returnedTask := makeDocumentTask(taskID, docID, "convert", "completed", convertPayloadJSON(mdPath))
 	anonTask := makeDocumentTask(anonTaskID, docID, "anonymize", "pending", nil)
+	parentDoc := repository.Document{ID: docID, OrganizationID: uuid.New()}
+	artifactDoc := repository.Document{ID: artifactID}
 
 	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.MatchedBy(func(p repository.UpdateWorkerTaskStatusParams) bool {
 		return p.ID == taskID
@@ -190,6 +203,8 @@ func TestWorkerService_HandleStatusUpdate_PythonClientError_NoErrorPropagated(t 
 	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.MatchedBy(func(p repository.UpdateWorkerTaskStatusParams) bool {
 		return p.ID == anonTaskID && p.Status == statusFailed
 	})).Return(repository.DocumentTask{}, nil)
+	ms.On("GetDocumentByID", mock.Anything, docID).Return(parentDoc, nil)
+	ms.On("CreateDocument", mock.Anything, mock.Anything).Return(artifactDoc, nil)
 	pc.On("Process", mock.Anything, mock.Anything).Return(errors.New("python worker down"))
 
 	svc := newTestWorkerService(ms, pc)
@@ -233,9 +248,12 @@ func TestWorkerService_HandleStatusUpdate_ConvertCompleted_AnonAlreadyExists_Ide
 
 	taskID := uuid.New()
 	docID := uuid.New()
+	artifactID := uuid.New()
 	mdPath := "tenders/docs/test.md"
 
 	returnedTask := makeDocumentTask(taskID, docID, "convert", "completed", convertPayloadJSON(mdPath))
+	parentDoc := repository.Document{ID: docID, OrganizationID: uuid.New()}
+	artifactDoc := repository.Document{ID: artifactID}
 
 	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.Anything).Return(returnedTask, nil)
 	// ON CONFLICT DO NOTHING: pgx returns ErrNoRows when nothing was inserted.
@@ -243,6 +261,8 @@ func TestWorkerService_HandleStatusUpdate_ConvertCompleted_AnonAlreadyExists_Ide
 		DocumentID: docID,
 		ModuleName: "anonymize",
 	}).Return(repository.DocumentTask{}, pgx.ErrNoRows)
+	ms.On("GetDocumentByID", mock.Anything, docID).Return(parentDoc, nil)
+	ms.On("CreateDocument", mock.Anything, mock.Anything).Return(artifactDoc, nil)
 
 	svc := newTestWorkerService(ms, pc)
 	task, err := svc.HandleStatusUpdate(ctx, taskID, WorkerStatusUpdate{
@@ -252,6 +272,84 @@ func TestWorkerService_HandleStatusUpdate_ConvertCompleted_AnonAlreadyExists_Ide
 
 	require.NoError(t, err)
 	assert.Equal(t, "completed", task.Status)
+	ms.AssertExpectations(t)
+	pc.AssertNotCalled(t, "Process")
+}
+
+// 8. convert completed → artifact document created and result_payload updated with MD document UUID.
+func TestWorkerService_HandleStatusUpdate_ConvertCompleted_RegistersArtifact(t *testing.T) {
+	ctx := context.Background()
+	ms := new(storemock.MockStore)
+	pc := new(mockPythonClient)
+
+	taskID := uuid.New()
+	docID := uuid.New()
+	anonTaskID := uuid.New()
+	artifactID := uuid.New()
+	mdPath := "tenders/docs/test.md"
+
+	returnedTask := makeDocumentTask(taskID, docID, "convert", "completed", convertPayloadJSON(mdPath))
+	anonTask := makeDocumentTask(anonTaskID, docID, "anonymize", "pending", nil)
+	parentDoc := repository.Document{ID: docID, OrganizationID: uuid.New()}
+	artifactDoc := repository.Document{ID: artifactID}
+
+	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.Anything).Return(returnedTask, nil)
+	ms.On("CreateDocumentTaskInternal", mock.Anything, mock.Anything).Return(anonTask, nil)
+	ms.On("GetDocumentByID", mock.Anything, docID).Return(parentDoc, nil)
+	ms.On("CreateDocument", mock.Anything, mock.MatchedBy(func(p repository.CreateDocumentParams) bool {
+		return p.ArtifactKind.String == "convert_md" &&
+			p.MimeType.String == "text/markdown" &&
+			p.StoragePath == mdPath &&
+			p.FileName == "test.md" &&
+			p.ParentID == (pgtype.UUID{Bytes: docID, Valid: true})
+	})).Return(artifactDoc, nil)
+	pc.On("Process", mock.Anything, mock.Anything).Return(nil)
+
+	svc := newTestWorkerService(ms, pc)
+	_, err := svc.HandleStatusUpdate(ctx, taskID, WorkerStatusUpdate{
+		Status:        "completed",
+		ResultPayload: convertPayloadJSON(mdPath),
+	})
+
+	require.NoError(t, err)
+	ms.AssertExpectations(t)
+}
+
+// 9. anonymize completed → two artifact documents created; result_payload updated.
+func TestWorkerService_HandleStatusUpdate_AnonymizeCompleted_RegistersArtifacts(t *testing.T) {
+	ctx := context.Background()
+	ms := new(storemock.MockStore)
+	pc := new(mockPythonClient)
+
+	taskID := uuid.New()
+	docID := uuid.New()
+	anonArtifactID := uuid.New()
+	entitiesArtifactID := uuid.New()
+
+	anonPayload, _ := json.Marshal(map[string]any{
+		"anonymized_storage_path":   "tenders/docs/anon.md",
+		"entities_map_storage_path": "tenders/docs/entities.json",
+		"entity_count":              5,
+	})
+	returnedTask := makeDocumentTask(taskID, docID, "anonymize", "completed", anonPayload)
+	parentDoc := repository.Document{ID: docID, OrganizationID: uuid.New()}
+
+	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.Anything).Return(returnedTask, nil)
+	ms.On("GetDocumentByID", mock.Anything, docID).Return(parentDoc, nil)
+	ms.On("CreateDocument", mock.Anything, mock.MatchedBy(func(p repository.CreateDocumentParams) bool {
+		return p.ArtifactKind.String == "anonymize_doc"
+	})).Return(repository.Document{ID: anonArtifactID}, nil).Once()
+	ms.On("CreateDocument", mock.Anything, mock.MatchedBy(func(p repository.CreateDocumentParams) bool {
+		return p.ArtifactKind.String == "anonymize_entities"
+	})).Return(repository.Document{ID: entitiesArtifactID}, nil).Once()
+
+	svc := newTestWorkerService(ms, pc)
+	_, err := svc.HandleStatusUpdate(ctx, taskID, WorkerStatusUpdate{
+		Status:        "completed",
+		ResultPayload: anonPayload,
+	})
+
+	require.NoError(t, err)
 	ms.AssertExpectations(t)
 	pc.AssertNotCalled(t, "Process")
 }
