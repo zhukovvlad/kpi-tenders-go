@@ -240,7 +240,6 @@ func parseUUID(raw string) (uuid.UUID, error) {
 // Form fields:
 //   - file        (required) — the file binary
 //   - site_id     (optional) — UUID of the construction site
-//   - parent_id   (optional) — UUID of the parent document
 func (s *Server) UploadDocument(c *gin.Context) {
 	if s.storageClient == nil {
 		s.respondWithError(c, errs.New(errs.CodeInternalError, "storage unavailable", nil))
@@ -316,19 +315,6 @@ func (s *Server) UploadDocument(c *gin.Context) {
 			return
 		}
 		params.SiteID = pgtype.UUID{Bytes: id, Valid: true}
-	}
-
-	if parentIDStr := c.PostForm("parent_id"); parentIDStr != "" {
-		id, err := uuid.Parse(parentIDStr)
-		if err != nil {
-			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid parent_id", err))
-			return
-		}
-		if _, err := s.documentService.Get(c.Request.Context(), id, orgID); err != nil {
-			s.respondWithError(c, err)
-			return
-		}
-		params.ParentID = pgtype.UUID{Bytes: id, Valid: true}
 	}
 
 	f, err := fileHeader.Open()
