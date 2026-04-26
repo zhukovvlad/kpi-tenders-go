@@ -130,22 +130,50 @@ func processTask(
 		return
 	}
 
-	triggerCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	if err := pub.Process(triggerCtx, pythonworker.ProcessRequest{
+	req := pythonworker.ProcessRequest{
 		TaskID:      task.ID.String(),
 		DocumentID:  task.DocumentID.String(),
 		ModuleName:  task.ModuleName,
 		StoragePath: task.InputStoragePath,
-	}); err != nil {
-		// Best-effort: task is already set to 'pending', so it will be
-		// picked up again on the next watchdog tick or manual trigger.
-		taskLog.Error("watchdog: failed to re-queue task via python worker", "err", err)
-		return
 	}
 
-	taskLog.Info("watchdog: stale task re-queued",
-		slog.Int("new_retry_count", int(task.RetryCount)+1),
+	const maxPublishAttempts = 3
+	const publishAttemptTimeout = 5 * time.Second
+	const publishRetryDelay = 500 * time.Millisecond
+
+	var lastErr error
+	for attempt := 1; attempt <= maxPublishAttempts; attempt++ {
+		triggerCtx, cancel := context.WithTimeout(ctx, publishAttemptTimeout)
+		lastErr = pub.Process(triggerCtx, req)
+		cancel()
+
+		if lastErr == nil {
+			taskLog.Info("watchdog: stale task re-queued",
+				slog.Int("new_retry_count", int(task.RetryCount)+1),
+				slog.Int("publish_attempt", attempt),
+			)
+			return
+		}
+
+		if attempt < maxPublishAttempts {
+			taskLog.Warn("watchdog: failed to re-queue task via python worker; retrying",
+				"err", lastErr,
+				slog.Int("publish_attempt", attempt),
+				slog.Int("max_publish_attempts", maxPublishAttempts),
+			)
+			select {
+			case <-ctx.Done():
+				taskLog.Error("watchdog: context canceled while retrying task re-queue", "err", ctx.Err())
+				return
+			case <-time.After(publishRetryDelay):
+			}
+		}
+	}
+
+	// Best-effort: task is already set to 'pending', so it will be picked up
+	// again on the next watchdog tick (after WatchdogThreshold elapses).
+	taskLog.Error("watchdog: failed to re-queue task via python worker after retries",
+		"err", lastErr,
+		slog.Int("max_publish_attempts", maxPublishAttempts),
 	)
 }

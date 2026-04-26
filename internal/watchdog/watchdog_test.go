@@ -174,7 +174,8 @@ func TestRunOnce_BestEffortOnPublishError(t *testing.T) {
 	mq.On("MarkStaleTaskPending", mock.Anything, mock.MatchedBy(func(p repository.MarkStaleTaskPendingParams) bool {
 		return p.ID == taskID
 	})).Return(int64(1), nil)
-	pub.On("Process", mock.Anything, mock.Anything).Return(context.DeadlineExceeded)
+	// Retry-loop: Process is called up to maxPublishAttempts (3) times.
+	pub.On("Process", mock.Anything, mock.Anything).Return(context.DeadlineExceeded).Times(3)
 
 	// Must not panic or return error.
 	require.NotPanics(t, func() {
