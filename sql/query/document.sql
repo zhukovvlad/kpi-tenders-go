@@ -25,10 +25,20 @@ WHERE organization_id = $1 AND site_id = $2 AND parent_id IS NULL
 ORDER BY created_at DESC;
 
 -- name: ListDocumentsByParent :many
--- Все артефакты, порождённые данным документом
+-- Все артефакты, порождённые данным документом; scoped by organization_id for tenant isolation.
 SELECT * FROM documents
-WHERE parent_id = $1
+WHERE parent_id = $1 AND organization_id = $2
 ORDER BY created_at ASC;
 
 -- name: DeleteDocument :execrows
 DELETE FROM documents WHERE id = $1 AND organization_id = $2;
+
+-- name: CreateArtifactDocument :one
+-- Idempotent artifact creation: on conflict (parent_id, artifact_kind) performs a no-op
+-- update (file_name = EXCLUDED.file_name) so that RETURNING still yields the row.
+-- Prevents duplicate artifact documents when a worker sends a duplicate 'completed' callback.
+INSERT INTO documents (organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (parent_id, artifact_kind) WHERE parent_id IS NOT NULL
+DO UPDATE SET file_name = EXCLUDED.file_name
+RETURNING *;

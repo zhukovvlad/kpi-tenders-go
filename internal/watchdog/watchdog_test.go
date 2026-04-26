@@ -53,11 +53,11 @@ func TestRunOnce_RequeuesStaleTask(t *testing.T) {
 	taskID := uuid.New()
 	docID := uuid.New()
 	staleTask := repository.ListStaleTasksRow{
-		ID:          taskID,
-		DocumentID:  docID,
-		ModuleName:  "convert",
-		RetryCount:  0,
-		StoragePath: "bucket/docs/test.pdf",
+		ID:               taskID,
+		DocumentID:       docID,
+		ModuleName:       "convert",
+		RetryCount:       0,
+		InputStoragePath: "bucket/docs/test.pdf",
 	}
 
 	mq.On("ListStaleTasks", mock.Anything, mock.AnythingOfType("time.Time")).
@@ -156,11 +156,11 @@ func TestRunOnce_BestEffortOnPublishError(t *testing.T) {
 	taskID := uuid.New()
 	docID := uuid.New()
 	staleTask := repository.ListStaleTasksRow{
-		ID:          taskID,
-		DocumentID:  docID,
-		ModuleName:  "convert",
-		RetryCount:  0,
-		StoragePath: "bucket/docs/test.pdf",
+		ID:               taskID,
+		DocumentID:       docID,
+		ModuleName:       "convert",
+		RetryCount:       0,
+		InputStoragePath: "bucket/docs/test.pdf",
 	}
 
 	mq.On("ListStaleTasks", mock.Anything, mock.AnythingOfType("time.Time")).
@@ -187,11 +187,11 @@ func TestRunOnce_RequeuesStaleTaskInPendingStatus(t *testing.T) {
 	taskID := uuid.New()
 	docID := uuid.New()
 	staleTask := repository.ListStaleTasksRow{
-		ID:          taskID,
-		DocumentID:  docID,
-		ModuleName:  "convert",
-		RetryCount:  0,
-		StoragePath: "bucket/docs/test.pdf",
+		ID:               taskID,
+		DocumentID:       docID,
+		ModuleName:       "convert",
+		RetryCount:       0,
+		InputStoragePath: "bucket/docs/test.pdf",
 	}
 
 	mq.On("ListStaleTasks", mock.Anything, mock.AnythingOfType("time.Time")).

@@ -20,6 +20,34 @@ type MockQuerier struct {
 	mock.Mock
 }
 
+// CreateArtifactDocument provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) CreateArtifactDocument(ctx context.Context, arg repository.CreateArtifactDocumentParams) (repository.Document, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateArtifactDocument")
+	}
+
+	var r0 repository.Document
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateArtifactDocumentParams) (repository.Document, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateArtifactDocumentParams) repository.Document); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.Document)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.CreateArtifactDocumentParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // CreateConstructionSite provides a mock function with given fields: ctx, arg
 func (_m *MockQuerier) CreateConstructionSite(ctx context.Context, arg repository.CreateConstructionSiteParams) (repository.ConstructionSite, error) {
 	ret := _m.Called(ctx, arg)
@@ -582,9 +610,9 @@ func (_m *MockQuerier) ListConstructionSitesByOrganization(ctx context.Context, 
 	return r0, r1
 }
 
-// ListDocumentsByParent provides a mock function with given fields: ctx, parentID
-func (_m *MockQuerier) ListDocumentsByParent(ctx context.Context, parentID pgtype.UUID) ([]repository.Document, error) {
-	ret := _m.Called(ctx, parentID)
+// ListDocumentsByParent provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) ListDocumentsByParent(ctx context.Context, arg repository.ListDocumentsByParentParams) ([]repository.Document, error) {
+	ret := _m.Called(ctx, arg)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListDocumentsByParent")
@@ -592,19 +620,19 @@ func (_m *MockQuerier) ListDocumentsByParent(ctx context.Context, parentID pgtyp
 
 	var r0 []repository.Document
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, pgtype.UUID) ([]repository.Document, error)); ok {
-		return rf(ctx, parentID)
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListDocumentsByParentParams) ([]repository.Document, error)); ok {
+		return rf(ctx, arg)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, pgtype.UUID) []repository.Document); ok {
-		r0 = rf(ctx, parentID)
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListDocumentsByParentParams) []repository.Document); ok {
+		r0 = rf(ctx, arg)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]repository.Document)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, pgtype.UUID) error); ok {
-		r1 = rf(ctx, parentID)
+	if rf, ok := ret.Get(1).(func(context.Context, repository.ListDocumentsByParentParams) error); ok {
+		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)
 	}

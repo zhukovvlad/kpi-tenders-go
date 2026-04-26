@@ -74,7 +74,6 @@ func main() {
 
 	// ── Watchdog ────────────────────────────────────
 	watchdogCtx, watchdogCancel := context.WithCancel(context.Background())
-	defer watchdogCancel()
 	go watchdog.Start(watchdogCtx, srv.DB(), srv.PythonPublisher(), cfg, log)
 
 	// ── Graceful Shutdown ───────────────────────────
@@ -83,6 +82,11 @@ func main() {
 	sig := <-quit
 
 	log.Info("shutting down", slog.String("signal", sig.String()))
+
+	// Cancel watchdog first so it stops ticking before Redis is closed.
+	// If watchdogCancel were only called via defer, the watchdog could tick
+	// into a closed Redis pool during the shutdown window.
+	watchdogCancel()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()

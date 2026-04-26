@@ -154,8 +154,9 @@ func (s *WorkerService) triggerAnonymize(ctx context.Context, convertTask reposi
 	// Create the anonymize task. ON CONFLICT (document_id, module_name) DO NOTHING
 	// makes this atomic: if the task already exists pgx returns ErrNoRows.
 	anonTask, err := s.repo.CreateDocumentTaskInternal(chainCtx, repository.CreateDocumentTaskInternalParams{
-		DocumentID: convertTask.DocumentID,
-		ModuleName: moduleAnonymize,
+		DocumentID:       convertTask.DocumentID,
+		ModuleName:       moduleAnonymize,
+		InputStoragePath: payload.MDStoragePath,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Task already exists — idempotent skip.
@@ -200,6 +201,8 @@ func fileNameFromPath(storagePath string) string {
 
 // registerArtifact creates a Document record for a worker-produced artifact file.
 // uploaded_by is inherited from the parent document.
+// Idempotent: a second call with the same (parent_id, artifact_kind) returns the
+// existing artifact document without creating a duplicate.
 func (s *WorkerService) registerArtifact(
 	ctx context.Context,
 	parent repository.Document,
@@ -208,7 +211,7 @@ func (s *WorkerService) registerArtifact(
 	mimeType string,
 	kind string,
 ) (repository.Document, error) {
-	return s.repo.CreateDocument(ctx, repository.CreateDocumentParams{
+	return s.repo.CreateArtifactDocument(ctx, repository.CreateArtifactDocumentParams{
 		OrganizationID: parent.OrganizationID,
 		SiteID:         parent.SiteID,
 		UploadedBy:     parent.UploadedBy,
@@ -298,6 +301,12 @@ func (s *WorkerService) registerAnonymizeArtifacts(ctx context.Context, task rep
 			return fmt.Errorf("create entities map artifact: %w", err)
 		}
 		entitiesDocID = doc.ID.String()
+	}
+
+	// No artifacts to register — both paths are empty. Avoid overwriting result_payload
+	// with empty IDs (entity_count would be preserved but document IDs would be cleared).
+	if anonDocID == "" && entitiesDocID == "" {
+		return nil
 	}
 
 	finalPayload := anonymizeResultFinal{

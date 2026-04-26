@@ -548,7 +548,10 @@ func TestRepository_ListDocumentsByParent(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	artifacts, err := q.ListDocumentsByParent(ctx, pgtype.UUID{Bytes: parent.ID, Valid: true})
+	artifacts, err := q.ListDocumentsByParent(ctx, repository.ListDocumentsByParentParams{
+		ParentID:       pgtype.UUID{Bytes: parent.ID, Valid: true},
+		OrganizationID: org.ID,
+	})
 	require.NoError(t, err)
 	assert.Len(t, artifacts, 2)
 	for _, a := range artifacts {

@@ -113,7 +113,7 @@ func (s *Server) Close() error {
 }
 
 // PythonPublisher returns the Redis/Celery publisher used by the server.
-// It is nil when the server was initialised without Redis (unit tests).
+// Initialised as part of server construction; always non-nil after NewServer succeeds.
 func (s *Server) PythonPublisher() *pythonworker.Publisher {
 	return s.pythonClient
 }

@@ -12,6 +12,59 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createArtifactDocument = `-- name: CreateArtifactDocument :one
+INSERT INTO documents (organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (parent_id, artifact_kind) WHERE parent_id IS NOT NULL
+DO UPDATE SET file_name = EXCLUDED.file_name
+RETURNING id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at, artifact_kind
+`
+
+type CreateArtifactDocumentParams struct {
+	OrganizationID uuid.UUID   `json:"organization_id"`
+	SiteID         pgtype.UUID `json:"site_id"`
+	UploadedBy     uuid.UUID   `json:"uploaded_by"`
+	ParentID       pgtype.UUID `json:"parent_id"`
+	FileName       string      `json:"file_name"`
+	StoragePath    string      `json:"storage_path"`
+	MimeType       pgtype.Text `json:"mime_type"`
+	FileSizeBytes  pgtype.Int8 `json:"file_size_bytes"`
+	ArtifactKind   pgtype.Text `json:"artifact_kind"`
+}
+
+// Idempotent artifact creation: on conflict (parent_id, artifact_kind) performs a no-op
+// update (file_name = EXCLUDED.file_name) so that RETURNING still yields the row.
+// Prevents duplicate artifact documents when a worker sends a duplicate 'completed' callback.
+func (q *Queries) CreateArtifactDocument(ctx context.Context, arg CreateArtifactDocumentParams) (Document, error) {
+	row := q.db.QueryRow(ctx, createArtifactDocument,
+		arg.OrganizationID,
+		arg.SiteID,
+		arg.UploadedBy,
+		arg.ParentID,
+		arg.FileName,
+		arg.StoragePath,
+		arg.MimeType,
+		arg.FileSizeBytes,
+		arg.ArtifactKind,
+	)
+	var i Document
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.SiteID,
+		&i.UploadedBy,
+		&i.ParentID,
+		&i.FileName,
+		&i.StoragePath,
+		&i.MimeType,
+		&i.FileSizeBytes,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ArtifactKind,
+	)
+	return i, err
+}
+
 const createDocument = `-- name: CreateDocument :one
 INSERT INTO documents (organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -136,13 +189,18 @@ func (q *Queries) GetDocumentByID(ctx context.Context, id uuid.UUID) (Document, 
 
 const listDocumentsByParent = `-- name: ListDocumentsByParent :many
 SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at, artifact_kind FROM documents
-WHERE parent_id = $1
+WHERE parent_id = $1 AND organization_id = $2
 ORDER BY created_at ASC
 `
 
-// Все артефакты, порождённые данным документом
-func (q *Queries) ListDocumentsByParent(ctx context.Context, parentID pgtype.UUID) ([]Document, error) {
-	rows, err := q.db.Query(ctx, listDocumentsByParent, parentID)
+type ListDocumentsByParentParams struct {
+	ParentID       pgtype.UUID `json:"parent_id"`
+	OrganizationID uuid.UUID   `json:"organization_id"`
+}
+
+// Все артефакты, порождённые данным документом; scoped by organization_id for tenant isolation.
+func (q *Queries) ListDocumentsByParent(ctx context.Context, arg ListDocumentsByParentParams) ([]Document, error) {
+	rows, err := q.db.Query(ctx, listDocumentsByParent, arg.ParentID, arg.OrganizationID)
 	if err != nil {
 		return nil, err
 	}

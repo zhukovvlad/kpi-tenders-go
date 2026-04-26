@@ -15,11 +15,11 @@ import (
 )
 
 const createDocumentTask = `-- name: CreateDocumentTask :one
-INSERT INTO document_tasks (document_id, module_name)
-SELECT $1, $2
-FROM documents
-WHERE documents.id = $1 AND documents.organization_id = $3
-RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at, retry_count
+INSERT INTO document_tasks (document_id, module_name, input_storage_path)
+SELECT $1, $2, d.storage_path
+FROM documents d
+WHERE d.id = $1 AND d.organization_id = $3
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at, retry_count, input_storage_path
 `
 
 type CreateDocumentTaskParams struct {
@@ -42,28 +42,31 @@ func (q *Queries) CreateDocumentTask(ctx context.Context, arg CreateDocumentTask
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.RetryCount,
+		&i.InputStoragePath,
 	)
 	return i, err
 }
 
 const createDocumentTaskInternal = `-- name: CreateDocumentTaskInternal :one
-INSERT INTO document_tasks (document_id, module_name)
-VALUES ($1, $2)
+INSERT INTO document_tasks (document_id, module_name, input_storage_path)
+VALUES ($1, $2, $3)
 ON CONFLICT (document_id, module_name) DO NOTHING
-RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at, retry_count
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at, retry_count, input_storage_path
 `
 
 type CreateDocumentTaskInternalParams struct {
-	DocumentID uuid.UUID `json:"document_id"`
-	ModuleName string    `json:"module_name"`
+	DocumentID       uuid.UUID `json:"document_id"`
+	ModuleName       string    `json:"module_name"`
+	InputStoragePath string    `json:"input_storage_path"`
 }
 
 // Internal: creates a task directly by document_id without tenant org-check.
 // Use only from trusted internal paths (worker service); never expose publicly.
 // ON CONFLICT DO NOTHING makes this idempotent: duplicate (document_id, module_name)
 // returns pgx.ErrNoRows, which callers should treat as "task already exists".
+// $3 is input_storage_path: the file path the Python worker will receive for this module.
 func (q *Queries) CreateDocumentTaskInternal(ctx context.Context, arg CreateDocumentTaskInternalParams) (DocumentTask, error) {
-	row := q.db.QueryRow(ctx, createDocumentTaskInternal, arg.DocumentID, arg.ModuleName)
+	row := q.db.QueryRow(ctx, createDocumentTaskInternal, arg.DocumentID, arg.ModuleName, arg.InputStoragePath)
 	var i DocumentTask
 	err := row.Scan(
 		&i.ID,
@@ -76,6 +79,7 @@ func (q *Queries) CreateDocumentTaskInternal(ctx context.Context, arg CreateDocu
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.RetryCount,
+		&i.InputStoragePath,
 	)
 	return i, err
 }
@@ -100,7 +104,7 @@ func (q *Queries) DeleteDocumentTask(ctx context.Context, arg DeleteDocumentTask
 }
 
 const getDocumentTask = `-- name: GetDocumentTask :one
-SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id, dt.result_payload, dt.error_message, dt.created_at, dt.updated_at, dt.retry_count
+SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id, dt.result_payload, dt.error_message, dt.created_at, dt.updated_at, dt.retry_count, dt.input_storage_path
 FROM document_tasks AS dt
 JOIN documents AS d ON d.id = dt.document_id
 WHERE dt.id = $1 AND d.organization_id = $2
@@ -125,6 +129,7 @@ func (q *Queries) GetDocumentTask(ctx context.Context, arg GetDocumentTaskParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.RetryCount,
+		&i.InputStoragePath,
 	)
 	return i, err
 }
@@ -134,24 +139,25 @@ SELECT dt.id,
        dt.document_id,
        dt.module_name,
        dt.retry_count,
-       d.storage_path
+       dt.input_storage_path
 FROM document_tasks dt
-JOIN documents d ON d.id = dt.document_id
 WHERE dt.status IN ('pending', 'processing')
   AND dt.updated_at < $1
 ORDER BY dt.updated_at ASC
 `
 
 type ListStaleTasksRow struct {
-	ID          uuid.UUID `json:"id"`
-	DocumentID  uuid.UUID `json:"document_id"`
-	ModuleName  string    `json:"module_name"`
-	RetryCount  int32     `json:"retry_count"`
-	StoragePath string    `json:"storage_path"`
+	ID               uuid.UUID `json:"id"`
+	DocumentID       uuid.UUID `json:"document_id"`
+	ModuleName       string    `json:"module_name"`
+	RetryCount       int32     `json:"retry_count"`
+	InputStoragePath string    `json:"input_storage_path"`
 }
 
 // Watchdog: returns stuck tasks (pending or processing) whose updated_at is older than $1
-// (cutoff timestamp), joined with their document's storage_path for re-queuing.
+// (cutoff timestamp). Uses dt.input_storage_path so the correct file path is returned
+// for every module: 'convert' tasks get the original document path, 'anonymize' tasks
+// get the convert_md artifact path (stored at task creation time).
 // Covers two failure modes: worker died mid-processing (processing) and
 // Redis message was lost before worker picked it up (pending).
 // No org-check; caller must be trusted (watchdog goroutine only).
@@ -169,7 +175,7 @@ func (q *Queries) ListStaleTasks(ctx context.Context, updatedAt time.Time) ([]Li
 			&i.DocumentID,
 			&i.ModuleName,
 			&i.RetryCount,
-			&i.StoragePath,
+			&i.InputStoragePath,
 		); err != nil {
 			return nil, err
 		}
@@ -182,7 +188,7 @@ func (q *Queries) ListStaleTasks(ctx context.Context, updatedAt time.Time) ([]Li
 }
 
 const listTasksByDocument = `-- name: ListTasksByDocument :many
-SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id, dt.result_payload, dt.error_message, dt.created_at, dt.updated_at, dt.retry_count
+SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id, dt.result_payload, dt.error_message, dt.created_at, dt.updated_at, dt.retry_count, dt.input_storage_path
 FROM document_tasks AS dt
 JOIN documents AS d ON d.id = dt.document_id
 WHERE dt.document_id = $1 AND d.organization_id = $2
@@ -214,6 +220,7 @@ func (q *Queries) ListTasksByDocument(ctx context.Context, arg ListTasksByDocume
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.RetryCount,
+			&i.InputStoragePath,
 		); err != nil {
 			return nil, err
 		}
@@ -270,7 +277,7 @@ WHERE document_tasks.id = $1
   AND document_tasks.document_id IN (
     SELECT documents.id FROM documents WHERE documents.organization_id = $2
   )
-RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at, retry_count
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at, retry_count, input_storage_path
 `
 
 type UpdateDocumentTaskStatusParams struct {
@@ -293,6 +300,7 @@ func (q *Queries) UpdateDocumentTaskStatus(ctx context.Context, arg UpdateDocume
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.RetryCount,
+		&i.InputStoragePath,
 	)
 	return i, err
 }
@@ -306,7 +314,7 @@ SET
     error_message  = COALESCE($5, error_message),
     updated_at     = now()
 WHERE id = $1
-RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at, retry_count
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at, retry_count, input_storage_path
 `
 
 type UpdateWorkerTaskStatusParams struct {
@@ -338,6 +346,7 @@ func (q *Queries) UpdateWorkerTaskStatus(ctx context.Context, arg UpdateWorkerTa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.RetryCount,
+		&i.InputStoragePath,
 	)
 	return i, err
 }

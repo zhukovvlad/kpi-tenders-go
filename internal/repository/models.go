@@ -62,10 +62,11 @@ type DocumentTask struct {
 	// Структурированный результат обработки; схема зависит от module_name
 	ResultPayload json.RawMessage `json:"result_payload"`
 	// Описание ошибки при status = failed; NULL в остальных случаях
-	ErrorMessage pgtype.Text `json:"error_message"`
-	CreatedAt    time.Time   `json:"created_at"`
-	UpdatedAt    time.Time   `json:"updated_at"`
-	RetryCount   int32       `json:"retry_count"`
+	ErrorMessage     pgtype.Text `json:"error_message"`
+	CreatedAt        time.Time   `json:"created_at"`
+	UpdatedAt        time.Time   `json:"updated_at"`
+	RetryCount       int32       `json:"retry_count"`
+	InputStoragePath string      `json:"input_storage_path"`
 }
 
 // Организации — изолированные тенанты системы

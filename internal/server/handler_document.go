@@ -129,7 +129,7 @@ func (s *Server) ListDocuments(c *gin.Context) {
 			s.respondWithError(c, err)
 			return
 		}
-		docs, err := s.documentService.ListByParent(c.Request.Context(), parentID)
+		docs, err := s.documentService.ListByParent(c.Request.Context(), parentID, orgID)
 		if err != nil {
 			s.respondWithError(c, err)
 			return

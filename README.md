@@ -35,7 +35,7 @@ APP_ENV=local
 APP_PORT=8080
 
 DB_URL=postgres://kpi:kpi_secret@localhost:5432/kpi_tenders?sslmode=disable
-REDIS_URL=redis://localhost:6379
+REDIS_URL=redis://localhost:6379/0
 
 JWT_ACCESS_SECRET=...
 JWT_REFRESH_SECRET=...
@@ -67,7 +67,7 @@ make run
 
 ## Структура проекта
 
-```
+```text
 cmd/api/            — точка входа, graceful shutdown
 internal/
   config/           — конфигурация (cleanenv + .env)
@@ -92,7 +92,7 @@ tests/integration/  — интеграционные тесты (testcontainers)
 
 ### Аутентификация
 
-```
+```text
 POST /api/v1/auth/register
 POST /api/v1/auth/login
 POST /api/v1/auth/refresh
@@ -104,7 +104,7 @@ GET  /api/v1/auth/me
 
 ### Организации
 
-```
+```text
 GET    /api/v1/organizations/:id
 PATCH  /api/v1/organizations/:id
 DELETE /api/v1/organizations/:id
@@ -112,7 +112,7 @@ DELETE /api/v1/organizations/:id
 
 ### Документы
 
-```
+```text
 POST   /api/v1/documents              — создать запись вручную (JSON)
 POST   /api/v1/documents/upload       — загрузить файл (multipart → S3 → БД)
 GET    /api/v1/documents              — список документов
@@ -179,6 +179,7 @@ make mock   # регенерировать internal/store/mock/ из repository.
 | 000002 | document_tasks.retry_count + watchdog index |
 | 000003 | watchdog index расширен на статус `pending` |
 | 000004 | documents.artifact_kind, CASCADE delete, root index |
+| 000005 | document_tasks.input_storage_path, UNIQUE artifact constraint |
 
 ## CI
 

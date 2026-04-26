@@ -1,8 +1,8 @@
 -- name: CreateDocumentTask :one
-INSERT INTO document_tasks (document_id, module_name)
-SELECT $1, $2
-FROM documents
-WHERE documents.id = $1 AND documents.organization_id = $3
+INSERT INTO document_tasks (document_id, module_name, input_storage_path)
+SELECT $1, $2, d.storage_path
+FROM documents d
+WHERE d.id = $1 AND d.organization_id = $3
 RETURNING *;
 
 -- name: GetDocumentTask :one
@@ -49,14 +49,17 @@ RETURNING *;
 -- Use only from trusted internal paths (worker service); never expose publicly.
 -- ON CONFLICT DO NOTHING makes this idempotent: duplicate (document_id, module_name)
 -- returns pgx.ErrNoRows, which callers should treat as "task already exists".
-INSERT INTO document_tasks (document_id, module_name)
-VALUES ($1, $2)
+-- $3 is input_storage_path: the file path the Python worker will receive for this module.
+INSERT INTO document_tasks (document_id, module_name, input_storage_path)
+VALUES ($1, $2, $3)
 ON CONFLICT (document_id, module_name) DO NOTHING
 RETURNING *;
 
 -- name: ListStaleTasks :many
 -- Watchdog: returns stuck tasks (pending or processing) whose updated_at is older than $1
--- (cutoff timestamp), joined with their document's storage_path for re-queuing.
+-- (cutoff timestamp). Uses dt.input_storage_path so the correct file path is returned
+-- for every module: 'convert' tasks get the original document path, 'anonymize' tasks
+-- get the convert_md artifact path (stored at task creation time).
 -- Covers two failure modes: worker died mid-processing (processing) and
 -- Redis message was lost before worker picked it up (pending).
 -- No org-check; caller must be trusted (watchdog goroutine only).
@@ -64,9 +67,8 @@ SELECT dt.id,
        dt.document_id,
        dt.module_name,
        dt.retry_count,
-       d.storage_path
+       dt.input_storage_path
 FROM document_tasks dt
-JOIN documents d ON d.id = dt.document_id
 WHERE dt.status IN ('pending', 'processing')
   AND dt.updated_at < $1
 ORDER BY dt.updated_at ASC;

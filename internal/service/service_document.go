@@ -76,8 +76,11 @@ func (s *DocumentService) ListBySite(ctx context.Context, orgID, siteID uuid.UUI
 	return docs, nil
 }
 
-func (s *DocumentService) ListByParent(ctx context.Context, parentID uuid.UUID) ([]repository.Document, error) {
-	docs, err := s.repo.ListDocumentsByParent(ctx, pgtype.UUID{Bytes: parentID, Valid: true})
+func (s *DocumentService) ListByParent(ctx context.Context, parentID, orgID uuid.UUID) ([]repository.Document, error) {
+	docs, err := s.repo.ListDocumentsByParent(ctx, repository.ListDocumentsByParentParams{
+		ParentID:       pgtype.UUID{Bytes: parentID, Valid: true},
+		OrganizationID: orgID,
+	})
 	if err != nil {
 		return nil, errs.New(errs.CodeInternalError, "internal server error", err)
 	}

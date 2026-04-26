@@ -16,9 +16,9 @@ type pythonPublisher interface {
 }
 
 // Start runs the watchdog loop until ctx is cancelled.
-// It scans for document_tasks stuck in 'processing' longer than cfg.WatchdogThreshold,
-// re-queues them via Redis/Celery (incrementing retry_count), and permanently fails
-// tasks that have exceeded cfg.WatchdogMaxRetries.
+// It scans for document_tasks stuck in 'pending' or 'processing' longer than
+// cfg.WatchdogThreshold, re-queues them via Redis/Celery (incrementing
+// retry_count), and permanently fails tasks that have exceeded cfg.WatchdogMaxRetries.
 //
 // The function is blocking; run it in a goroutine.
 func Start(
@@ -109,8 +109,8 @@ func processTask(
 	}
 
 	// Atomically flip status → 'pending' and increment retry_count.
-	// WHERE status = 'processing' is the compare-and-swap guard that prevents
-	// two concurrent watchdog runs from double-claiming the same task.
+	// WHERE status IN ('pending', 'processing') is the compare-and-swap guard that
+	// prevents two concurrent watchdog runs from double-claiming the same task.
 	rows, err := q.MarkStaleTaskPending(ctx, task.ID)
 	if err != nil {
 		taskLog.Error("watchdog: failed to claim stale task", "err", err)
@@ -128,7 +128,7 @@ func processTask(
 		TaskID:      task.ID.String(),
 		DocumentID:  task.DocumentID.String(),
 		ModuleName:  task.ModuleName,
-		StoragePath: task.StoragePath,
+		StoragePath: task.InputStoragePath,
 	}); err != nil {
 		// Best-effort: task is already set to 'pending', so it will be
 		// picked up again on the next watchdog tick or manual trigger.

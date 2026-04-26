@@ -13,6 +13,10 @@ import (
 )
 
 type Querier interface {
+	// Idempotent artifact creation: on conflict (parent_id, artifact_kind) performs a no-op
+	// update (file_name = EXCLUDED.file_name) so that RETURNING still yields the row.
+	// Prevents duplicate artifact documents when a worker sends a duplicate 'completed' callback.
+	CreateArtifactDocument(ctx context.Context, arg CreateArtifactDocumentParams) (Document, error)
 	CreateConstructionSite(ctx context.Context, arg CreateConstructionSiteParams) (ConstructionSite, error)
 	CreateDocument(ctx context.Context, arg CreateDocumentParams) (Document, error)
 	CreateDocumentTask(ctx context.Context, arg CreateDocumentTaskParams) (DocumentTask, error)
@@ -20,6 +24,7 @@ type Querier interface {
 	// Use only from trusted internal paths (worker service); never expose publicly.
 	// ON CONFLICT DO NOTHING makes this idempotent: duplicate (document_id, module_name)
 	// returns pgx.ErrNoRows, which callers should treat as "task already exists".
+	// $3 is input_storage_path: the file path the Python worker will receive for this module.
 	CreateDocumentTaskInternal(ctx context.Context, arg CreateDocumentTaskInternalParams) (DocumentTask, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
@@ -40,13 +45,15 @@ type Querier interface {
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	GetUserByIDAndOrg(ctx context.Context, arg GetUserByIDAndOrgParams) (GetUserByIDAndOrgRow, error)
 	ListConstructionSitesByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ConstructionSite, error)
-	// Все артефакты, порождённые данным документом
-	ListDocumentsByParent(ctx context.Context, parentID pgtype.UUID) ([]Document, error)
+	// Все артефакты, порождённые данным документом; scoped by organization_id for tenant isolation.
+	ListDocumentsByParent(ctx context.Context, arg ListDocumentsByParentParams) ([]Document, error)
 	// Только корневые документы (загруженные пользователем, не артефакты)
 	ListRootDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]Document, error)
 	ListRootDocumentsBySite(ctx context.Context, arg ListRootDocumentsBySiteParams) ([]Document, error)
 	// Watchdog: returns stuck tasks (pending or processing) whose updated_at is older than $1
-	// (cutoff timestamp), joined with their document's storage_path for re-queuing.
+	// (cutoff timestamp). Uses dt.input_storage_path so the correct file path is returned
+	// for every module: 'convert' tasks get the original document path, 'anonymize' tasks
+	// get the convert_md artifact path (stored at task creation time).
 	// Covers two failure modes: worker died mid-processing (processing) and
 	// Redis message was lost before worker picked it up (pending).
 	// No org-check; caller must be trusted (watchdog goroutine only).
