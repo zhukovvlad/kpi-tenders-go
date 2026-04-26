@@ -21,9 +21,10 @@ type Querier interface {
 	// Public API: only 'convert' tasks may be created here; the input is always the
 	// original document's storage_path. Other modules (e.g. anonymize) read a derived
 	// artifact path and must be created internally via CreateDocumentTaskInternal.
-	// Callers MUST map pgx.ErrNoRows to 404/403: the INSERT ... SELECT returns no rows
-	// when the document is missing or belongs to another organization. This is distinct
-	// from unique-constraint violations on (document_id, module_name).
+	// Callers MUST map pgx.ErrNoRows to 404: the INSERT ... SELECT returns no rows
+	// when the document is missing or belongs to another organization, and this is
+	// intentionally reported as 404 to avoid leaking tenant existence. This is
+	// distinct from unique-constraint violations on (document_id, module_name).
 	CreateDocumentTask(ctx context.Context, arg CreateDocumentTaskParams) (DocumentTask, error)
 	// Internal: creates a task directly by document_id without tenant org-check.
 	// Use only from trusted internal paths (worker service); never expose publicly.
@@ -66,10 +67,10 @@ type Querier interface {
 	ListTasksByDocument(ctx context.Context, arg ListTasksByDocumentParams) ([]DocumentTask, error)
 	ListUsersByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ListUsersByOrganizationRow, error)
 	// Watchdog: permanently fails a task that has exhausted all retry attempts.
-	// updated_at < $2 prevents failing a task that was refreshed after ListStaleTasks.
+	// updated_at < cutoff prevents failing a task that was refreshed after ListStaleTasks.
 	MarkStaleTaskFailed(ctx context.Context, arg MarkStaleTaskFailedParams) (int64, error)
 	// Watchdog: atomically resets a stale task to pending and increments retry_count.
-	// The WHERE status IN (...) AND updated_at < $2 guard makes this a true
+	// The WHERE status IN (...) AND updated_at < cutoff guard makes this a true
 	// compare-and-swap on both status and staleness: two concurrent watchdog instances
 	// cannot double-claim the same task, and a task that was refreshed between
 	// ListStaleTasks and this UPDATE will not be incorrectly reset.
@@ -77,6 +78,7 @@ type Querier interface {
 	UpdateConstructionSite(ctx context.Context, arg UpdateConstructionSiteParams) (ConstructionSite, error)
 	UpdateDocumentTaskStatus(ctx context.Context, arg UpdateDocumentTaskStatusParams) (DocumentTask, error)
 	UpdateOrganization(ctx context.Context, arg UpdateOrganizationParams) (Organization, error)
+	// Internal: no org-check; callers must be authenticated via SERVICE_TOKEN.
 	// Updates result_payload only; does not change status, celery_task_id, or error_message.
 	// Used by WorkerService after registering artifacts so updated_at is touched
 	// only for payload changes, not for status semantics.

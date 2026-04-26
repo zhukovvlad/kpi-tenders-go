@@ -32,9 +32,10 @@ type CreateDocumentTaskParams struct {
 // Public API: only 'convert' tasks may be created here; the input is always the
 // original document's storage_path. Other modules (e.g. anonymize) read a derived
 // artifact path and must be created internally via CreateDocumentTaskInternal.
-// Callers MUST map pgx.ErrNoRows to 404/403: the INSERT ... SELECT returns no rows
-// when the document is missing or belongs to another organization. This is distinct
-// from unique-constraint violations on (document_id, module_name).
+// Callers MUST map pgx.ErrNoRows to 404: the INSERT ... SELECT returns no rows
+// when the document is missing or belongs to another organization, and this is
+// intentionally reported as 404 to avoid leaking tenant existence. This is
+// distinct from unique-constraint violations on (document_id, module_name).
 func (q *Queries) CreateDocumentTask(ctx context.Context, arg CreateDocumentTaskParams) (DocumentTask, error) {
 	row := q.db.QueryRow(ctx, createDocumentTask, arg.DocumentID, arg.ModuleName, arg.OrganizationID)
 	var i DocumentTask
@@ -155,8 +156,8 @@ LIMIT $2
 `
 
 type ListStaleTasksParams struct {
-	UpdatedAt time.Time `json:"updated_at"`
-	Limit     int32     `json:"limit"`
+	Cutoff    time.Time `json:"cutoff"`
+	BatchSize int32     `json:"batch_size"`
 }
 
 type ListStaleTasksRow struct {
@@ -175,7 +176,7 @@ type ListStaleTasksRow struct {
 // Redis message was lost before worker picked it up (pending).
 // No org-check; caller must be trusted (watchdog goroutine only).
 func (q *Queries) ListStaleTasks(ctx context.Context, arg ListStaleTasksParams) ([]ListStaleTasksRow, error) {
-	rows, err := q.db.Query(ctx, listStaleTasks, arg.UpdatedAt, arg.Limit)
+	rows, err := q.db.Query(ctx, listStaleTasks, arg.Cutoff, arg.BatchSize)
 	if err != nil {
 		return nil, err
 	}
@@ -248,23 +249,23 @@ func (q *Queries) ListTasksByDocument(ctx context.Context, arg ListTasksByDocume
 const markStaleTaskFailed = `-- name: MarkStaleTaskFailed :execrows
 UPDATE document_tasks
 SET status        = 'failed',
-    error_message = $3,
+    error_message = $2,
     updated_at    = now()
 WHERE id        = $1
   AND status IN ('pending', 'processing')
-  AND updated_at < $2
+  AND updated_at < $3
 `
 
 type MarkStaleTaskFailedParams struct {
 	ID           uuid.UUID   `json:"id"`
-	UpdatedAt    time.Time   `json:"updated_at"`
 	ErrorMessage pgtype.Text `json:"error_message"`
+	Cutoff       time.Time   `json:"cutoff"`
 }
 
 // Watchdog: permanently fails a task that has exhausted all retry attempts.
-// updated_at < $2 prevents failing a task that was refreshed after ListStaleTasks.
+// updated_at < cutoff prevents failing a task that was refreshed after ListStaleTasks.
 func (q *Queries) MarkStaleTaskFailed(ctx context.Context, arg MarkStaleTaskFailedParams) (int64, error) {
-	result, err := q.db.Exec(ctx, markStaleTaskFailed, arg.ID, arg.UpdatedAt, arg.ErrorMessage)
+	result, err := q.db.Exec(ctx, markStaleTaskFailed, arg.ID, arg.ErrorMessage, arg.Cutoff)
 	if err != nil {
 		return 0, err
 	}
@@ -284,17 +285,17 @@ WHERE id        = $1
 `
 
 type MarkStaleTaskPendingParams struct {
-	ID        uuid.UUID `json:"id"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID     uuid.UUID `json:"id"`
+	Cutoff time.Time `json:"cutoff"`
 }
 
 // Watchdog: atomically resets a stale task to pending and increments retry_count.
-// The WHERE status IN (...) AND updated_at < $2 guard makes this a true
+// The WHERE status IN (...) AND updated_at < cutoff guard makes this a true
 // compare-and-swap on both status and staleness: two concurrent watchdog instances
 // cannot double-claim the same task, and a task that was refreshed between
 // ListStaleTasks and this UPDATE will not be incorrectly reset.
 func (q *Queries) MarkStaleTaskPending(ctx context.Context, arg MarkStaleTaskPendingParams) (int64, error) {
-	result, err := q.db.Exec(ctx, markStaleTaskPending, arg.ID, arg.UpdatedAt)
+	result, err := q.db.Exec(ctx, markStaleTaskPending, arg.ID, arg.Cutoff)
 	if err != nil {
 		return 0, err
 	}
@@ -349,6 +350,7 @@ type UpdateTaskResultPayloadParams struct {
 	ResultPayload json.RawMessage `json:"result_payload"`
 }
 
+// Internal: no org-check; callers must be authenticated via SERVICE_TOKEN.
 // Updates result_payload only; does not change status, celery_task_id, or error_message.
 // Used by WorkerService after registering artifacts so updated_at is touched
 // only for payload changes, not for status semantics.

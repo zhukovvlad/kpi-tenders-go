@@ -2,9 +2,10 @@
 -- Public API: only 'convert' tasks may be created here; the input is always the
 -- original document's storage_path. Other modules (e.g. anonymize) read a derived
 -- artifact path and must be created internally via CreateDocumentTaskInternal.
--- Callers MUST map pgx.ErrNoRows to 404/403: the INSERT ... SELECT returns no rows
--- when the document is missing or belongs to another organization. This is distinct
--- from unique-constraint violations on (document_id, module_name).
+-- Callers MUST map pgx.ErrNoRows to 404: the INSERT ... SELECT returns no rows
+-- when the document is missing or belongs to another organization, and this is
+-- intentionally reported as 404 to avoid leaking tenant existence. This is
+-- distinct from unique-constraint violations on (document_id, module_name).
 INSERT INTO document_tasks (document_id, module_name, input_storage_path)
 SELECT $1, $2, d.storage_path
 FROM documents d
@@ -63,6 +64,7 @@ ON CONFLICT (document_id, module_name) DO NOTHING
 RETURNING *;
 
 -- name: UpdateTaskResultPayload :one
+-- Internal: no org-check; callers must be authenticated via SERVICE_TOKEN.
 -- Updates result_payload only; does not change status, celery_task_id, or error_message.
 -- Used by WorkerService after registering artifacts so updated_at is touched
 -- only for payload changes, not for status semantics.
@@ -87,13 +89,13 @@ SELECT dt.id,
        dt.input_storage_path
 FROM document_tasks dt
 WHERE dt.status IN ('pending', 'processing')
-  AND dt.updated_at < $1
+  AND dt.updated_at < sqlc.arg(cutoff)
 ORDER BY dt.updated_at ASC
-LIMIT $2;
+LIMIT sqlc.arg(batch_size);
 
 -- name: MarkStaleTaskPending :execrows
 -- Watchdog: atomically resets a stale task to pending and increments retry_count.
--- The WHERE status IN (...) AND updated_at < $2 guard makes this a true
+-- The WHERE status IN (...) AND updated_at < cutoff guard makes this a true
 -- compare-and-swap on both status and staleness: two concurrent watchdog instances
 -- cannot double-claim the same task, and a task that was refreshed between
 -- ListStaleTasks and this UPDATE will not be incorrectly reset.
@@ -105,15 +107,15 @@ SET status         = 'pending',
     updated_at     = now()
 WHERE id        = $1
   AND status IN ('pending', 'processing')
-  AND updated_at < $2;
+  AND updated_at < sqlc.arg(cutoff);
 
 -- name: MarkStaleTaskFailed :execrows
 -- Watchdog: permanently fails a task that has exhausted all retry attempts.
--- updated_at < $2 prevents failing a task that was refreshed after ListStaleTasks.
+-- updated_at < cutoff prevents failing a task that was refreshed after ListStaleTasks.
 UPDATE document_tasks
 SET status        = 'failed',
-    error_message = $3,
+    error_message = sqlc.arg(error_message),
     updated_at    = now()
 WHERE id        = $1
   AND status IN ('pending', 'processing')
-  AND updated_at < $2;
+  AND updated_at < sqlc.arg(cutoff);

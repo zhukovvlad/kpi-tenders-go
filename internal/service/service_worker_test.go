@@ -327,6 +327,7 @@ func TestWorkerService_HandleStatusUpdate_ConvertCompleted_RegistersArtifact(t *
 
 	require.NoError(t, err)
 	ms.AssertExpectations(t)
+	pc.AssertExpectations(t)
 }
 
 // 9. anonymize completed → two artifact documents created; result_payload updated.

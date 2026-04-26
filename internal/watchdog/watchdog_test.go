@@ -62,7 +62,7 @@ func TestRunOnce_RequeuesStaleTask(t *testing.T) {
 	}
 
 	mq.On("ListStaleTasks", mock.Anything, mock.MatchedBy(func(p repository.ListStaleTasksParams) bool {
-		return p.Limit == int32(cfg.WatchdogBatchSize)
+		return p.BatchSize == int32(cfg.WatchdogBatchSize)
 	})).
 		Return([]repository.ListStaleTasksRow{staleTask}, nil)
 	mq.On("MarkStaleTaskPending", mock.Anything, mock.MatchedBy(func(p repository.MarkStaleTaskPendingParams) bool {
@@ -97,7 +97,7 @@ func TestRunOnce_FailsTaskWhenMaxRetriesExceeded(t *testing.T) {
 	}
 
 	mq.On("ListStaleTasks", mock.Anything, mock.MatchedBy(func(p repository.ListStaleTasksParams) bool {
-		return p.Limit == int32(cfg.WatchdogBatchSize)
+		return p.BatchSize == int32(cfg.WatchdogBatchSize)
 	})).
 		Return([]repository.ListStaleTasksRow{staleTask}, nil)
 	mq.On("MarkStaleTaskFailed", mock.Anything, mock.MatchedBy(func(p repository.MarkStaleTaskFailedParams) bool {
@@ -119,7 +119,7 @@ func TestRunOnce_SkipsWhenNoStaleTasks(t *testing.T) {
 	cfg := testCfg()
 
 	mq.On("ListStaleTasks", mock.Anything, mock.MatchedBy(func(p repository.ListStaleTasksParams) bool {
-		return p.Limit == int32(cfg.WatchdogBatchSize)
+		return p.BatchSize == int32(cfg.WatchdogBatchSize)
 	})).
 		Return([]repository.ListStaleTasksRow{}, nil)
 
@@ -147,7 +147,7 @@ func TestRunOnce_SkipsAlreadyClaimedTask(t *testing.T) {
 	}
 
 	mq.On("ListStaleTasks", mock.Anything, mock.MatchedBy(func(p repository.ListStaleTasksParams) bool {
-		return p.Limit == int32(cfg.WatchdogBatchSize)
+		return p.BatchSize == int32(cfg.WatchdogBatchSize)
 	})).
 		Return([]repository.ListStaleTasksRow{staleTask}, nil)
 	// 0 rows = another watchdog instance claimed it first.
@@ -179,7 +179,7 @@ func TestRunOnce_BestEffortOnPublishError(t *testing.T) {
 	}
 
 	mq.On("ListStaleTasks", mock.Anything, mock.MatchedBy(func(p repository.ListStaleTasksParams) bool {
-		return p.Limit == int32(cfg.WatchdogBatchSize)
+		return p.BatchSize == int32(cfg.WatchdogBatchSize)
 	})).
 		Return([]repository.ListStaleTasksRow{staleTask}, nil)
 	mq.On("MarkStaleTaskPending", mock.Anything, mock.MatchedBy(func(p repository.MarkStaleTaskPendingParams) bool {
@@ -216,7 +216,7 @@ func TestRunOnce_RequeuesStaleTaskInPendingStatus(t *testing.T) {
 	}
 
 	mq.On("ListStaleTasks", mock.Anything, mock.MatchedBy(func(p repository.ListStaleTasksParams) bool {
-		return p.Limit == int32(cfg.WatchdogBatchSize)
+		return p.BatchSize == int32(cfg.WatchdogBatchSize)
 	})).
 		Return([]repository.ListStaleTasksRow{staleTask}, nil)
 	mq.On("MarkStaleTaskPending", mock.Anything, mock.MatchedBy(func(p repository.MarkStaleTaskPendingParams) bool {

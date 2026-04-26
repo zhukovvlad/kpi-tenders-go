@@ -35,6 +35,7 @@ func Start(
 		slog.Duration("interval", cfg.WatchdogInterval),
 		slog.Duration("threshold", cfg.WatchdogThreshold),
 		slog.Int("max_retries", cfg.WatchdogMaxRetries),
+		slog.Int("batch_size", cfg.WatchdogBatchSize),
 	)
 
 	ticker := time.NewTicker(cfg.WatchdogInterval)
@@ -64,8 +65,8 @@ func runOnce(
 ) {
 	cutoff := time.Now().Add(-cfg.WatchdogThreshold)
 	tasks, err := q.ListStaleTasks(ctx, repository.ListStaleTasksParams{
-		UpdatedAt: cutoff,
-		Limit:     int32(cfg.WatchdogBatchSize),
+		Cutoff:    cutoff,
+		BatchSize: int32(cfg.WatchdogBatchSize),
 	})
 	if err != nil {
 		log.Error("watchdog: failed to list stale tasks", "err", err)
@@ -103,7 +104,7 @@ func processTask(
 	if int(task.RetryCount) >= cfg.WatchdogMaxRetries {
 		rows, err := q.MarkStaleTaskFailed(ctx, repository.MarkStaleTaskFailedParams{
 			ID:           task.ID,
-			UpdatedAt:    cutoff,
+			Cutoff:       cutoff,
 			ErrorMessage: pgtype.Text{String: fmt.Sprintf("stale task: exceeded max retry attempts (%d/%d)", task.RetryCount, cfg.WatchdogMaxRetries), Valid: true},
 		})
 		if err != nil {
@@ -125,8 +126,8 @@ func processTask(
 	// double-claiming the same task, and avoids resetting a task refreshed
 	// between ListStaleTasks and this UPDATE.
 	rows, err := q.MarkStaleTaskPending(ctx, repository.MarkStaleTaskPendingParams{
-		ID:        task.ID,
-		UpdatedAt: cutoff,
+		ID:     task.ID,
+		Cutoff: cutoff,
 	})
 	if err != nil {
 		taskLog.Error("watchdog: failed to claim stale task", "err", err)

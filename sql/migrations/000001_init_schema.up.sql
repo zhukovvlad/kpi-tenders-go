@@ -124,7 +124,8 @@ CREATE TABLE document_tasks (
     -- Для 'anonymize': storage_path артефакта convert_md (Markdown).
     -- Хранится явно, чтобы watchdog мог переотправить задачу с правильным путём,
     -- не вычисляя его через JOIN и не смешивая пути разных модулей.
-    input_storage_path TEXT      NOT NULL DEFAULT '',
+    input_storage_path TEXT      NOT NULL
+                        CHECK (btrim(input_storage_path) <> ''),
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
     CONSTRAINT uq_document_tasks_document_module UNIQUE (document_id, module_name)
