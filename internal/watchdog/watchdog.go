@@ -175,7 +175,7 @@ func processTask(
 			)
 			select {
 			case <-ctx.Done():
-				taskLog.Error("watchdog: context canceled while retrying task re-queue", "err", ctx.Err())
+				taskLog.Info("watchdog: context canceled while retrying task re-queue", "err", ctx.Err())
 				return
 			case <-time.After(publishRetryDelay):
 			}
