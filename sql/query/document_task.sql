@@ -75,10 +75,11 @@ WHERE id = $1
 RETURNING *;
 
 -- name: ListStaleTasks :many
--- Watchdog: returns stuck tasks (pending or processing) whose updated_at is older than $1
--- (cutoff timestamp). Uses dt.input_storage_path so the correct file path is returned
--- for every module: 'convert' tasks get the original document path, 'anonymize' tasks
--- get the convert_md artifact path (stored at task creation time).
+-- Watchdog: returns stuck tasks (pending or processing) whose updated_at is older than
+-- sqlc.arg(cutoff). Results are limited by sqlc.arg(batch_size). Uses
+-- dt.input_storage_path so the correct file path is returned for every module:
+-- 'convert' tasks get the original document path, 'anonymize' tasks get the
+-- convert_md artifact path (stored at task creation time).
 -- Covers two failure modes: worker died mid-processing (processing) and
 -- Redis message was lost before worker picked it up (pending).
 -- No org-check; caller must be trusted (watchdog goroutine only).

@@ -151,6 +151,10 @@ func processTask(
 
 	var lastErr error
 	for attempt := 1; attempt <= maxPublishAttempts; attempt++ {
+		if ctx.Err() != nil {
+			taskLog.Info("watchdog: context canceled, aborting task re-queue")
+			return
+		}
 		triggerCtx, cancel := context.WithTimeout(ctx, publishAttemptTimeout)
 		lastErr = pub.Process(triggerCtx, req)
 		cancel()

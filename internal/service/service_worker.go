@@ -108,7 +108,7 @@ func (s *WorkerService) HandleStatusUpdate(ctx context.Context, taskID uuid.UUID
 		}
 	}
 
-	// Регистрация артефактов anonymize
+	// Register anonymize artifacts.
 	if task.ModuleName == moduleAnonymize && task.Status == statusCompleted {
 		if err := runWithArtifactTimeout(ctx, task, s.registerAnonymizeArtifacts); err != nil {
 			s.log.Error("worker: failed to register anonymize artifacts", "task_id", task.ID, "err", err)

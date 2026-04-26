@@ -129,7 +129,7 @@ _Нет активных заглушек._
 
 | Миграция | Таблицы / изменения |
 |----------|---------------------|
-| 000001 | Полная схема: organizations, users, construction_sites, documents (artifact_kind, parent_id CASCADE), document_tasks (retry_count, input_storage_path TEXT NOT NULL CHECK(btrim<>«»), UNIQUE document_id+module_name); все FK-индексы; idx_document_tasks_stale (WHERE status IN ('pending','processing')); idx_documents_root (WHERE parent_id IS NULL); idx_documents_artifact_kind UNIQUE (WHERE parent_id IS NOT NULL); триггеры tenant isolation + запрет смены organization_id |
+| 000001 | Полная схема: organizations, users, construction_sites, documents (artifact_kind, parent_id CASCADE), document_tasks (retry_count, input_storage_path TEXT NOT NULL CHECK(btrim<>«»), UNIQUE document_id+module_name); все FK-индексы; idx_document_tasks_stale (WHERE status IN ('pending','processing')); idx_documents_root (WHERE parent_id IS NULL); idx_documents_artifact_kind UNIQUE (WHERE parent_id IS NOT NULL); documents_parent_artifact_kind_chk CHECK(parent_id IS NOT NULL → artifact_kind IS NOT NULL AND btrim<>«»); триггеры tenant isolation + запрет смены organization_id |
 
 `catalog_positions.embedding` — тип `vector` без фиксированной размерности  
 (зафиксируй как `vector(1536)` когда определишься с моделью эмбеддингов).

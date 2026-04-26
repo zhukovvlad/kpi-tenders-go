@@ -91,7 +91,7 @@ CREATE TABLE documents (
     -- артефакт (parent_id IS NOT NULL) обязан иметь artifact_kind IS NOT NULL.
     CONSTRAINT documents_parent_artifact_kind_chk CHECK (
         (parent_id IS NULL AND artifact_kind IS NULL) OR
-        (parent_id IS NOT NULL AND artifact_kind IS NOT NULL)
+        (parent_id IS NOT NULL AND artifact_kind IS NOT NULL AND btrim(artifact_kind) <> '')
     )
 );
 

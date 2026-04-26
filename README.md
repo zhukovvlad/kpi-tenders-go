@@ -129,7 +129,7 @@ DELETE /api/v1/documents/:id
 
 ### Задачи обработки
 
-```
+```text
 POST   /api/v1/tasks
 GET    /api/v1/tasks
 GET    /api/v1/tasks/:id
@@ -139,7 +139,7 @@ DELETE /api/v1/tasks/:id
 
 ### Объекты строительства
 
-```
+```text
 POST   /api/v1/sites
 GET    /api/v1/sites
 GET    /api/v1/sites/:id
@@ -149,7 +149,7 @@ DELETE /api/v1/sites/:id
 
 ### Internal (Python-воркер)
 
-```
+```text
 PATCH /internal/worker/tasks/:id/status
 ```
 
