@@ -122,6 +122,26 @@ func TestDocumentTaskService_Create_UnknownModule_ReturnsValidationFailed(t *tes
 	mq.AssertNotCalled(t, "CreateDocumentTask")
 }
 
+func TestDocumentTaskService_Create_AnonymizeViaPublicAPI_ReturnsValidationFailed(t *testing.T) {
+	// 'anonymize' passes pythonworker.ValidateModule but must be blocked by the
+	// public-API guard (moduleConvert check) in DocumentTaskService.Create.
+	mq := new(storemock.MockQuerier)
+	svc := NewDocumentTaskService(mq, nil, newTestLogger())
+
+	_, err := svc.Create(context.Background(), repository.CreateDocumentTaskParams{
+		DocumentID:     uuid.New(),
+		ModuleName:     "anonymize",
+		OrganizationID: uuid.New(),
+	})
+
+	require.Error(t, err)
+	var appErr *errs.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, errs.CodeValidationFailed, appErr.Code)
+	// INSERT must NOT be called.
+	mq.AssertNotCalled(t, "CreateDocumentTask")
+}
+
 func TestDocumentTaskService_Create_TriggersPython_WithCorrectFields(t *testing.T) {
 	mq := new(storemock.MockQuerier)
 	pc := new(mockPythonClient)
@@ -138,21 +158,13 @@ func TestDocumentTaskService_Create_TriggersPython_WithCorrectFields(t *testing.
 		OrganizationID: orgID,
 	}
 	task := repository.DocumentTask{
-		ID:         taskID,
-		DocumentID: docID,
-		ModuleName: "convert",
-	}
-	doc := repository.Document{
-		ID:             docID,
-		OrganizationID: orgID,
-		StoragePath:    storagePath,
+		ID:               taskID,
+		DocumentID:       docID,
+		ModuleName:       "convert",
+		InputStoragePath: storagePath,
 	}
 
 	mq.On("CreateDocumentTask", mock.Anything, params).Return(task, nil)
-	mq.On("GetDocument", mock.Anything, repository.GetDocumentParams{
-		ID:             docID,
-		OrganizationID: orgID,
-	}).Return(doc, nil)
 	pc.On("Process", mock.Anything, pythonworker.ProcessRequest{
 		TaskID:      taskID.String(),
 		DocumentID:  docID.String(),
@@ -183,17 +195,13 @@ func TestDocumentTaskService_Create_PythonError_ReturnsTaskWithoutError(t *testi
 		OrganizationID: orgID,
 	}
 	task := repository.DocumentTask{
-		ID:         taskID,
-		DocumentID: docID,
-		ModuleName: "convert",
+		ID:               taskID,
+		DocumentID:       docID,
+		ModuleName:       "convert",
+		InputStoragePath: "orgs/abc/file.pdf",
 	}
-	doc := repository.Document{StoragePath: "orgs/abc/file.pdf"}
 
 	mq.On("CreateDocumentTask", mock.Anything, params).Return(task, nil)
-	mq.On("GetDocument", mock.Anything, repository.GetDocumentParams{
-		ID:             docID,
-		OrganizationID: orgID,
-	}).Return(doc, nil)
 	pc.On("Process", mock.Anything, mock.Anything).Return(errors.New("python unavailable"))
 
 	result, err := svc.Create(context.Background(), params)

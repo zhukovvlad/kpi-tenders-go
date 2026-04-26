@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 
 	"go-kpi-tenders/internal/config"
 	"go-kpi-tenders/internal/server"
+	"go-kpi-tenders/internal/watchdog"
 	"go-kpi-tenders/pkg/logging"
 )
 
@@ -71,12 +73,27 @@ func main() {
 
 	log.Info("server started", slog.String("addr", httpSrv.Addr))
 
+	// ── Watchdog ────────────────────────────────────
+	watchdogCtx, watchdogCancel := context.WithCancel(context.Background())
+	var watchdogDone sync.WaitGroup
+	watchdogDone.Add(1)
+	go func() {
+		defer watchdogDone.Done()
+		watchdog.Start(watchdogCtx, srv.DB(), srv.PythonPublisher(), cfg, log)
+	}()
+
 	// ── Graceful Shutdown ───────────────────────────
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-quit
 
 	log.Info("shutting down", slog.String("signal", sig.String()))
+
+	// Cancel watchdog first so it stops ticking before Redis is closed.
+	// If watchdogCancel were only called via defer, the watchdog could tick
+	// into a closed Redis pool during the shutdown window.
+	watchdogCancel()
+	watchdogDone.Wait() // ensure goroutine has exited before Redis is closed
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()

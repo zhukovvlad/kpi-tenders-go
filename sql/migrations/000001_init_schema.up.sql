@@ -16,8 +16,8 @@ CREATE TABLE organizations (
     updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
-COMMENT ON TABLE organizations IS 'Организации — изолированные тенанты системы';
-COMMENT ON COLUMN organizations.inn IS 'ИНН: 10 цифр для ЮЛ, 12 для ИП; NULL если не указан';
+COMMENT ON TABLE  organizations          IS 'Организации — изолированные тенанты системы';
+COMMENT ON COLUMN organizations.inn      IS 'ИНН: 10 цифр для ЮЛ, 12 для ИП; NULL если не указан';
 COMMENT ON COLUMN organizations.settings IS 'Произвольные настройки тенанта (тема, лимиты, флаги)';
 COMMENT ON COLUMN organizations.is_active IS 'false — организация деактивирована, вход для всех её пользователей заблокирован';
 
@@ -37,8 +37,8 @@ CREATE TABLE users (
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
-COMMENT ON TABLE users IS 'Пользователи, привязанные к организации';
-COMMENT ON COLUMN users.role IS 'Роль пользователя: admin — полный доступ к тенанту, member — работа с документами';
+COMMENT ON TABLE  users           IS 'Пользователи, привязанные к организации';
+COMMENT ON COLUMN users.role      IS 'Роль пользователя: admin — полный доступ к тенанту, member — работа с документами';
 COMMENT ON COLUMN users.is_active IS 'false — пользователь деактивирован, вход заблокирован';
 
 -- ==========================================
@@ -57,35 +57,51 @@ CREATE TABLE construction_sites (
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
-COMMENT ON TABLE construction_sites IS 'Объекты строительства (ЖК, очереди, корпуса) — иерархическая структура тенанта';
-COMMENT ON COLUMN construction_sites.parent_id IS 'ID родительского объекта; NULL для корневых объектов (например, сам ЖК)';
-COMMENT ON COLUMN construction_sites.status IS 'Статус жизненного цикла: active | completed | archived';
+COMMENT ON TABLE  construction_sites            IS 'Объекты строительства (ЖК, очереди, корпуса) — иерархическая структура тенанта';
+COMMENT ON COLUMN construction_sites.parent_id  IS 'ID родительского объекта; NULL для корневых объектов (например, сам ЖК)';
+COMMENT ON COLUMN construction_sites.status     IS 'Статус жизненного цикла: active | completed | archived';
 COMMENT ON COLUMN construction_sites.created_by IS 'Пользователь, создавший объект; NULL если пользователь удалён';
 
 -- ==========================================
 -- ДОКУМЕНТЫ
 -- ==========================================
+-- Хранит метаданные как оригинальных документов (загруженных пользователем),
+-- так и артефактов — файлов, порождённых AI-воркером (конвертация, анонимизация).
+-- Физические файлы хранятся в MinIO; storage_path — ключ для доступа к ним.
 
 CREATE TABLE documents (
     id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID         NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     site_id         UUID         REFERENCES construction_sites(id) ON DELETE SET NULL,
     uploaded_by     UUID         NOT NULL REFERENCES users(id),
-    parent_id       UUID         REFERENCES documents(id) ON DELETE SET NULL,
+    -- parent_id: NULL — оригинал, загруженный пользователем;
+    --            ≠ NULL — артефакт, produced by AI-воркером из parent_id документа.
+    -- ON DELETE CASCADE: артефакт без источника не имеет смысла.
+    parent_id       UUID         REFERENCES documents(id) ON DELETE CASCADE,
     file_name       VARCHAR(255) NOT NULL,
     storage_path    TEXT         NOT NULL,
     mime_type       VARCHAR(100),
     file_size_bytes BIGINT,
+    -- artifact_kind: NULL — оригинал; непустая строка — вид артефакта.
+    -- Вместе с parent_id формирует UNIQUE: один вид артефакта на один исходный документ.
+    artifact_kind   VARCHAR(50),
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    -- Инвариант: оригинал (parent_id IS NULL) обязан иметь artifact_kind IS NULL;
+    -- артефакт (parent_id IS NOT NULL) обязан иметь artifact_kind IS NOT NULL.
+    CONSTRAINT documents_parent_artifact_kind_chk CHECK (
+        (parent_id IS NULL AND artifact_kind IS NULL) OR
+        (parent_id IS NOT NULL AND artifact_kind IS NOT NULL AND btrim(artifact_kind) <> '')
+    )
 );
 
-COMMENT ON TABLE documents IS 'Метаданные загруженных файлов; физический файл хранится в MinIO';
-COMMENT ON COLUMN documents.site_id IS 'Объект строительства, к которому относится документ; NULL — документ без привязки';
-COMMENT ON COLUMN documents.parent_id IS 'Исходный документ, если текущий получен в результате обработки (конвертация, анонимизация)';
-COMMENT ON COLUMN documents.storage_path IS 'Путь к файлу в MinIO: bucket/prefix/uuid.ext';
-COMMENT ON COLUMN documents.mime_type IS 'MIME-тип файла, определяется при загрузке; NULL если не определён';
-COMMENT ON COLUMN documents.file_size_bytes IS 'Размер файла в байтах; NULL если не известен на момент создания записи';
+COMMENT ON TABLE  documents                    IS 'Метаданные загруженных файлов и AI-артефактов; физические файлы — в MinIO';
+COMMENT ON COLUMN documents.site_id            IS 'Объект строительства документа; NULL — документ без привязки к объекту';
+COMMENT ON COLUMN documents.parent_id          IS 'Исходный документ, если запись является артефактом воркера; NULL для оригиналов';
+COMMENT ON COLUMN documents.storage_path       IS 'Путь к файлу в MinIO: bucket/prefix/uuid.ext';
+COMMENT ON COLUMN documents.mime_type          IS 'MIME-тип файла, определяется при загрузке; NULL если не определён';
+COMMENT ON COLUMN documents.file_size_bytes    IS 'Размер файла в байтах; NULL если не известен на момент создания записи';
+COMMENT ON COLUMN documents.artifact_kind      IS 'Тип артефакта: NULL — загружен пользователем; convert_md — результат конвертации в Markdown; anonymize_doc — анонимизированный документ; anonymize_entities — карта сущностей анонимизации';
 
 -- ==========================================
 -- ЗАДАЧИ AI-ВОРКЕРА
@@ -100,30 +116,63 @@ CREATE TABLE document_tasks (
     celery_task_id  VARCHAR(255),
     result_payload  JSONB        NOT NULL DEFAULT '{}'::jsonb,
     error_message   TEXT,
+    -- retry_count: сколько раз watchdog уже перезапускал задачу.
+    -- Инкрементируется при каждом сбросе в 'pending'; не сбрасывается при completed/failed.
+    retry_count     INT          NOT NULL DEFAULT 0,
+    -- input_storage_path: путь к файлу, который воркер должен обработать.
+    -- Для 'convert':   storage_path исходного документа (PDF).
+    -- Для 'anonymize': storage_path артефакта convert_md (Markdown).
+    -- Хранится явно, чтобы watchdog мог переотправить задачу с правильным путём,
+    -- не вычисляя его через JOIN и не смешивая пути разных модулей.
+    input_storage_path TEXT      NOT NULL
+                        CHECK (btrim(input_storage_path) <> ''),
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
     CONSTRAINT uq_document_tasks_document_module UNIQUE (document_id, module_name)
 );
 
-COMMENT ON TABLE document_tasks IS 'Задачи AI-воркера на Python для обработки документов';
-COMMENT ON COLUMN document_tasks.module_name IS 'Маршрутизатор воркера: определяет логику обработки (например: anonymize, parse_estimate, convert). Набор значений расширяется по мере добавления модулей';
-COMMENT ON COLUMN document_tasks.status IS 'Статус выполнения: pending | processing | completed | failed';
-COMMENT ON COLUMN document_tasks.celery_task_id IS 'UUID задачи в Celery; заполняется воркером при взятии задачи в работу';
-COMMENT ON COLUMN document_tasks.result_payload IS 'Структурированный результат обработки; схема зависит от module_name';
-COMMENT ON COLUMN document_tasks.error_message IS 'Описание ошибки при status = failed; NULL в остальных случаях';
+COMMENT ON TABLE  document_tasks                      IS 'Задачи AI-воркера на Python для обработки документов';
+COMMENT ON COLUMN document_tasks.module_name          IS 'Маршрутизатор воркера: определяет логику обработки (convert, anonymize, parse_invoice, extract и др.)';
+COMMENT ON COLUMN document_tasks.status               IS 'Статус выполнения: pending | processing | completed | failed';
+COMMENT ON COLUMN document_tasks.celery_task_id       IS 'UUID задачи в Celery; заполняется воркером при взятии задачи в работу';
+COMMENT ON COLUMN document_tasks.result_payload       IS 'Структурированный результат обработки; схема зависит от module_name';
+COMMENT ON COLUMN document_tasks.error_message        IS 'Описание ошибки при status = failed; NULL в остальных случаях';
+COMMENT ON COLUMN document_tasks.retry_count          IS 'Число перезапусков watchdog-ом; при превышении WatchdogMaxRetries задача переводится в failed';
+COMMENT ON COLUMN document_tasks.input_storage_path   IS 'Путь к входному файлу воркера в MinIO; определяется модулем и фиксируется при создании задачи';
 
 -- ==========================================
 -- ИНДЕКСЫ
 -- ==========================================
 
-CREATE INDEX idx_users_organization_id         ON users(organization_id);
-CREATE INDEX idx_sites_organization_id         ON construction_sites(organization_id);
-CREATE INDEX idx_sites_parent_id               ON construction_sites(parent_id);
-CREATE INDEX idx_documents_organization_id     ON documents(organization_id);
-CREATE INDEX idx_documents_site_id             ON documents(site_id);
-CREATE INDEX idx_documents_parent_id           ON documents(parent_id);
-CREATE INDEX idx_tasks_document_id             ON document_tasks(document_id);
-CREATE INDEX idx_tasks_status                  ON document_tasks(status);
+-- Базовые FK-индексы для joins и фильтрации по тенанту
+CREATE INDEX idx_users_organization_id     ON users(organization_id);
+CREATE INDEX idx_sites_organization_id     ON construction_sites(organization_id);
+CREATE INDEX idx_sites_parent_id           ON construction_sites(parent_id);
+CREATE INDEX idx_documents_organization_id ON documents(organization_id);
+CREATE INDEX idx_documents_site_id         ON documents(site_id);
+CREATE INDEX idx_documents_parent_id       ON documents(parent_id);
+CREATE INDEX idx_tasks_document_id         ON document_tasks(document_id);
+CREATE INDEX idx_tasks_status              ON document_tasks(status);
+
+-- Watchdog: быстрый поиск зависших задач по времени обновления.
+-- Частичный индекс покрывает только 'pending' и 'processing' — единственные
+-- статусы, которые сторожевой таймер проверяет на зависание.
+CREATE INDEX idx_document_tasks_stale
+    ON document_tasks (updated_at ASC)
+    WHERE status IN ('pending', 'processing');
+
+-- Быстрый листинг только корневых документов (загруженных пользователем),
+-- исключая артефакты воркера из общего списка.
+CREATE INDEX idx_documents_root
+    ON documents(organization_id, created_at DESC)
+    WHERE parent_id IS NULL;
+
+-- Идемпотентность артефактов: гарантирует один артефакт каждого вида
+-- на один исходный документ (уникальная пара parent_id + artifact_kind).
+-- Позволяет ON CONFLICT DO UPDATE обновлять существующий артефакт при повторном callback.
+CREATE UNIQUE INDEX idx_documents_artifact_kind
+    ON documents (parent_id, artifact_kind)
+    WHERE parent_id IS NOT NULL;
 
 -- ==========================================
 -- TENANT ISOLATION: триггеры same-org проверок

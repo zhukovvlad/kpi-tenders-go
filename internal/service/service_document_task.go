@@ -33,6 +33,14 @@ func (s *DocumentTaskService) Create(ctx context.Context, params repository.Crea
 		return repository.DocumentTask{}, errs.New(errs.CodeValidationFailed, fmt.Sprintf("unsupported module: %q", params.ModuleName), err)
 	}
 
+	// The public API only accepts 'convert' tasks. Modules like 'anonymize'
+	// require a derived artifact path as input and are triggered internally
+	// by the worker service after convert completes.
+	if params.ModuleName != moduleConvert {
+		return repository.DocumentTask{}, errs.New(errs.CodeValidationFailed,
+			fmt.Sprintf("module %q cannot be created via the public API; only %q is allowed", params.ModuleName, moduleConvert), nil)
+	}
+
 	task, err := s.repo.CreateDocumentTask(ctx, params)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -53,22 +61,13 @@ func (s *DocumentTaskService) Create(ctx context.Context, params repository.Crea
 	triggerCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 
-	// Fetch the document to get storage_path for the Python worker trigger.
-	doc, err := s.repo.GetDocument(triggerCtx, repository.GetDocumentParams{
-		ID:             params.DocumentID,
-		OrganizationID: params.OrganizationID,
-	})
-	if err != nil {
-		// Task is already persisted — log and return without triggering Python.
-		s.log.Error("documentTask: failed to fetch document for trigger", "task_id", task.ID, "document_id", params.DocumentID, "err", err)
-		return task, nil
-	}
-
+	// input_storage_path was filled by the SQL subquery (= document.storage_path).
+	// Use it directly instead of an extra round-trip to fetch the document.
 	if err := s.pythonClient.Process(triggerCtx, pythonworker.ProcessRequest{
 		TaskID:      task.ID.String(),
 		DocumentID:  task.DocumentID.String(),
 		ModuleName:  task.ModuleName,
-		StoragePath: doc.StoragePath,
+		StoragePath: task.InputStoragePath,
 	}); err != nil {
 		// Best-effort: task is already in DB, caller can retry.
 		s.log.Error("documentTask: failed to trigger python worker", "task_id", task.ID, "err", err)

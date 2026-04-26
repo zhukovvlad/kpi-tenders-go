@@ -112,6 +112,18 @@ func (s *Server) Close() error {
 	return s.pythonClient.Close()
 }
 
+// PythonPublisher returns the Redis/Celery publisher used by the server.
+// Initialised as part of server construction; always non-nil after NewServer succeeds.
+func (s *Server) PythonPublisher() *pythonworker.Publisher {
+	return s.pythonClient
+}
+
+// DB returns the store.Store (implements repository.Querier) used by the server.
+// It is nil when the server was initialised without a database (unit tests).
+func (s *Server) DB() store.Store {
+	return s.store
+}
+
 func (s *Server) setupRouter() {
 	if s.cfg.AppEnv != "local" {
 		gin.SetMode(gin.ReleaseMode)

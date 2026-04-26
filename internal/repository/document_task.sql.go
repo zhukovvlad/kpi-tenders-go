@@ -8,17 +8,19 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createDocumentTask = `-- name: CreateDocumentTask :one
-INSERT INTO document_tasks (document_id, module_name)
-SELECT $1, $2
-FROM documents
-WHERE documents.id = $1 AND documents.organization_id = $3
-RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at
+INSERT INTO document_tasks (document_id, module_name, input_storage_path)
+SELECT $1, $2, d.storage_path
+FROM documents d
+WHERE d.id = $1
+  AND d.organization_id = $3
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, retry_count, input_storage_path, created_at, updated_at
 `
 
 type CreateDocumentTaskParams struct {
@@ -27,6 +29,13 @@ type CreateDocumentTaskParams struct {
 	OrganizationID uuid.UUID `json:"organization_id"`
 }
 
+// Public API: only 'convert' tasks may be created here; the input is always the
+// original document's storage_path. Other modules (e.g. anonymize) read a derived
+// artifact path and must be created internally via CreateDocumentTaskInternal.
+// Callers MUST map pgx.ErrNoRows to 404: the INSERT ... SELECT returns no rows
+// when the document is missing or belongs to another organization, and this is
+// intentionally reported as 404 to avoid leaking tenant existence. This is
+// distinct from unique-constraint violations on (document_id, module_name).
 func (q *Queries) CreateDocumentTask(ctx context.Context, arg CreateDocumentTaskParams) (DocumentTask, error) {
 	row := q.db.QueryRow(ctx, createDocumentTask, arg.DocumentID, arg.ModuleName, arg.OrganizationID)
 	var i DocumentTask
@@ -38,6 +47,8 @@ func (q *Queries) CreateDocumentTask(ctx context.Context, arg CreateDocumentTask
 		&i.CeleryTaskID,
 		&i.ResultPayload,
 		&i.ErrorMessage,
+		&i.RetryCount,
+		&i.InputStoragePath,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -45,23 +56,25 @@ func (q *Queries) CreateDocumentTask(ctx context.Context, arg CreateDocumentTask
 }
 
 const createDocumentTaskInternal = `-- name: CreateDocumentTaskInternal :one
-INSERT INTO document_tasks (document_id, module_name)
-VALUES ($1, $2)
+INSERT INTO document_tasks (document_id, module_name, input_storage_path)
+VALUES ($1, $2, $3)
 ON CONFLICT (document_id, module_name) DO NOTHING
-RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, retry_count, input_storage_path, created_at, updated_at
 `
 
 type CreateDocumentTaskInternalParams struct {
-	DocumentID uuid.UUID `json:"document_id"`
-	ModuleName string    `json:"module_name"`
+	DocumentID       uuid.UUID `json:"document_id"`
+	ModuleName       string    `json:"module_name"`
+	InputStoragePath string    `json:"input_storage_path"`
 }
 
 // Internal: creates a task directly by document_id without tenant org-check.
 // Use only from trusted internal paths (worker service); never expose publicly.
 // ON CONFLICT DO NOTHING makes this idempotent: duplicate (document_id, module_name)
 // returns pgx.ErrNoRows, which callers should treat as "task already exists".
+// $3 is input_storage_path: the file path the Python worker will receive for this module.
 func (q *Queries) CreateDocumentTaskInternal(ctx context.Context, arg CreateDocumentTaskInternalParams) (DocumentTask, error) {
-	row := q.db.QueryRow(ctx, createDocumentTaskInternal, arg.DocumentID, arg.ModuleName)
+	row := q.db.QueryRow(ctx, createDocumentTaskInternal, arg.DocumentID, arg.ModuleName, arg.InputStoragePath)
 	var i DocumentTask
 	err := row.Scan(
 		&i.ID,
@@ -71,6 +84,8 @@ func (q *Queries) CreateDocumentTaskInternal(ctx context.Context, arg CreateDocu
 		&i.CeleryTaskID,
 		&i.ResultPayload,
 		&i.ErrorMessage,
+		&i.RetryCount,
+		&i.InputStoragePath,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -97,8 +112,7 @@ func (q *Queries) DeleteDocumentTask(ctx context.Context, arg DeleteDocumentTask
 }
 
 const getDocumentTask = `-- name: GetDocumentTask :one
-SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id,
-       dt.result_payload, dt.error_message, dt.created_at, dt.updated_at
+SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id, dt.result_payload, dt.error_message, dt.retry_count, dt.input_storage_path, dt.created_at, dt.updated_at
 FROM document_tasks AS dt
 JOIN documents AS d ON d.id = dt.document_id
 WHERE dt.id = $1 AND d.organization_id = $2
@@ -120,15 +134,75 @@ func (q *Queries) GetDocumentTask(ctx context.Context, arg GetDocumentTaskParams
 		&i.CeleryTaskID,
 		&i.ResultPayload,
 		&i.ErrorMessage,
+		&i.RetryCount,
+		&i.InputStoragePath,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
+const listStaleTasks = `-- name: ListStaleTasks :many
+SELECT dt.id,
+       dt.document_id,
+       dt.module_name,
+       dt.retry_count,
+       dt.input_storage_path
+FROM document_tasks dt
+WHERE dt.status IN ('pending', 'processing')
+  AND dt.updated_at < $1
+ORDER BY dt.updated_at ASC
+LIMIT $2
+`
+
+type ListStaleTasksParams struct {
+	Cutoff    time.Time `json:"cutoff"`
+	BatchSize int32     `json:"batch_size"`
+}
+
+type ListStaleTasksRow struct {
+	ID               uuid.UUID `json:"id"`
+	DocumentID       uuid.UUID `json:"document_id"`
+	ModuleName       string    `json:"module_name"`
+	RetryCount       int32     `json:"retry_count"`
+	InputStoragePath string    `json:"input_storage_path"`
+}
+
+// Watchdog: returns stuck tasks (pending or processing) whose updated_at is older than $1
+// (cutoff timestamp). Uses dt.input_storage_path so the correct file path is returned
+// for every module: 'convert' tasks get the original document path, 'anonymize' tasks
+// get the convert_md artifact path (stored at task creation time).
+// Covers two failure modes: worker died mid-processing (processing) and
+// Redis message was lost before worker picked it up (pending).
+// No org-check; caller must be trusted (watchdog goroutine only).
+func (q *Queries) ListStaleTasks(ctx context.Context, arg ListStaleTasksParams) ([]ListStaleTasksRow, error) {
+	rows, err := q.db.Query(ctx, listStaleTasks, arg.Cutoff, arg.BatchSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListStaleTasksRow{}
+	for rows.Next() {
+		var i ListStaleTasksRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DocumentID,
+			&i.ModuleName,
+			&i.RetryCount,
+			&i.InputStoragePath,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTasksByDocument = `-- name: ListTasksByDocument :many
-SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id,
-       dt.result_payload, dt.error_message, dt.created_at, dt.updated_at
+SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id, dt.result_payload, dt.error_message, dt.retry_count, dt.input_storage_path, dt.created_at, dt.updated_at
 FROM document_tasks AS dt
 JOIN documents AS d ON d.id = dt.document_id
 WHERE dt.document_id = $1 AND d.organization_id = $2
@@ -157,6 +231,8 @@ func (q *Queries) ListTasksByDocument(ctx context.Context, arg ListTasksByDocume
 			&i.CeleryTaskID,
 			&i.ResultPayload,
 			&i.ErrorMessage,
+			&i.RetryCount,
+			&i.InputStoragePath,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -170,6 +246,62 @@ func (q *Queries) ListTasksByDocument(ctx context.Context, arg ListTasksByDocume
 	return items, nil
 }
 
+const markStaleTaskFailed = `-- name: MarkStaleTaskFailed :execrows
+UPDATE document_tasks
+SET status        = 'failed',
+    error_message = $2,
+    updated_at    = now()
+WHERE id        = $1
+  AND status IN ('pending', 'processing')
+  AND updated_at < $3
+`
+
+type MarkStaleTaskFailedParams struct {
+	ID           uuid.UUID   `json:"id"`
+	ErrorMessage pgtype.Text `json:"error_message"`
+	Cutoff       time.Time   `json:"cutoff"`
+}
+
+// Watchdog: permanently fails a task that has exhausted all retry attempts.
+// updated_at < cutoff prevents failing a task that was refreshed after ListStaleTasks.
+func (q *Queries) MarkStaleTaskFailed(ctx context.Context, arg MarkStaleTaskFailedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markStaleTaskFailed, arg.ID, arg.ErrorMessage, arg.Cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const markStaleTaskPending = `-- name: MarkStaleTaskPending :execrows
+UPDATE document_tasks
+SET status         = 'pending',
+    retry_count    = retry_count + 1,
+    celery_task_id = NULL,
+    error_message  = NULL,
+    updated_at     = now()
+WHERE id        = $1
+  AND status IN ('pending', 'processing')
+  AND updated_at < $2
+`
+
+type MarkStaleTaskPendingParams struct {
+	ID     uuid.UUID `json:"id"`
+	Cutoff time.Time `json:"cutoff"`
+}
+
+// Watchdog: atomically resets a stale task to pending and increments retry_count.
+// The WHERE status IN (...) AND updated_at < cutoff guard makes this a true
+// compare-and-swap on both status and staleness: two concurrent watchdog instances
+// cannot double-claim the same task, and a task that was refreshed between
+// ListStaleTasks and this UPDATE will not be incorrectly reset.
+func (q *Queries) MarkStaleTaskPending(ctx context.Context, arg MarkStaleTaskPendingParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markStaleTaskPending, arg.ID, arg.Cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateDocumentTaskStatus = `-- name: UpdateDocumentTaskStatus :one
 UPDATE document_tasks
 SET status = $3, updated_at = now()
@@ -177,7 +309,7 @@ WHERE document_tasks.id = $1
   AND document_tasks.document_id IN (
     SELECT documents.id FROM documents WHERE documents.organization_id = $2
   )
-RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, retry_count, input_storage_path, created_at, updated_at
 `
 
 type UpdateDocumentTaskStatusParams struct {
@@ -197,6 +329,44 @@ func (q *Queries) UpdateDocumentTaskStatus(ctx context.Context, arg UpdateDocume
 		&i.CeleryTaskID,
 		&i.ResultPayload,
 		&i.ErrorMessage,
+		&i.RetryCount,
+		&i.InputStoragePath,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateTaskResultPayload = `-- name: UpdateTaskResultPayload :one
+UPDATE document_tasks
+SET result_payload = $2,
+    updated_at     = now()
+WHERE id = $1
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, retry_count, input_storage_path, created_at, updated_at
+`
+
+type UpdateTaskResultPayloadParams struct {
+	ID            uuid.UUID       `json:"id"`
+	ResultPayload json.RawMessage `json:"result_payload"`
+}
+
+// Internal: no org-check; callers must be authenticated via SERVICE_TOKEN.
+// Updates result_payload only; does not change status, celery_task_id, or error_message.
+// Used by WorkerService after registering artifacts so updated_at is touched
+// only for payload changes, not for status semantics.
+func (q *Queries) UpdateTaskResultPayload(ctx context.Context, arg UpdateTaskResultPayloadParams) (DocumentTask, error) {
+	row := q.db.QueryRow(ctx, updateTaskResultPayload, arg.ID, arg.ResultPayload)
+	var i DocumentTask
+	err := row.Scan(
+		&i.ID,
+		&i.DocumentID,
+		&i.ModuleName,
+		&i.Status,
+		&i.CeleryTaskID,
+		&i.ResultPayload,
+		&i.ErrorMessage,
+		&i.RetryCount,
+		&i.InputStoragePath,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -212,7 +382,7 @@ SET
     error_message  = COALESCE($5, error_message),
     updated_at     = now()
 WHERE id = $1
-RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, created_at, updated_at
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, retry_count, input_storage_path, created_at, updated_at
 `
 
 type UpdateWorkerTaskStatusParams struct {
@@ -241,6 +411,8 @@ func (q *Queries) UpdateWorkerTaskStatus(ctx context.Context, arg UpdateWorkerTa
 		&i.CeleryTaskID,
 		&i.ResultPayload,
 		&i.ErrorMessage,
+		&i.RetryCount,
+		&i.InputStoragePath,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

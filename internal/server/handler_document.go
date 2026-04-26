@@ -33,7 +33,6 @@ const (
 
 type createDocumentRequest struct {
 	SiteID        *string `json:"site_id"`
-	ParentID      *string `json:"parent_id"`
 	FileName      string  `json:"file_name"      binding:"required"`
 	StoragePath   string  `json:"storage_path"   binding:"required"`
 	MimeType      *string `json:"mime_type"`
@@ -77,20 +76,6 @@ func (s *Server) CreateDocument(c *gin.Context) {
 		params.SiteID = pgtype.UUID{Bytes: id, Valid: true}
 	}
 
-	if req.ParentID != nil {
-		id, err := uuid.Parse(*req.ParentID)
-		if err != nil {
-			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid parent_id", err))
-			return
-		}
-		// Verify the parent document belongs to the authenticated org.
-		if _, err := s.documentService.Get(c.Request.Context(), id, orgID); err != nil {
-			s.respondWithError(c, err)
-			return
-		}
-		params.ParentID = pgtype.UUID{Bytes: id, Valid: true}
-	}
-
 	if req.MimeType != nil {
 		params.MimeType = pgtype.Text{String: *req.MimeType, Valid: true}
 	}
@@ -115,6 +100,26 @@ func (s *Server) CreateDocument(c *gin.Context) {
 func (s *Server) ListDocuments(c *gin.Context) {
 	orgID, ok := s.orgIDFromContext(c)
 	if !ok {
+		return
+	}
+
+	if parentIDStr := c.Query("parent_id"); parentIDStr != "" {
+		parentID, err := uuid.Parse(parentIDStr)
+		if err != nil {
+			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid parent_id", err))
+			return
+		}
+		// Verify the parent document belongs to the authenticated org.
+		if _, err := s.documentService.Get(c.Request.Context(), parentID, orgID); err != nil {
+			s.respondWithError(c, err)
+			return
+		}
+		docs, err := s.documentService.ListByParent(c.Request.Context(), parentID, orgID)
+		if err != nil {
+			s.respondWithError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, docs)
 		return
 	}
 
@@ -235,7 +240,6 @@ func parseUUID(raw string) (uuid.UUID, error) {
 // Form fields:
 //   - file        (required) — the file binary
 //   - site_id     (optional) — UUID of the construction site
-//   - parent_id   (optional) — UUID of the parent document
 func (s *Server) UploadDocument(c *gin.Context) {
 	if s.storageClient == nil {
 		s.respondWithError(c, errs.New(errs.CodeInternalError, "storage unavailable", nil))
@@ -311,19 +315,6 @@ func (s *Server) UploadDocument(c *gin.Context) {
 			return
 		}
 		params.SiteID = pgtype.UUID{Bytes: id, Valid: true}
-	}
-
-	if parentIDStr := c.PostForm("parent_id"); parentIDStr != "" {
-		id, err := uuid.Parse(parentIDStr)
-		if err != nil {
-			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid parent_id", err))
-			return
-		}
-		if _, err := s.documentService.Get(c.Request.Context(), id, orgID); err != nil {
-			s.respondWithError(c, err)
-			return
-		}
-		params.ParentID = pgtype.UUID{Bytes: id, Valid: true}
 	}
 
 	f, err := fileHeader.Open()

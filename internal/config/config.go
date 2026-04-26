@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net/url"
+	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
 )
@@ -16,6 +17,15 @@ type Config struct {
 	DBURL string `env:"DB_URL" env-required:"true"`
 
 	RedisURL string `env:"REDIS_URL" env-default:"redis://localhost:6379/0"`
+
+	// Watchdog: how often to scan for stuck tasks.
+	WatchdogInterval time.Duration `env:"WATCHDOG_INTERVAL" env-default:"2m"`
+	// Watchdog: a task is considered stale if it has been in 'pending' or 'processing' longer than this.
+	WatchdogThreshold time.Duration `env:"WATCHDOG_THRESHOLD" env-default:"10m"`
+	// Watchdog: max number of re-queue attempts before permanently failing the task.
+	WatchdogMaxRetries int `env:"WATCHDOG_MAX_RETRIES" env-default:"5"`
+	// Watchdog: max number of stale tasks fetched per scan cycle.
+	WatchdogBatchSize int `env:"WATCHDOG_BATCH_SIZE" env-default:"100"`
 
 	JWTAccessSecret  string `env:"JWT_ACCESS_SECRET"  env-required:"true"`
 	JWTRefreshSecret string `env:"JWT_REFRESH_SECRET" env-required:"true"`
@@ -65,6 +75,18 @@ func (c *Config) validate() error {
 	}
 	if (redisURL.Scheme != "redis" && redisURL.Scheme != "rediss") || redisURL.Host == "" {
 		return fmt.Errorf("REDIS_URL must be a valid redis:// or rediss:// URL (got scheme=%q host=%q)", redisURL.Scheme, redisURL.Host)
+	}
+	if c.WatchdogInterval <= 0 {
+		return fmt.Errorf("WATCHDOG_INTERVAL must be positive (got %s)", c.WatchdogInterval)
+	}
+	if c.WatchdogThreshold <= 0 {
+		return fmt.Errorf("WATCHDOG_THRESHOLD must be positive (got %s)", c.WatchdogThreshold)
+	}
+	if c.WatchdogMaxRetries < 0 {
+		return fmt.Errorf("WATCHDOG_MAX_RETRIES must be >= 0 (got %d)", c.WatchdogMaxRetries)
+	}
+	if c.WatchdogBatchSize <= 0 {
+		return fmt.Errorf("WATCHDOG_BATCH_SIZE must be > 0 (got %d)", c.WatchdogBatchSize)
 	}
 	return nil
 }

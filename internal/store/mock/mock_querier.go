@@ -18,6 +18,34 @@ type MockQuerier struct {
 	mock.Mock
 }
 
+// CreateArtifactDocument provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) CreateArtifactDocument(ctx context.Context, arg repository.CreateArtifactDocumentParams) (repository.Document, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateArtifactDocument")
+	}
+
+	var r0 repository.Document
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateArtifactDocumentParams) (repository.Document, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateArtifactDocumentParams) repository.Document); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.Document)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.CreateArtifactDocumentParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // CreateConstructionSite provides a mock function with given fields: ctx, arg
 func (_m *MockQuerier) CreateConstructionSite(ctx context.Context, arg repository.CreateConstructionSiteParams) (repository.ConstructionSite, error) {
 	ret := _m.Called(ctx, arg)
@@ -580,12 +608,42 @@ func (_m *MockQuerier) ListConstructionSitesByOrganization(ctx context.Context, 
 	return r0, r1
 }
 
-// ListDocumentsByOrganization provides a mock function with given fields: ctx, organizationID
-func (_m *MockQuerier) ListDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]repository.Document, error) {
+// ListDocumentsByParent provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) ListDocumentsByParent(ctx context.Context, arg repository.ListDocumentsByParentParams) ([]repository.Document, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListDocumentsByParent")
+	}
+
+	var r0 []repository.Document
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListDocumentsByParentParams) ([]repository.Document, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListDocumentsByParentParams) []repository.Document); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.Document)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.ListDocumentsByParentParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListRootDocumentsByOrganization provides a mock function with given fields: ctx, organizationID
+func (_m *MockQuerier) ListRootDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]repository.Document, error) {
 	ret := _m.Called(ctx, organizationID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for ListDocumentsByOrganization")
+		panic("no return value specified for ListRootDocumentsByOrganization")
 	}
 
 	var r0 []repository.Document
@@ -610,20 +668,20 @@ func (_m *MockQuerier) ListDocumentsByOrganization(ctx context.Context, organiza
 	return r0, r1
 }
 
-// ListDocumentsBySite provides a mock function with given fields: ctx, arg
-func (_m *MockQuerier) ListDocumentsBySite(ctx context.Context, arg repository.ListDocumentsBySiteParams) ([]repository.Document, error) {
+// ListRootDocumentsBySite provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) ListRootDocumentsBySite(ctx context.Context, arg repository.ListRootDocumentsBySiteParams) ([]repository.Document, error) {
 	ret := _m.Called(ctx, arg)
 
 	if len(ret) == 0 {
-		panic("no return value specified for ListDocumentsBySite")
+		panic("no return value specified for ListRootDocumentsBySite")
 	}
 
 	var r0 []repository.Document
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, repository.ListDocumentsBySiteParams) ([]repository.Document, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListRootDocumentsBySiteParams) ([]repository.Document, error)); ok {
 		return rf(ctx, arg)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, repository.ListDocumentsBySiteParams) []repository.Document); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListRootDocumentsBySiteParams) []repository.Document); ok {
 		r0 = rf(ctx, arg)
 	} else {
 		if ret.Get(0) != nil {
@@ -631,7 +689,37 @@ func (_m *MockQuerier) ListDocumentsBySite(ctx context.Context, arg repository.L
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, repository.ListDocumentsBySiteParams) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, repository.ListRootDocumentsBySiteParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListStaleTasks provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) ListStaleTasks(ctx context.Context, arg repository.ListStaleTasksParams) ([]repository.ListStaleTasksRow, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListStaleTasks")
+	}
+
+	var r0 []repository.ListStaleTasksRow
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListStaleTasksParams) ([]repository.ListStaleTasksRow, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListStaleTasksParams) []repository.ListStaleTasksRow); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.ListStaleTasksRow)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.ListStaleTasksParams) error); ok {
 		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)
@@ -693,6 +781,62 @@ func (_m *MockQuerier) ListUsersByOrganization(ctx context.Context, organization
 
 	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
 		r1 = rf(ctx, organizationID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MarkStaleTaskFailed provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) MarkStaleTaskFailed(ctx context.Context, arg repository.MarkStaleTaskFailedParams) (int64, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for MarkStaleTaskFailed")
+	}
+
+	var r0 int64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.MarkStaleTaskFailedParams) (int64, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.MarkStaleTaskFailedParams) int64); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.MarkStaleTaskFailedParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MarkStaleTaskPending provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) MarkStaleTaskPending(ctx context.Context, arg repository.MarkStaleTaskPendingParams) (int64, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for MarkStaleTaskPending")
+	}
+
+	var r0 int64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.MarkStaleTaskPendingParams) (int64, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.MarkStaleTaskPendingParams) int64); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.MarkStaleTaskPendingParams) error); ok {
+		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -776,6 +920,34 @@ func (_m *MockQuerier) UpdateOrganization(ctx context.Context, arg repository.Up
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, repository.UpdateOrganizationParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// UpdateTaskResultPayload provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) UpdateTaskResultPayload(ctx context.Context, arg repository.UpdateTaskResultPayloadParams) (repository.DocumentTask, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateTaskResultPayload")
+	}
+
+	var r0 repository.DocumentTask
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpdateTaskResultPayloadParams) (repository.DocumentTask, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpdateTaskResultPayloadParams) repository.DocumentTask); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.DocumentTask)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.UpdateTaskResultPayloadParams) error); ok {
 		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)

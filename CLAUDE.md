@@ -18,6 +18,7 @@ internal/store/               — Store interface + SQLStore (transaction suppor
 internal/store/mock/          — MockStore для unit-тестов сервисов
 internal/storage/             — MinIO/S3 клиент (upload, presigned URL, delete, SafeExt)
 internal/pythonworker/        — Celery-издатель поверх Redis (LPUSH, protocol v2)
+internal/watchdog/            — сторожевой таймер зависших задач (re-queue / fail после maxRetries)
 internal/pgutil/              — утилиты PostgreSQL (IsUniqueViolation)
 pkg/errs/                     — структурированные ошибки приложения
 pkg/logging/                  — slog-логгер
@@ -54,9 +55,10 @@ type Server struct {
 - **Сервисы с транзакциями** (OrganizationService) принимают `store.Store`.
 - **Сервисы без транзакций** (AuthService, DocumentService) принимают `repository.Querier`.
 - `DocumentService` дополнительно принимает consumer-side interface `documentStorage` (только `PresignedURLWithParams`); `nil`-safe — при отсутствии S3 возвращает 500.
-- `DocumentTaskService` принимает `repository.Querier` и тот же consumer-side interface `workerPythonClient`; `nil`-safe — при отсутствии Python-клиента триггер пропускается. После INSERT вызывает `GetDocument` для получения `storage_path`, затем `pythonClient.Process` (best-effort: ошибки логируются, наружу не пробрасываются).
+- `DocumentTaskService` принимает `repository.Querier` и тот же consumer-side interface `workerPythonClient`; `nil`-safe — при отсутствии Python-клиента триггер пропускается. После INSERT берёт `input_storage_path` из `document_tasks` (заполняется subquery в SQL), передаёт в `pythonClient.Process` (best-effort: ошибки логируются, наружу не пробрасываются).
 - `WorkerService` принимает `repository.Querier` и consumer-side interface `workerPythonClient` (только `Process`); реализован `*pythonworker.Publisher`. Redis обязателен — `pythonworker.New` вызывается в `NewServer()`, при ошибке `NewServer()` возвращает `error`; завершение процесса происходит в `cmd/api/main.go`.
 - В `NewServer()` экземпляр `*pythonworker.Publisher` создаётся **один раз** через `cfg.RedisURL` и передаётся в оба сервиса (`DocumentTaskService` и `WorkerService`). `workerService` создаётся безусловно при успешной инициализации сервера. `srv.Close()` освобождает пул Redis-соединений при graceful shutdown.
+- Watchdog запускается горутиной из `cmd/api/main.go`; завершение ожидается через `sync.WaitGroup` (`watchdogDone.Wait()`) после `watchdogCancel()` и до `srv.Close()` — иначе in-flight `LPUSH` может попасть на закрытый пул.
 - `store.SQLStore` — production-реализация поверх `*pgxpool.Pool`.
 - `mock.MockStore` — testify-mock для unit-тестов; `ExecTx` hand-written: вызывает `fn(m)` для propagation ошибок из транзакции.
 
@@ -98,7 +100,7 @@ GET/PATCH/DELETE /api/v1/organizations/:id
 
 POST             /api/v1/documents           (JSON, storage_path задаётся вручную)
 POST             /api/v1/documents/upload    (multipart/form-data → S3 → БД)
-GET              /api/v1/documents
+GET              /api/v1/documents                  (?parent_id=uuid → список артефактов; ?site_id=uuid → по объекту; иначе — корневые)
 GET/DELETE       /api/v1/documents/:id
 GET              /api/v1/documents/:id/url   (?download=true|false → presigned URL, TTL 15 мин)
 
@@ -118,7 +120,7 @@ _Нет активных заглушек._
 ### Не реализовано
 
 - Projects (таблица есть, хендлеров/сервисов/запросов нет)
-- `catalog_positions` SQLC-запросы (таблица создана в 000002)
+- `catalog_positions` SQLC-запросы (таблица будет создана в 000002)
 
 ## База данных
 
@@ -127,7 +129,7 @@ _Нет активных заглушек._
 
 | Миграция | Таблицы / изменения |
 |----------|---------------------|
-| 000001 | organizations, users, projects, documents, document_tasks (с UNIQUE на document_id+module_name) |
+| 000001 | Полная схема: organizations, users, construction_sites, documents (artifact_kind, parent_id CASCADE), document_tasks (retry_count, input_storage_path TEXT NOT NULL CHECK(btrim<>«»), UNIQUE document_id+module_name); все FK-индексы; idx_document_tasks_stale (WHERE status IN ('pending','processing')); idx_documents_root (WHERE parent_id IS NULL); idx_documents_artifact_kind UNIQUE (WHERE parent_id IS NOT NULL); documents_parent_artifact_kind_chk CHECK(parent_id IS NOT NULL → artifact_kind IS NOT NULL AND btrim<>«»); триггеры tenant isolation + запрет смены organization_id |
 
 `catalog_positions.embedding` — тип `vector` без фиксированной размерности  
 (зафиксируй как `vector(1536)` когда определишься с моделью эмбеддингов).
@@ -142,14 +144,15 @@ internal/service/service_auth_test.go               — AuthService: login, timi
 internal/service/service_organization_test.go       — OrganizationService: register, conflicts
 internal/service/service_user_test.go               — UserService: GetProfile, tenant isolation
 internal/service/service_document_task_test.go      — DocumentTaskService: Create success, not found, conflict, db error, python trigger, python error best-effort (6 кейсов)
-internal/service/service_worker_test.go             — WorkerService: chaining, idempotency, errors, python client (7 кейсов)
+internal/service/service_worker_test.go             — WorkerService: chaining, idempotency, errors, python client, CreateArtifactDocument idempotent upsert, InputStoragePath forwarding (9 кейсов)
 internal/server/errors_test.go                      — respondWithError маппинг
 internal/server/health_test.go                      — health endpoint
 internal/server/middleware_test.go                  — AuthMiddleware, ServiceBearerAuth
 internal/server/handler_user_test.go                — GET /api/v1/auth/me
-internal/server/handler_document_test.go            — POST /api/v1/documents/upload
+internal/server/handler_document_test.go            — POST /api/v1/documents/upload; GET ?parent_id= (valid, invalid UUID, parent not found)
 internal/storage/client_test.go                     — PresignedURL, Upload, Delete error wrapping + TestSafeExt (10 кейсов)
 internal/pythonworker/client_test.go                — buildCeleryMessage: поля, маршрутизация модулей, неизвестный модуль (3 кейса)
+internal/watchdog/watchdog_test.go                  — runOnce: re-queue, maxRetries exceeded, no tasks, CAS skip, best-effort publish error, pending status re-queue (6 кейсов)
 ```
 
 **Паттерн:**
@@ -163,7 +166,7 @@ svc := service.NewOrganizationService(ms, log)
 ### Интеграционные тесты (требует Docker)
 ```text
 tests/integration/main_test.go        — TestMain: testcontainers pgvector/pgvector:pg16 + миграции
-tests/integration/repository_test.go  — CRUD + RAG cosine search по catalog_positions
+tests/integration/repository_test.go  — CRUD, tenant isolation, artifact parent-child, cascade delete, root-list filtering
 tests/integration/storage_test.go     — Upload + PresignedURL против эфемерного MinIO-контейнера (testcontainers)
 ```
 
@@ -188,7 +191,8 @@ make gen-secrets      # сгенерировать JWT/service секреты
 ## Конфигурация
 
 Загружается из `.env` через `cleanenv`. Ключевые переменные:
-`APP_ENV`, `APP_PORT`, `DB_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `SERVICE_TOKEN`, `S3_*`.
+`APP_ENV`, `APP_PORT`, `DB_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `SERVICE_TOKEN`, `S3_*`.  
+Watchdog: `WATCHDOG_INTERVAL` (default `2m`), `WATCHDOG_THRESHOLD` (default `10m`), `WATCHDOG_MAX_RETRIES` (default `5`), `WATCHDOG_BATCH_SIZE` (default `100`).
 
 ## Frontend
 

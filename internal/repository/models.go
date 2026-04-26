@@ -27,14 +27,14 @@ type ConstructionSite struct {
 	UpdatedAt time.Time   `json:"updated_at"`
 }
 
-// Метаданные загруженных файлов; физический файл хранится в MinIO
+// Метаданные загруженных файлов и AI-артефактов; физические файлы — в MinIO
 type Document struct {
 	ID             uuid.UUID `json:"id"`
 	OrganizationID uuid.UUID `json:"organization_id"`
-	// Объект строительства, к которому относится документ; NULL — документ без привязки
+	// Объект строительства документа; NULL — документ без привязки к объекту
 	SiteID     pgtype.UUID `json:"site_id"`
 	UploadedBy uuid.UUID   `json:"uploaded_by"`
-	// Исходный документ, если текущий получен в результате обработки (конвертация, анонимизация)
+	// Исходный документ, если запись является артефактом воркера; NULL для оригиналов
 	ParentID pgtype.UUID `json:"parent_id"`
 	FileName string      `json:"file_name"`
 	// Путь к файлу в MinIO: bucket/prefix/uuid.ext
@@ -43,15 +43,17 @@ type Document struct {
 	MimeType pgtype.Text `json:"mime_type"`
 	// Размер файла в байтах; NULL если не известен на момент создания записи
 	FileSizeBytes pgtype.Int8 `json:"file_size_bytes"`
-	CreatedAt     time.Time   `json:"created_at"`
-	UpdatedAt     time.Time   `json:"updated_at"`
+	// Тип артефакта: NULL — загружен пользователем; convert_md — результат конвертации в Markdown; anonymize_doc — анонимизированный документ; anonymize_entities — карта сущностей анонимизации
+	ArtifactKind pgtype.Text `json:"artifact_kind"`
+	CreatedAt    time.Time   `json:"created_at"`
+	UpdatedAt    time.Time   `json:"updated_at"`
 }
 
 // Задачи AI-воркера на Python для обработки документов
 type DocumentTask struct {
 	ID         uuid.UUID `json:"id"`
 	DocumentID uuid.UUID `json:"document_id"`
-	// Маршрутизатор воркера: определяет логику обработки (например: anonymize, parse_estimate, convert). Набор значений расширяется по мере добавления модулей
+	// Маршрутизатор воркера: определяет логику обработки (convert, anonymize, parse_invoice, extract и др.)
 	ModuleName string `json:"module_name"`
 	// Статус выполнения: pending | processing | completed | failed
 	Status string `json:"status"`
@@ -61,8 +63,12 @@ type DocumentTask struct {
 	ResultPayload json.RawMessage `json:"result_payload"`
 	// Описание ошибки при status = failed; NULL в остальных случаях
 	ErrorMessage pgtype.Text `json:"error_message"`
-	CreatedAt    time.Time   `json:"created_at"`
-	UpdatedAt    time.Time   `json:"updated_at"`
+	// Число перезапусков watchdog-ом; при превышении WatchdogMaxRetries задача переводится в failed
+	RetryCount int32 `json:"retry_count"`
+	// Путь к входному файлу воркера в MinIO; определяется модулем и фиксируется при создании задачи
+	InputStoragePath string    `json:"input_storage_path"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // Организации — изолированные тенанты системы

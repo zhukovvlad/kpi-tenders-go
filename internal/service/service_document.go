@@ -58,7 +58,7 @@ func (s *DocumentService) Get(ctx context.Context, id, orgID uuid.UUID) (reposit
 }
 
 func (s *DocumentService) ListByOrganization(ctx context.Context, orgID uuid.UUID) ([]repository.Document, error) {
-	docs, err := s.repo.ListDocumentsByOrganization(ctx, orgID)
+	docs, err := s.repo.ListRootDocumentsByOrganization(ctx, orgID)
 	if err != nil {
 		return nil, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
@@ -66,9 +66,20 @@ func (s *DocumentService) ListByOrganization(ctx context.Context, orgID uuid.UUI
 }
 
 func (s *DocumentService) ListBySite(ctx context.Context, orgID, siteID uuid.UUID) ([]repository.Document, error) {
-	docs, err := s.repo.ListDocumentsBySite(ctx, repository.ListDocumentsBySiteParams{
+	docs, err := s.repo.ListRootDocumentsBySite(ctx, repository.ListRootDocumentsBySiteParams{
 		OrganizationID: orgID,
 		SiteID:         pgtype.UUID{Bytes: siteID, Valid: true},
+	})
+	if err != nil {
+		return nil, errs.New(errs.CodeInternalError, "internal server error", err)
+	}
+	return docs, nil
+}
+
+func (s *DocumentService) ListByParent(ctx context.Context, parentID, orgID uuid.UUID) ([]repository.Document, error) {
+	docs, err := s.repo.ListDocumentsByParent(ctx, repository.ListDocumentsByParentParams{
+		ParentID:       pgtype.UUID{Bytes: parentID, Valid: true},
+		OrganizationID: orgID,
 	})
 	if err != nil {
 		return nil, errs.New(errs.CodeInternalError, "internal server error", err)
