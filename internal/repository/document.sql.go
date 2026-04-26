@@ -16,7 +16,11 @@ const createArtifactDocument = `-- name: CreateArtifactDocument :one
 INSERT INTO documents (organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (parent_id, artifact_kind) WHERE parent_id IS NOT NULL
-DO UPDATE SET file_name = EXCLUDED.file_name
+DO UPDATE SET
+    file_name       = EXCLUDED.file_name,
+    storage_path    = EXCLUDED.storage_path,
+    mime_type       = EXCLUDED.mime_type,
+    file_size_bytes = EXCLUDED.file_size_bytes
 RETURNING id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, created_at, updated_at, artifact_kind
 `
 
@@ -32,8 +36,8 @@ type CreateArtifactDocumentParams struct {
 	ArtifactKind   pgtype.Text `json:"artifact_kind"`
 }
 
-// Idempotent artifact creation: on conflict (parent_id, artifact_kind) performs a no-op
-// update (file_name = EXCLUDED.file_name) so that RETURNING still yields the row.
+// Idempotent artifact creation: on conflict (parent_id, artifact_kind) updates
+// artifact metadata from the latest callback so that RETURNING yields the current row state.
 // Prevents duplicate artifact documents when a worker sends a duplicate 'completed' callback.
 func (q *Queries) CreateArtifactDocument(ctx context.Context, arg CreateArtifactDocumentParams) (Document, error) {
 	row := q.db.QueryRow(ctx, createArtifactDocument,

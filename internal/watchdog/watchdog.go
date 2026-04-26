@@ -73,7 +73,7 @@ func runOnce(
 	log.Info("watchdog: found stale tasks", slog.Int("count", len(tasks)))
 
 	for _, task := range tasks {
-		processTask(ctx, q, pub, cfg, log, task)
+		processTask(ctx, q, pub, cfg, log, task, cutoff)
 	}
 }
 
@@ -85,6 +85,7 @@ func processTask(
 	cfg *config.Config,
 	log *slog.Logger,
 	task repository.ListStaleTasksRow,
+	cutoff time.Time,
 ) {
 	taskLog := log.With(
 		slog.String("task_id", task.ID.String()),
@@ -94,7 +95,10 @@ func processTask(
 	)
 
 	if int(task.RetryCount) >= cfg.WatchdogMaxRetries {
-		rows, err := q.MarkStaleTaskFailed(ctx, task.ID)
+		rows, err := q.MarkStaleTaskFailed(ctx, repository.MarkStaleTaskFailedParams{
+			ID:        task.ID,
+			UpdatedAt: cutoff,
+		})
 		if err != nil {
 			taskLog.Error("watchdog: failed to mark task as failed", "err", err)
 			return
@@ -109,9 +113,14 @@ func processTask(
 	}
 
 	// Atomically flip status → 'pending' and increment retry_count.
-	// WHERE status IN ('pending', 'processing') is the compare-and-swap guard that
-	// prevents two concurrent watchdog runs from double-claiming the same task.
-	rows, err := q.MarkStaleTaskPending(ctx, task.ID)
+	// WHERE status IN ('pending', 'processing') AND updated_at < cutoff is the
+	// compare-and-swap guard that prevents two concurrent watchdog runs from
+	// double-claiming the same task, and avoids resetting a task refreshed
+	// between ListStaleTasks and this UPDATE.
+	rows, err := q.MarkStaleTaskPending(ctx, repository.MarkStaleTaskPendingParams{
+		ID:        task.ID,
+		UpdatedAt: cutoff,
+	})
 	if err != nil {
 		taskLog.Error("watchdog: failed to claim stale task", "err", err)
 		return

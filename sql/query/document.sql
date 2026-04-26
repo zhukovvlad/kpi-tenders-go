@@ -34,11 +34,15 @@ ORDER BY created_at ASC;
 DELETE FROM documents WHERE id = $1 AND organization_id = $2;
 
 -- name: CreateArtifactDocument :one
--- Idempotent artifact creation: on conflict (parent_id, artifact_kind) performs a no-op
--- update (file_name = EXCLUDED.file_name) so that RETURNING still yields the row.
+-- Idempotent artifact creation: on conflict (parent_id, artifact_kind) updates
+-- artifact metadata from the latest callback so that RETURNING yields the current row state.
 -- Prevents duplicate artifact documents when a worker sends a duplicate 'completed' callback.
 INSERT INTO documents (organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (parent_id, artifact_kind) WHERE parent_id IS NOT NULL
-DO UPDATE SET file_name = EXCLUDED.file_name
+DO UPDATE SET
+    file_name       = EXCLUDED.file_name,
+    storage_path    = EXCLUDED.storage_path,
+    mime_type       = EXCLUDED.mime_type,
+    file_size_bytes = EXCLUDED.file_size_bytes
 RETURNING *;

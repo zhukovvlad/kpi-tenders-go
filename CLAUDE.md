@@ -128,16 +128,12 @@ _Нет активных заглушек._
 
 | Миграция | Таблицы / изменения |
 |----------|---------------------|
-| 000001 | organizations, users, projects, documents, document_tasks (с UNIQUE на document_id+module_name) |
-| 000002 | document_tasks.retry_count (INT NOT NULL DEFAULT 0) + partial index idx_document_tasks_stale |
-| 000003 | idx_document_tasks_stale расширен: охватывает статусы `pending` и `processing` (watchdog requeue) |
-| 000004 | documents.artifact_kind VARCHAR(50) NULL; FK parent_id → CASCADE; partial index idx_documents_root (WHERE parent_id IS NULL) |
-| 000005 | document_tasks.input_storage_path TEXT NOT NULL DEFAULT ''; UNIQUE index idx_documents_artifact_kind ON documents(parent_id, artifact_kind) WHERE parent_id IS NOT NULL |
+| 000001 | Полная схема: organizations, users, construction_sites, documents (artifact_kind, parent_id CASCADE), document_tasks (retry_count, input_storage_path, UNIQUE document_id+module_name); все FK-индексы; idx_document_tasks_stale (WHERE status IN ('pending','processing')); idx_documents_root (WHERE parent_id IS NULL); idx_documents_artifact_kind UNIQUE (WHERE parent_id IS NOT NULL); триггеры tenant isolation + запрет смены organization_id |
 
 `catalog_positions.embedding` — тип `vector` без фиксированной размерности  
 (зафиксируй как `vector(1536)` когда определишься с моделью эмбеддингов).
 
-> **Примечание:** следующая миграция — `catalog_positions` (pgvector RAG), будет `000006`.
+> **Примечание:** следующая миграция — `catalog_positions` (pgvector RAG), будет `000002`.
 
 ## Стратегия тестирования
 

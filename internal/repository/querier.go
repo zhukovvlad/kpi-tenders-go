@@ -13,8 +13,8 @@ import (
 )
 
 type Querier interface {
-	// Idempotent artifact creation: on conflict (parent_id, artifact_kind) performs a no-op
-	// update (file_name = EXCLUDED.file_name) so that RETURNING still yields the row.
+	// Idempotent artifact creation: on conflict (parent_id, artifact_kind) updates
+	// artifact metadata from the latest callback so that RETURNING yields the current row state.
 	// Prevents duplicate artifact documents when a worker sends a duplicate 'completed' callback.
 	CreateArtifactDocument(ctx context.Context, arg CreateArtifactDocumentParams) (Document, error)
 	CreateConstructionSite(ctx context.Context, arg CreateConstructionSiteParams) (ConstructionSite, error)
@@ -61,11 +61,14 @@ type Querier interface {
 	ListTasksByDocument(ctx context.Context, arg ListTasksByDocumentParams) ([]DocumentTask, error)
 	ListUsersByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ListUsersByOrganizationRow, error)
 	// Watchdog: permanently fails a task that has exhausted all retry attempts.
-	MarkStaleTaskFailed(ctx context.Context, id uuid.UUID) (int64, error)
+	// updated_at < $2 prevents failing a task that was refreshed after ListStaleTasks.
+	MarkStaleTaskFailed(ctx context.Context, arg MarkStaleTaskFailedParams) (int64, error)
 	// Watchdog: atomically resets a stale task to pending and increments retry_count.
-	// The WHERE status IN (...) guard makes this a compare-and-swap, so two
-	// concurrent watchdog instances cannot double-claim the same task.
-	MarkStaleTaskPending(ctx context.Context, id uuid.UUID) (int64, error)
+	// The WHERE status IN (...) AND updated_at < $2 guard makes this a true
+	// compare-and-swap on both status and staleness: two concurrent watchdog instances
+	// cannot double-claim the same task, and a task that was refreshed between
+	// ListStaleTasks and this UPDATE will not be incorrectly reset.
+	MarkStaleTaskPending(ctx context.Context, arg MarkStaleTaskPendingParams) (int64, error)
 	UpdateConstructionSite(ctx context.Context, arg UpdateConstructionSiteParams) (ConstructionSite, error)
 	UpdateDocumentTaskStatus(ctx context.Context, arg UpdateDocumentTaskStatusParams) (DocumentTask, error)
 	UpdateOrganization(ctx context.Context, arg UpdateOrganizationParams) (Organization, error)

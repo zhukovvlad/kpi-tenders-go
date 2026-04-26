@@ -790,9 +790,9 @@ func (_m *MockQuerier) ListUsersByOrganization(ctx context.Context, organization
 	return r0, r1
 }
 
-// MarkStaleTaskFailed provides a mock function with given fields: ctx, id
-func (_m *MockQuerier) MarkStaleTaskFailed(ctx context.Context, id uuid.UUID) (int64, error) {
-	ret := _m.Called(ctx, id)
+// MarkStaleTaskFailed provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) MarkStaleTaskFailed(ctx context.Context, arg repository.MarkStaleTaskFailedParams) (int64, error) {
+	ret := _m.Called(ctx, arg)
 
 	if len(ret) == 0 {
 		panic("no return value specified for MarkStaleTaskFailed")
@@ -800,17 +800,17 @@ func (_m *MockQuerier) MarkStaleTaskFailed(ctx context.Context, id uuid.UUID) (i
 
 	var r0 int64
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) (int64, error)); ok {
-		return rf(ctx, id)
+	if rf, ok := ret.Get(0).(func(context.Context, repository.MarkStaleTaskFailedParams) (int64, error)); ok {
+		return rf(ctx, arg)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) int64); ok {
-		r0 = rf(ctx, id)
+	if rf, ok := ret.Get(0).(func(context.Context, repository.MarkStaleTaskFailedParams) int64); ok {
+		r0 = rf(ctx, arg)
 	} else {
 		r0 = ret.Get(0).(int64)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
-		r1 = rf(ctx, id)
+	if rf, ok := ret.Get(1).(func(context.Context, repository.MarkStaleTaskFailedParams) error); ok {
+		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -818,9 +818,9 @@ func (_m *MockQuerier) MarkStaleTaskFailed(ctx context.Context, id uuid.UUID) (i
 	return r0, r1
 }
 
-// MarkStaleTaskPending provides a mock function with given fields: ctx, id
-func (_m *MockQuerier) MarkStaleTaskPending(ctx context.Context, id uuid.UUID) (int64, error) {
-	ret := _m.Called(ctx, id)
+// MarkStaleTaskPending provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) MarkStaleTaskPending(ctx context.Context, arg repository.MarkStaleTaskPendingParams) (int64, error) {
+	ret := _m.Called(ctx, arg)
 
 	if len(ret) == 0 {
 		panic("no return value specified for MarkStaleTaskPending")
@@ -828,17 +828,17 @@ func (_m *MockQuerier) MarkStaleTaskPending(ctx context.Context, id uuid.UUID) (
 
 	var r0 int64
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) (int64, error)); ok {
-		return rf(ctx, id)
+	if rf, ok := ret.Get(0).(func(context.Context, repository.MarkStaleTaskPendingParams) (int64, error)); ok {
+		return rf(ctx, arg)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) int64); ok {
-		r0 = rf(ctx, id)
+	if rf, ok := ret.Get(0).(func(context.Context, repository.MarkStaleTaskPendingParams) int64); ok {
+		r0 = rf(ctx, arg)
 	} else {
 		r0 = ret.Get(0).(int64)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
-		r1 = rf(ctx, id)
+	if rf, ok := ret.Get(1).(func(context.Context, repository.MarkStaleTaskPendingParams) error); ok {
+		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)
 	}

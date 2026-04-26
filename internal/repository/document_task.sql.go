@@ -237,13 +237,20 @@ UPDATE document_tasks
 SET status        = 'failed',
     error_message = 'stale task: exceeded max retry attempts',
     updated_at    = now()
-WHERE id     = $1
+WHERE id        = $1
   AND status IN ('pending', 'processing')
+  AND updated_at < $2
 `
 
+type MarkStaleTaskFailedParams struct {
+	ID        uuid.UUID `json:"id"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // Watchdog: permanently fails a task that has exhausted all retry attempts.
-func (q *Queries) MarkStaleTaskFailed(ctx context.Context, id uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, markStaleTaskFailed, id)
+// updated_at < $2 prevents failing a task that was refreshed after ListStaleTasks.
+func (q *Queries) MarkStaleTaskFailed(ctx context.Context, arg MarkStaleTaskFailedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markStaleTaskFailed, arg.ID, arg.UpdatedAt)
 	if err != nil {
 		return 0, err
 	}
@@ -255,15 +262,23 @@ UPDATE document_tasks
 SET status      = 'pending',
     retry_count = retry_count + 1,
     updated_at  = now()
-WHERE id     = $1
+WHERE id        = $1
   AND status IN ('pending', 'processing')
+  AND updated_at < $2
 `
 
+type MarkStaleTaskPendingParams struct {
+	ID        uuid.UUID `json:"id"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // Watchdog: atomically resets a stale task to pending and increments retry_count.
-// The WHERE status IN (...) guard makes this a compare-and-swap, so two
-// concurrent watchdog instances cannot double-claim the same task.
-func (q *Queries) MarkStaleTaskPending(ctx context.Context, id uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, markStaleTaskPending, id)
+// The WHERE status IN (...) AND updated_at < $2 guard makes this a true
+// compare-and-swap on both status and staleness: two concurrent watchdog instances
+// cannot double-claim the same task, and a task that was refreshed between
+// ListStaleTasks and this UPDATE will not be incorrectly reset.
+func (q *Queries) MarkStaleTaskPending(ctx context.Context, arg MarkStaleTaskPendingParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markStaleTaskPending, arg.ID, arg.UpdatedAt)
 	if err != nil {
 		return 0, err
 	}

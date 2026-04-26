@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
+	"path"
 	"time"
 
 	"github.com/google/uuid"
@@ -194,9 +194,13 @@ func (s *WorkerService) markTaskFailed(ctx context.Context, taskID uuid.UUID, ms
 }
 
 // fileNameFromPath returns the last path component of a storage path.
+// Uses path.Base (slash-separated) which correctly handles trailing slashes and
+// other edge cases that strings.Split cannot handle.
 func fileNameFromPath(storagePath string) string {
-	parts := strings.Split(storagePath, "/")
-	return parts[len(parts)-1]
+	if storagePath == "" {
+		return ""
+	}
+	return path.Base(storagePath)
 }
 
 // registerArtifact creates a Document record for a worker-produced artifact file.

@@ -62,7 +62,9 @@ func TestRunOnce_RequeuesStaleTask(t *testing.T) {
 
 	mq.On("ListStaleTasks", mock.Anything, mock.AnythingOfType("time.Time")).
 		Return([]repository.ListStaleTasksRow{staleTask}, nil)
-	mq.On("MarkStaleTaskPending", mock.Anything, taskID).Return(int64(1), nil)
+	mq.On("MarkStaleTaskPending", mock.Anything, mock.MatchedBy(func(p repository.MarkStaleTaskPendingParams) bool {
+		return p.ID == taskID
+	})).Return(int64(1), nil)
 	pub.On("Process", mock.Anything, pythonworker.ProcessRequest{
 		TaskID:      taskID.String(),
 		DocumentID:  docID.String(),
@@ -93,7 +95,9 @@ func TestRunOnce_FailsTaskWhenMaxRetriesExceeded(t *testing.T) {
 
 	mq.On("ListStaleTasks", mock.Anything, mock.AnythingOfType("time.Time")).
 		Return([]repository.ListStaleTasksRow{staleTask}, nil)
-	mq.On("MarkStaleTaskFailed", mock.Anything, taskID).Return(int64(1), nil)
+	mq.On("MarkStaleTaskFailed", mock.Anything, mock.MatchedBy(func(p repository.MarkStaleTaskFailedParams) bool {
+		return p.ID == taskID
+	})).Return(int64(1), nil)
 
 	runOnce(context.Background(), mq, pub, cfg, testLog())
 
@@ -138,7 +142,9 @@ func TestRunOnce_SkipsAlreadyClaimedTask(t *testing.T) {
 	mq.On("ListStaleTasks", mock.Anything, mock.AnythingOfType("time.Time")).
 		Return([]repository.ListStaleTasksRow{staleTask}, nil)
 	// 0 rows = another watchdog instance claimed it first.
-	mq.On("MarkStaleTaskPending", mock.Anything, taskID).Return(int64(0), nil)
+	mq.On("MarkStaleTaskPending", mock.Anything, mock.MatchedBy(func(p repository.MarkStaleTaskPendingParams) bool {
+		return p.ID == taskID
+	})).Return(int64(0), nil)
 
 	runOnce(context.Background(), mq, pub, cfg, testLog())
 
@@ -165,7 +171,9 @@ func TestRunOnce_BestEffortOnPublishError(t *testing.T) {
 
 	mq.On("ListStaleTasks", mock.Anything, mock.AnythingOfType("time.Time")).
 		Return([]repository.ListStaleTasksRow{staleTask}, nil)
-	mq.On("MarkStaleTaskPending", mock.Anything, taskID).Return(int64(1), nil)
+	mq.On("MarkStaleTaskPending", mock.Anything, mock.MatchedBy(func(p repository.MarkStaleTaskPendingParams) bool {
+		return p.ID == taskID
+	})).Return(int64(1), nil)
 	pub.On("Process", mock.Anything, mock.Anything).Return(context.DeadlineExceeded)
 
 	// Must not panic or return error.
@@ -196,7 +204,9 @@ func TestRunOnce_RequeuesStaleTaskInPendingStatus(t *testing.T) {
 
 	mq.On("ListStaleTasks", mock.Anything, mock.AnythingOfType("time.Time")).
 		Return([]repository.ListStaleTasksRow{staleTask}, nil)
-	mq.On("MarkStaleTaskPending", mock.Anything, taskID).Return(int64(1), nil)
+	mq.On("MarkStaleTaskPending", mock.Anything, mock.MatchedBy(func(p repository.MarkStaleTaskPendingParams) bool {
+		return p.ID == taskID
+	})).Return(int64(1), nil)
 	pub.On("Process", mock.Anything, pythonworker.ProcessRequest{
 		TaskID:      taskID.String(),
 		DocumentID:  docID.String(),

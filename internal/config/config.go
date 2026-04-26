@@ -74,5 +74,14 @@ func (c *Config) validate() error {
 	if (redisURL.Scheme != "redis" && redisURL.Scheme != "rediss") || redisURL.Host == "" {
 		return fmt.Errorf("REDIS_URL must be a valid redis:// or rediss:// URL (got scheme=%q host=%q)", redisURL.Scheme, redisURL.Host)
 	}
+	if c.WatchdogInterval <= 0 {
+		return fmt.Errorf("WATCHDOG_INTERVAL must be positive (got %s)", c.WatchdogInterval)
+	}
+	if c.WatchdogThreshold <= 0 {
+		return fmt.Errorf("WATCHDOG_THRESHOLD must be positive (got %s)", c.WatchdogThreshold)
+	}
+	if c.WatchdogMaxRetries < 0 {
+		return fmt.Errorf("WATCHDOG_MAX_RETRIES must be >= 0 (got %d)", c.WatchdogMaxRetries)
+	}
 	return nil
 }

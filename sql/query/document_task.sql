@@ -75,20 +75,25 @@ ORDER BY dt.updated_at ASC;
 
 -- name: MarkStaleTaskPending :execrows
 -- Watchdog: atomically resets a stale task to pending and increments retry_count.
--- The WHERE status IN (...) guard makes this a compare-and-swap, so two
--- concurrent watchdog instances cannot double-claim the same task.
+-- The WHERE status IN (...) AND updated_at < $2 guard makes this a true
+-- compare-and-swap on both status and staleness: two concurrent watchdog instances
+-- cannot double-claim the same task, and a task that was refreshed between
+-- ListStaleTasks and this UPDATE will not be incorrectly reset.
 UPDATE document_tasks
 SET status      = 'pending',
     retry_count = retry_count + 1,
     updated_at  = now()
-WHERE id     = $1
-  AND status IN ('pending', 'processing');
+WHERE id        = $1
+  AND status IN ('pending', 'processing')
+  AND updated_at < $2;
 
 -- name: MarkStaleTaskFailed :execrows
 -- Watchdog: permanently fails a task that has exhausted all retry attempts.
+-- updated_at < $2 prevents failing a task that was refreshed after ListStaleTasks.
 UPDATE document_tasks
 SET status        = 'failed',
     error_message = 'stale task: exceeded max retry attempts',
     updated_at    = now()
-WHERE id     = $1
-  AND status IN ('pending', 'processing');
+WHERE id        = $1
+  AND status IN ('pending', 'processing')
+  AND updated_at < $2;
