@@ -1,4 +1,5 @@
 -- Удаление триггеров запрета смены organization_id
+DROP TRIGGER IF EXISTS trg_document_extracted_data_prevent_org_change ON document_extracted_data;
 DROP TRIGGER IF EXISTS trg_extraction_keys_prevent_org_change ON extraction_keys;
 DROP TRIGGER IF EXISTS trg_documents_prevent_org_change ON documents;
 DROP TRIGGER IF EXISTS trg_sites_prevent_org_change ON construction_sites;

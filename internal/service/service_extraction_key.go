@@ -171,8 +171,8 @@ func inferExtractionDataType(query string) string {
 	}
 }
 
-// transliterateRune covers Russian/Kazakh Cyrillic text well enough for stable
-// snake_case fallback keys.
+// transliterateRune applies the explicitly defined Cyrillic transliteration
+// mapping used to produce stable snake_case fallback keys.
 func transliterateRune(r rune) (string, bool) {
 	v, ok := cyrillicTransliteration[r]
 	return v, ok
