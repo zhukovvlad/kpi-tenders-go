@@ -365,3 +365,205 @@ func TestWorkerService_HandleStatusUpdate_AnonymizeCompleted_RegistersArtifacts(
 	ms.AssertExpectations(t)
 	pc.AssertNotCalled(t, "Process")
 }
+
+// ── resolve_keys / extract helpers ───────────────────────────────────────────
+
+func resolveKeysPayloadJSON(newKeys []resolveKeysNewKey, schema []extractionSchemaEntry, mdDocID string) json.RawMessage {
+	b, err := json.Marshal(resolveKeysPayload{
+		NewKeys:        newKeys,
+		ResolvedSchema: schema,
+		MDDocumentID:   mdDocID,
+	})
+	if err != nil {
+		panic("resolveKeysPayloadJSON: " + err.Error())
+	}
+	return b
+}
+
+func extractPayloadJSON(data map[string]string) json.RawMessage {
+	b, err := json.Marshal(data)
+	if err != nil {
+		panic("extractPayloadJSON: " + err.Error())
+	}
+	return b
+}
+
+// ── resolve_keys tests ────────────────────────────────────────────────────────
+
+// 10. resolve_keys completed → upsert new keys, get md doc, create extract task, trigger Process.
+func TestWorkerService_HandleStatusUpdate_ResolveKeysCompleted_TriggersExtract(t *testing.T) {
+	ctx := context.Background()
+	ms := new(storemock.MockStore)
+	pc := new(mockPythonClient)
+
+	taskID := uuid.New()
+	docID := uuid.New()
+	orgID := uuid.New()
+	mdDocID := uuid.New()
+	extractTaskID := uuid.New()
+	mdPath := "tenders/docs/anon.md"
+
+	newKey := resolveKeysNewKey{
+		KeyName:     "contract_value",
+		SourceQuery: "What is the contract value?",
+		DataType:    "string",
+	}
+	schema := []extractionSchemaEntry{{KeyName: "contract_value", DataType: "string"}}
+	resultPayload := resolveKeysPayloadJSON([]resolveKeysNewKey{newKey}, schema, mdDocID.String())
+
+	returnedTask := makeDocumentTask(taskID, docID, "resolve_keys", "completed", resultPayload)
+	doc := repository.Document{ID: docID, OrganizationID: orgID}
+	mdDoc := repository.Document{ID: mdDocID, StoragePath: mdPath}
+	extractTask := makeDocumentTask(extractTaskID, docID, "extract", "pending", nil)
+
+	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.Anything).Return(returnedTask, nil)
+	ms.On("GetDocumentByID", mock.Anything, docID).Return(doc, nil)
+	ms.On("UpsertExtractionKey", mock.Anything, repository.UpsertExtractionKeyParams{
+		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
+		KeyName:        "contract_value",
+		SourceQuery:    "What is the contract value?",
+		DataType:       "string",
+	}).Return(repository.ExtractionKey{}, nil)
+	ms.On("GetDocumentByID", mock.Anything, mdDocID).Return(mdDoc, nil)
+	ms.On("CreateDocumentTaskInternal", mock.Anything, repository.CreateDocumentTaskInternalParams{
+		DocumentID:       docID,
+		ModuleName:       moduleExtract,
+		InputStoragePath: mdPath,
+	}).Return(extractTask, nil)
+	pc.On("Process", mock.Anything, mock.MatchedBy(func(req pythonworker.ProcessRequest) bool {
+		return req.TaskID == extractTaskID.String() &&
+			req.DocumentID == docID.String() &&
+			req.ModuleName == moduleExtract &&
+			req.StoragePath == mdPath
+	})).Return(nil)
+
+	svc := newTestWorkerService(ms, pc)
+	task, err := svc.HandleStatusUpdate(ctx, taskID, WorkerStatusUpdate{
+		Status:        "completed",
+		ResultPayload: resultPayload,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "resolve_keys", task.ModuleName)
+	ms.AssertExpectations(t)
+	pc.AssertExpectations(t)
+}
+
+// 11. resolve_keys completed but extract task already exists — idempotent skip, no Process call.
+func TestWorkerService_HandleStatusUpdate_ResolveKeysCompleted_ExtractAlreadyExists_Idempotent(t *testing.T) {
+	ctx := context.Background()
+	ms := new(storemock.MockStore)
+	pc := new(mockPythonClient)
+
+	taskID := uuid.New()
+	docID := uuid.New()
+	orgID := uuid.New()
+	mdDocID := uuid.New()
+	mdPath := "tenders/docs/anon.md"
+
+	schema := []extractionSchemaEntry{{KeyName: "price", DataType: "number"}}
+	resultPayload := resolveKeysPayloadJSON(nil, schema, mdDocID.String())
+
+	returnedTask := makeDocumentTask(taskID, docID, "resolve_keys", "completed", resultPayload)
+	doc := repository.Document{ID: docID, OrganizationID: orgID}
+	mdDoc := repository.Document{ID: mdDocID, StoragePath: mdPath}
+
+	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.Anything).Return(returnedTask, nil)
+	ms.On("GetDocumentByID", mock.Anything, docID).Return(doc, nil)
+	ms.On("GetDocumentByID", mock.Anything, mdDocID).Return(mdDoc, nil)
+	// ON CONFLICT DO NOTHING → pgx.ErrNoRows when extract task already exists.
+	ms.On("CreateDocumentTaskInternal", mock.Anything, repository.CreateDocumentTaskInternalParams{
+		DocumentID:       docID,
+		ModuleName:       moduleExtract,
+		InputStoragePath: mdPath,
+	}).Return(repository.DocumentTask{}, pgx.ErrNoRows)
+
+	svc := newTestWorkerService(ms, pc)
+	task, err := svc.HandleStatusUpdate(ctx, taskID, WorkerStatusUpdate{
+		Status:        "completed",
+		ResultPayload: resultPayload,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "resolve_keys", task.ModuleName)
+	ms.AssertExpectations(t)
+	pc.AssertNotCalled(t, "Process")
+}
+
+// ── extract tests ─────────────────────────────────────────────────────────────
+
+// 12. extract completed → parse payload, look up keys, upsert extracted data.
+func TestWorkerService_HandleStatusUpdate_ExtractCompleted_UpsertsData(t *testing.T) {
+	ctx := context.Background()
+	ms := new(storemock.MockStore)
+	pc := new(mockPythonClient)
+
+	taskID := uuid.New()
+	docID := uuid.New()
+	orgID := uuid.New()
+	keyID := uuid.New()
+
+	extractData := map[string]string{"contract_value": "1 000 000 тенге"}
+	resultPayload := extractPayloadJSON(extractData)
+
+	returnedTask := makeDocumentTask(taskID, docID, "extract", "completed", resultPayload)
+	doc := repository.Document{ID: docID, OrganizationID: orgID}
+	key := repository.ExtractionKey{ID: keyID, KeyName: "contract_value"}
+
+	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.Anything).Return(returnedTask, nil)
+	ms.On("GetDocumentByID", mock.Anything, docID).Return(doc, nil)
+	ms.On("GetExtractionKeysByNames", mock.Anything, mock.MatchedBy(func(p repository.GetExtractionKeysByNamesParams) bool {
+		return p.OrganizationID == orgID && len(p.KeyNames) == 1 && p.KeyNames[0] == "contract_value"
+	})).Return([]repository.ExtractionKey{key}, nil)
+	ms.On("UpsertExtractedDatum", mock.Anything, repository.UpsertExtractedDatumParams{
+		OrganizationID: orgID,
+		DocumentID:     docID,
+		KeyID:          keyID,
+		ExtractedValue: pgtype.Text{String: "1 000 000 тенге", Valid: true},
+	}).Return(nil)
+
+	svc := newTestWorkerService(ms, pc)
+	task, err := svc.HandleStatusUpdate(ctx, taskID, WorkerStatusUpdate{
+		Status:        "completed",
+		ResultPayload: resultPayload,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "extract", task.ModuleName)
+	ms.AssertExpectations(t)
+	pc.AssertNotCalled(t, "Process")
+}
+
+// 13. extract completed — key name not found in DB → log warn, no upsert call.
+func TestWorkerService_HandleStatusUpdate_ExtractCompleted_UnknownKeySkipped(t *testing.T) {
+	ctx := context.Background()
+	ms := new(storemock.MockStore)
+	pc := new(mockPythonClient)
+
+	taskID := uuid.New()
+	docID := uuid.New()
+	orgID := uuid.New()
+
+	extractData := map[string]string{"unknown_field": "some value"}
+	resultPayload := extractPayloadJSON(extractData)
+
+	returnedTask := makeDocumentTask(taskID, docID, "extract", "completed", resultPayload)
+	doc := repository.Document{ID: docID, OrganizationID: orgID}
+
+	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.Anything).Return(returnedTask, nil)
+	ms.On("GetDocumentByID", mock.Anything, docID).Return(doc, nil)
+	// GetExtractionKeysByNames returns empty slice — key is unknown to the tenant.
+	ms.On("GetExtractionKeysByNames", mock.Anything, mock.Anything).Return([]repository.ExtractionKey{}, nil)
+
+	svc := newTestWorkerService(ms, pc)
+	task, err := svc.HandleStatusUpdate(ctx, taskID, WorkerStatusUpdate{
+		Status:        "completed",
+		ResultPayload: resultPayload,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "extract", task.ModuleName)
+	ms.AssertExpectations(t)
+	pc.AssertNotCalled(t, "Process")
+	ms.AssertNotCalled(t, "UpsertExtractedDatum")
+}

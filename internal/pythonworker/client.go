@@ -50,6 +50,9 @@ type ProcessRequest struct {
 	DocumentID  string
 	ModuleName  string
 	StoragePath string
+	// Kwargs are merged into the Celery task kwargs (empty map when nil).
+	// Use for modules that require extra named arguments (e.g. resolve_keys, extract).
+	Kwargs map[string]any
 }
 
 // Process publishes a Celery v2 task message to the appropriate Redis queue.
@@ -76,9 +79,13 @@ func (p *Publisher) Process(ctx context.Context, req ProcessRequest) error {
 // deterministic and straightforward to unit test.
 func buildCeleryMessage(req ProcessRequest, queue, taskName, replyTo, deliveryTag string) ([]byte, error) {
 	// Celery protocol v2 body: [args, kwargs, embed]
+	kwargs := map[string]any{}
+	for k, v := range req.Kwargs {
+		kwargs[k] = v
+	}
 	bodyArgs := []any{
 		[]any{req.TaskID, req.DocumentID, req.StoragePath},
-		map[string]any{},
+		kwargs,
 		map[string]any{
 			"callbacks": nil,
 			"errbacks":  nil,
@@ -142,6 +149,8 @@ func resolveModule(module string) (queue, taskName string, err error) {
 		return "io", "app.workers.parse_invoice.parse_invoice_task", nil
 	case "anonymize":
 		return "llm", "app.workers.anonymize.anonymize_task", nil
+	case "resolve_keys":
+		return "llm", "app.workers.resolve_keys.resolve_keys_task", nil
 	case "extract":
 		return "llm", "app.workers.extract.extract_task", nil
 	default:

@@ -30,6 +30,7 @@ type Server struct {
 	documentService         *service.DocumentService
 	documentTaskService     *service.DocumentTaskService
 	workerService           *service.WorkerService
+	extractionService       *service.ExtractionService
 }
 
 func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) (*Server, error) {
@@ -93,6 +94,7 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) (*Serve
 	srv.pythonClient = pythonClient
 	srv.documentTaskService = service.NewDocumentTaskService(db, pythonClient, log)
 	srv.workerService = service.NewWorkerService(db, pythonClient, log)
+	srv.extractionService = service.NewExtractionService(db, pythonClient, log)
 	if sc != nil {
 		// storageClient is set after struct creation to avoid storing a
 		// (*storage.Client)(nil) as a non-nil interface value.
@@ -188,6 +190,7 @@ func (s *Server) setupRouter() {
 				documents.GET("/:id", s.GetDocument)
 				documents.GET("/:id/url", s.GetDocumentPresignedURL)
 				documents.DELETE("/:id", s.DeleteDocument)
+				documents.POST("/:id/extract", s.InitiateExtraction)
 			}
 
 			tasks := protected.Group("/tasks")

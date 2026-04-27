@@ -438,6 +438,36 @@ func (_m *MockQuerier) GetDocumentTask(ctx context.Context, arg repository.GetDo
 	return r0, r1
 }
 
+// GetExtractionKeysByNames provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) GetExtractionKeysByNames(ctx context.Context, arg repository.GetExtractionKeysByNamesParams) ([]repository.ExtractionKey, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetExtractionKeysByNames")
+	}
+
+	var r0 []repository.ExtractionKey
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetExtractionKeysByNamesParams) ([]repository.ExtractionKey, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetExtractionKeysByNamesParams) []repository.ExtractionKey); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.ExtractionKey)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.GetExtractionKeysByNamesParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // GetOrganizationByID provides a mock function with given fields: ctx, id
 func (_m *MockQuerier) GetOrganizationByID(ctx context.Context, id uuid.UUID) (repository.Organization, error) {
 	ret := _m.Called(ctx, id)
@@ -631,6 +661,36 @@ func (_m *MockQuerier) ListDocumentsByParent(ctx context.Context, arg repository
 
 	if rf, ok := ret.Get(1).(func(context.Context, repository.ListDocumentsByParentParams) error); ok {
 		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListExtractionKeysByOrg provides a mock function with given fields: ctx, dollar_1
+func (_m *MockQuerier) ListExtractionKeysByOrg(ctx context.Context, dollar_1 uuid.UUID) ([]repository.ExtractionKey, error) {
+	ret := _m.Called(ctx, dollar_1)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListExtractionKeysByOrg")
+	}
+
+	var r0 []repository.ExtractionKey
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]repository.ExtractionKey, error)); ok {
+		return rf(ctx, dollar_1)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) []repository.ExtractionKey); ok {
+		r0 = rf(ctx, dollar_1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.ExtractionKey)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = rf(ctx, dollar_1)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -1004,6 +1064,52 @@ func (_m *MockQuerier) UpdateWorkerTaskStatus(ctx context.Context, arg repositor
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, repository.UpdateWorkerTaskStatusParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// UpsertExtractedDatum provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) UpsertExtractedDatum(ctx context.Context, arg repository.UpsertExtractedDatumParams) error {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpsertExtractedDatum")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpsertExtractedDatumParams) error); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// UpsertExtractionKey provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) UpsertExtractionKey(ctx context.Context, arg repository.UpsertExtractionKeyParams) (repository.ExtractionKey, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpsertExtractionKey")
+	}
+
+	var r0 repository.ExtractionKey
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpsertExtractionKeyParams) (repository.ExtractionKey, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpsertExtractionKeyParams) repository.ExtractionKey); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.ExtractionKey)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.UpsertExtractionKeyParams) error); ok {
 		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)
