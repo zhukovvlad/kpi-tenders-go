@@ -170,11 +170,11 @@ func TestBuildCeleryMessage_KwargsAreMergedIntoBody(t *testing.T) {
 // field does not cause a panic and results in an empty kwargs map in the body.
 func TestBuildCeleryMessage_NilKwargsProducesEmptyMap(t *testing.T) {
 	req := ProcessRequest{
-		TaskID:     "t",
-		DocumentID: "d",
-		ModuleName: "convert",
+		TaskID:      "t",
+		DocumentID:  "d",
+		ModuleName:  "convert",
 		StoragePath: "p.pdf",
-		Kwargs:     nil,
+		Kwargs:      nil,
 	}
 
 	queue, taskName, err := resolveModule(req.ModuleName)
