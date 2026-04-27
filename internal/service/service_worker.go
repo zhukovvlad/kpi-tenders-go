@@ -18,9 +18,9 @@ import (
 	"go-kpi-tenders/pkg/errs"
 )
 
-// workerPythonClient is a consumer-side interface for the Python worker HTTP
-// client. Using an interface here keeps WorkerService testable without a real
-// HTTP server.
+// workerPythonClient is the small publisher surface WorkerService needs from
+// the Redis/Celery integration. Keeping it consumer-side makes chaining tests
+// independent from Redis and from the concrete pythonworker.Publisher type.
 type workerPythonClient interface {
 	Process(ctx context.Context, req pythonworker.ProcessRequest) error
 }
@@ -29,6 +29,7 @@ type workerPythonClient interface {
 const (
 	moduleConvert   = "convert"
 	moduleAnonymize = "anonymize"
+	moduleExtract   = "extract"
 )
 
 // Task status constants used for chaining checks and orphan cleanup.
@@ -115,6 +116,15 @@ func (s *WorkerService) HandleStatusUpdate(ctx context.Context, taskID uuid.UUID
 		}
 	}
 
+	// Extract results are persisted as structured, queryable rows. The callback
+	// itself still succeeds even if this best-effort materialization fails; the
+	// original JSON stays in document_tasks.result_payload for diagnosis/replay.
+	if task.ModuleName == moduleExtract && task.Status == statusCompleted {
+		if err := runWithArtifactTimeout(ctx, task, s.saveExtractedData); err != nil {
+			s.log.Error("worker: failed to save extracted data", "task_id", task.ID, "err", err)
+		}
+	}
+
 	return task, nil
 }
 
@@ -140,6 +150,14 @@ type anonymizeResultFinal struct {
 	AnonymizedDocumentID  string `json:"anonymized_document_id"`
 	EntitiesMapDocumentID string `json:"entities_map_document_id"`
 	EntityCount           int    `json:"entity_count"`
+}
+
+// extractedValueEntry is the worker-result shape after normalizing the few JSON
+// formats we accept into one key/value/confidence tuple.
+type extractedValueEntry struct {
+	KeyName    string
+	Value      json.RawMessage
+	Confidence pgtype.Float8
 }
 
 func (s *WorkerService) triggerAnonymize(ctx context.Context, convertTask repository.DocumentTask) error {
@@ -331,6 +349,148 @@ func (s *WorkerService) registerAnonymizeArtifacts(ctx context.Context, task rep
 		ResultPayload: raw,
 	})
 	return err
+}
+
+func (s *WorkerService) saveExtractedData(ctx context.Context, task repository.DocumentTask) error {
+	if len(task.ResultPayload) == 0 || string(task.ResultPayload) == "null" {
+		return nil
+	}
+
+	// document_extracted_data uses composite FKs with organization_id, so resolve
+	// the document tenant first and then only match keys from the same tenant.
+	orgID, err := s.repo.GetDocumentOrganizationID(ctx, task.DocumentID)
+	if err != nil {
+		return fmt.Errorf("get document organization: %w", err)
+	}
+
+	keys, err := s.repo.ListExtractionKeysByOrganization(ctx, pgtype.UUID{Bytes: orgID, Valid: true})
+	if err != nil {
+		return fmt.Errorf("list extraction keys: %w", err)
+	}
+	keyIDs := make(map[string]uuid.UUID, len(keys))
+	for _, key := range keys {
+		keyIDs[key.KeyName] = key.ID
+	}
+
+	entries, err := parseExtractedValueEntries(task.ResultPayload)
+	if err != nil {
+		return fmt.Errorf("parse extract payload: %w", err)
+	}
+	for _, entry := range entries {
+		keyID, ok := keyIDs[entry.KeyName]
+		if !ok || len(entry.Value) == 0 {
+			continue
+		}
+		if _, err := s.repo.UpsertDocumentExtractedData(ctx, repository.UpsertDocumentExtractedDataParams{
+			OrganizationID: orgID,
+			DocumentID:     task.DocumentID,
+			KeyID:          keyID,
+			ExtractedValue: entry.Value,
+			Confidence:     entry.Confidence,
+		}); err != nil {
+			return fmt.Errorf("upsert extracted data for key %s: %w", entry.KeyName, err)
+		}
+	}
+	return nil
+}
+
+// parseExtractedValueEntries accepts the wire formats observed/expected from
+// extraction workers:
+//   - {"extracted_data":[{"key_name":"...","value":...,"confidence":0.9}]}
+//   - [{"key_name":"...","value":...}]
+//   - {"key_name":{"value":...,"confidence":0.9}} or {"key_name": ...}
+//
+// Unknown keys are ignored later by saveExtractedData, which keeps callbacks
+// tolerant to model output that contains explanatory metadata.
+func parseExtractedValueEntries(raw json.RawMessage) ([]extractedValueEntry, error) {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &envelope); err == nil {
+		for _, field := range []string{"extracted_data", "data", "results"} {
+			if nested, ok := envelope[field]; ok {
+				return parseExtractedValueEntries(nested)
+			}
+		}
+	}
+
+	var array []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &array); err == nil {
+		entries := make([]extractedValueEntry, 0, len(array))
+		for _, item := range array {
+			keyName := rawString(item["key_name"])
+			if keyName == "" {
+				keyName = rawString(item["key"])
+			}
+			value := item["value"]
+			if len(value) == 0 {
+				value = item["extracted_value"]
+			}
+			if keyName == "" || len(value) == 0 {
+				continue
+			}
+			entries = append(entries, extractedValueEntry{
+				KeyName:    keyName,
+				Value:      value,
+				Confidence: rawConfidence(item["confidence"]),
+			})
+		}
+		return entries, nil
+	}
+
+	if envelope == nil {
+		return nil, fmt.Errorf("payload must be a JSON object or array")
+	}
+	entries := make([]extractedValueEntry, 0, len(envelope))
+	for keyName, value := range envelope {
+		if keyName == "" || isExtractEnvelopeField(keyName) {
+			continue
+		}
+		var objectValue map[string]json.RawMessage
+		if err := json.Unmarshal(value, &objectValue); err == nil {
+			if nestedValue, ok := objectValue["value"]; ok {
+				entries = append(entries, extractedValueEntry{
+					KeyName:    keyName,
+					Value:      nestedValue,
+					Confidence: rawConfidence(objectValue["confidence"]),
+				})
+				continue
+			}
+			if nestedValue, ok := objectValue["extracted_value"]; ok {
+				entries = append(entries, extractedValueEntry{
+					KeyName:    keyName,
+					Value:      nestedValue,
+					Confidence: rawConfidence(objectValue["confidence"]),
+				})
+				continue
+			}
+		}
+		entries = append(entries, extractedValueEntry{KeyName: keyName, Value: value})
+	}
+	return entries, nil
+}
+
+func isExtractEnvelopeField(field string) bool {
+	switch field {
+	case "metadata", "usage", "model", "errors":
+		return true
+	default:
+		return false
+	}
+}
+
+func rawString(raw json.RawMessage) string {
+	var s string
+	if len(raw) == 0 || json.Unmarshal(raw, &s) != nil {
+		return ""
+	}
+	return s
+}
+
+func rawConfidence(raw json.RawMessage) pgtype.Float8 {
+	var f float64
+	if len(raw) == 0 || json.Unmarshal(raw, &f) != nil {
+		return pgtype.Float8{}
+	}
+	return pgtype.Float8{Float64: f, Valid: true}
 }
 
 // runWithArtifactTimeout runs fn in a new context detached from ctx

@@ -49,6 +49,23 @@ type Document struct {
 	UpdatedAt    time.Time   `json:"updated_at"`
 }
 
+// Значения, извлечённые воркером из документа по нормализованным ключам
+type DocumentExtractedDatum struct {
+	ID uuid.UUID `json:"id"`
+	// Организация для tenant isolation
+	OrganizationID uuid.UUID `json:"organization_id"`
+	// Документ, из которого извлечено значение
+	DocumentID uuid.UUID `json:"document_id"`
+	// Нормализованный ключ извлечения
+	KeyID uuid.UUID `json:"key_id"`
+	// Извлечённое значение в JSONB, чтобы сохранить исходный тип
+	ExtractedValue json.RawMessage `json:"extracted_value"`
+	// Уверенность воркера от 0 до 1; NULL если не передана
+	Confidence pgtype.Float8 `json:"confidence"`
+	CreatedAt  time.Time     `json:"created_at"`
+	UpdatedAt  time.Time     `json:"updated_at"`
+}
+
 // Задачи AI-воркера на Python для обработки документов
 type DocumentTask struct {
 	ID         uuid.UUID `json:"id"`
@@ -69,6 +86,25 @@ type DocumentTask struct {
 	InputStoragePath string    `json:"input_storage_path"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+// Нормализованные ключи извлечения данных из документов
+type ExtractionKey struct {
+	ID uuid.UUID `json:"id"`
+	// Организация-владелец ключа; NULL — глобальный ключ
+	OrganizationID pgtype.UUID `json:"organization_id"`
+	// Техническое имя ключа, например advance_payment_percent
+	KeyName string `json:"key_name"`
+	// Исходный пользовательский вопрос, из которого был получен ключ
+	SourceQuery string `json:"source_query"`
+	// Краткое описание смысла ключа для воркера извлечения
+	Description pgtype.Text `json:"description"`
+	// Ожидаемый тип значения: string | number | integer | boolean | date | json
+	DataType string `json:"data_type"`
+	// true — отсутствие значения должно считаться важной проблемой качества извлечения
+	IsRequired bool      `json:"is_required"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // Организации — изолированные тенанты системы

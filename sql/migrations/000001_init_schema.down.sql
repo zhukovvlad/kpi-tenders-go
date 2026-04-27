@@ -11,7 +11,9 @@ DROP TRIGGER IF EXISTS trg_site_org_isolation ON construction_sites;
 DROP FUNCTION IF EXISTS check_site_org_isolation();
 
 -- Удаление таблиц в обратном порядке (зависимости)
+DROP TABLE IF EXISTS document_extracted_data;
 DROP TABLE IF EXISTS document_tasks;
+DROP TABLE IF EXISTS extraction_keys;
 DROP TABLE IF EXISTS documents;
 DROP TABLE IF EXISTS construction_sites;
 DROP TABLE IF EXISTS users;

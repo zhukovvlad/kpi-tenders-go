@@ -33,12 +33,23 @@ func (s *DocumentTaskService) Create(ctx context.Context, params repository.Crea
 		return repository.DocumentTask{}, errs.New(errs.CodeValidationFailed, fmt.Sprintf("unsupported module: %q", params.ModuleName), err)
 	}
 
-	// The public API only accepts 'convert' tasks. Modules like 'anonymize'
+	// The public API accepts 'convert' and 'extract'. Modules like 'anonymize'
 	// require a derived artifact path as input and are triggered internally
 	// by the worker service after convert completes.
-	if params.ModuleName != moduleConvert {
+	if params.ModuleName != moduleConvert && params.ModuleName != moduleExtract {
 		return repository.DocumentTask{}, errs.New(errs.CodeValidationFailed,
-			fmt.Sprintf("module %q cannot be created via the public API; only %q is allowed", params.ModuleName, moduleConvert), nil)
+			fmt.Sprintf("module %q cannot be created via the public API; only %q and %q are allowed", params.ModuleName, moduleConvert, moduleExtract), nil)
+	}
+
+	var extractionKeys []map[string]any
+	if params.ModuleName == moduleExtract {
+		// Load keys before INSERT. If the tenant key list cannot be read, avoid
+		// creating a pending extract task that would be queued without its schema.
+		var err error
+		extractionKeys, err = extractionKeyPayloads(ctx, s.repo, params.OrganizationID)
+		if err != nil {
+			return repository.DocumentTask{}, errs.New(errs.CodeInternalError, "internal server error", err)
+		}
 	}
 
 	task, err := s.repo.CreateDocumentTask(ctx, params)
@@ -63,12 +74,17 @@ func (s *DocumentTaskService) Create(ctx context.Context, params repository.Crea
 
 	// input_storage_path was filled by the SQL subquery (= document.storage_path).
 	// Use it directly instead of an extra round-trip to fetch the document.
-	if err := s.pythonClient.Process(triggerCtx, pythonworker.ProcessRequest{
+	req := pythonworker.ProcessRequest{
 		TaskID:      task.ID.String(),
 		DocumentID:  task.DocumentID.String(),
 		ModuleName:  task.ModuleName,
 		StoragePath: task.InputStoragePath,
-	}); err != nil {
+	}
+	if task.ModuleName == moduleExtract {
+		req.Kwargs = map[string]any{"extraction_keys": extractionKeys}
+	}
+
+	if err := s.pythonClient.Process(triggerCtx, req); err != nil {
 		// Best-effort: task is already in DB, caller can retry.
 		s.log.Error("documentTask: failed to trigger python worker", "task_id", task.ID, "err", err)
 	}

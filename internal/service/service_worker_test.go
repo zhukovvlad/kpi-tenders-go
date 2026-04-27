@@ -365,3 +365,54 @@ func TestWorkerService_HandleStatusUpdate_AnonymizeCompleted_RegistersArtifacts(
 	ms.AssertExpectations(t)
 	pc.AssertNotCalled(t, "Process")
 }
+
+func TestWorkerService_HandleStatusUpdate_ExtractCompleted_SavesExtractedData(t *testing.T) {
+	ctx := context.Background()
+	ms := new(storemock.MockStore)
+	pc := new(mockPythonClient)
+
+	taskID := uuid.New()
+	docID := uuid.New()
+	orgID := uuid.New()
+	keyID := uuid.New()
+
+	payload, _ := json.Marshal(map[string]any{
+		"extracted_data": []map[string]any{
+			{
+				"key_name":   "advance_payment_percent",
+				"value":      15.5,
+				"confidence": 0.91,
+			},
+		},
+	})
+	returnedTask := makeDocumentTask(taskID, docID, "extract", "completed", payload)
+
+	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.Anything).Return(returnedTask, nil)
+	ms.On("GetDocumentOrganizationID", mock.Anything, docID).Return(orgID, nil)
+	ms.On("ListExtractionKeysByOrganization", mock.Anything, pgtype.UUID{Bytes: orgID, Valid: true}).
+		Return([]repository.ExtractionKey{{
+			ID:             keyID,
+			OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
+			KeyName:        "advance_payment_percent",
+			SourceQuery:    "Какой процент аванса?",
+			DataType:       "number",
+		}}, nil)
+	ms.On("UpsertDocumentExtractedData", mock.Anything, mock.MatchedBy(func(p repository.UpsertDocumentExtractedDataParams) bool {
+		return p.OrganizationID == orgID &&
+			p.DocumentID == docID &&
+			p.KeyID == keyID &&
+			string(p.ExtractedValue) == "15.5" &&
+			p.Confidence.Valid &&
+			p.Confidence.Float64 == 0.91
+	})).Return(repository.DocumentExtractedDatum{ID: uuid.New()}, nil)
+
+	svc := newTestWorkerService(ms, pc)
+	_, err := svc.HandleStatusUpdate(ctx, taskID, WorkerStatusUpdate{
+		Status:        "completed",
+		ResultPayload: payload,
+	})
+
+	require.NoError(t, err)
+	ms.AssertExpectations(t)
+	pc.AssertNotCalled(t, "Process")
+}

@@ -158,6 +158,34 @@ func (_m *MockQuerier) CreateDocumentTaskInternal(ctx context.Context, arg repos
 	return r0, r1
 }
 
+// CreateExtractionKey provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) CreateExtractionKey(ctx context.Context, arg repository.CreateExtractionKeyParams) (repository.ExtractionKey, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateExtractionKey")
+	}
+
+	var r0 repository.ExtractionKey
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateExtractionKeyParams) (repository.ExtractionKey, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateExtractionKeyParams) repository.ExtractionKey); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.ExtractionKey)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.CreateExtractionKeyParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // CreateOrganization provides a mock function with given fields: ctx, arg
 func (_m *MockQuerier) CreateOrganization(ctx context.Context, arg repository.CreateOrganizationParams) (repository.Organization, error) {
 	ret := _m.Called(ctx, arg)
@@ -410,6 +438,36 @@ func (_m *MockQuerier) GetDocumentByID(ctx context.Context, id uuid.UUID) (repos
 	return r0, r1
 }
 
+// GetDocumentOrganizationID provides a mock function with given fields: ctx, id
+func (_m *MockQuerier) GetDocumentOrganizationID(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	ret := _m.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetDocumentOrganizationID")
+	}
+
+	var r0 uuid.UUID
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) (uuid.UUID, error)); ok {
+		return rf(ctx, id)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) uuid.UUID); ok {
+		r0 = rf(ctx, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(uuid.UUID)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = rf(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // GetDocumentTask provides a mock function with given fields: ctx, arg
 func (_m *MockQuerier) GetDocumentTask(ctx context.Context, arg repository.GetDocumentTaskParams) (repository.DocumentTask, error) {
 	ret := _m.Called(ctx, arg)
@@ -430,6 +488,62 @@ func (_m *MockQuerier) GetDocumentTask(ctx context.Context, arg repository.GetDo
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, repository.GetDocumentTaskParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetExtractionKeyByOrgAndKeyName provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) GetExtractionKeyByOrgAndKeyName(ctx context.Context, arg repository.GetExtractionKeyByOrgAndKeyNameParams) (repository.ExtractionKey, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetExtractionKeyByOrgAndKeyName")
+	}
+
+	var r0 repository.ExtractionKey
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetExtractionKeyByOrgAndKeyNameParams) (repository.ExtractionKey, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetExtractionKeyByOrgAndKeyNameParams) repository.ExtractionKey); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.ExtractionKey)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.GetExtractionKeyByOrgAndKeyNameParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetExtractionKeyByOrgAndSourceQuery provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) GetExtractionKeyByOrgAndSourceQuery(ctx context.Context, arg repository.GetExtractionKeyByOrgAndSourceQueryParams) (repository.ExtractionKey, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetExtractionKeyByOrgAndSourceQuery")
+	}
+
+	var r0 repository.ExtractionKey
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetExtractionKeyByOrgAndSourceQueryParams) (repository.ExtractionKey, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetExtractionKeyByOrgAndSourceQueryParams) repository.ExtractionKey); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.ExtractionKey)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.GetExtractionKeyByOrgAndSourceQueryParams) error); ok {
 		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)
@@ -631,6 +745,66 @@ func (_m *MockQuerier) ListDocumentsByParent(ctx context.Context, arg repository
 
 	if rf, ok := ret.Get(1).(func(context.Context, repository.ListDocumentsByParentParams) error); ok {
 		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListExtractionKeyPayloadsByOrganization provides a mock function with given fields: ctx, organizationID
+func (_m *MockQuerier) ListExtractionKeyPayloadsByOrganization(ctx context.Context, organizationID pgtype.UUID) ([]repository.ListExtractionKeyPayloadsByOrganizationRow, error) {
+	ret := _m.Called(ctx, organizationID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListExtractionKeyPayloadsByOrganization")
+	}
+
+	var r0 []repository.ListExtractionKeyPayloadsByOrganizationRow
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, pgtype.UUID) ([]repository.ListExtractionKeyPayloadsByOrganizationRow, error)); ok {
+		return rf(ctx, organizationID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, pgtype.UUID) []repository.ListExtractionKeyPayloadsByOrganizationRow); ok {
+		r0 = rf(ctx, organizationID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.ListExtractionKeyPayloadsByOrganizationRow)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, pgtype.UUID) error); ok {
+		r1 = rf(ctx, organizationID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListExtractionKeysByOrganization provides a mock function with given fields: ctx, organizationID
+func (_m *MockQuerier) ListExtractionKeysByOrganization(ctx context.Context, organizationID pgtype.UUID) ([]repository.ExtractionKey, error) {
+	ret := _m.Called(ctx, organizationID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListExtractionKeysByOrganization")
+	}
+
+	var r0 []repository.ExtractionKey
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, pgtype.UUID) ([]repository.ExtractionKey, error)); ok {
+		return rf(ctx, organizationID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, pgtype.UUID) []repository.ExtractionKey); ok {
+		r0 = rf(ctx, organizationID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.ExtractionKey)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, pgtype.UUID) error); ok {
+		r1 = rf(ctx, organizationID)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -1004,6 +1178,34 @@ func (_m *MockQuerier) UpdateWorkerTaskStatus(ctx context.Context, arg repositor
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, repository.UpdateWorkerTaskStatusParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// UpsertDocumentExtractedData provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) UpsertDocumentExtractedData(ctx context.Context, arg repository.UpsertDocumentExtractedDataParams) (repository.DocumentExtractedDatum, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpsertDocumentExtractedData")
+	}
+
+	var r0 repository.DocumentExtractedDatum
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpsertDocumentExtractedDataParams) (repository.DocumentExtractedDatum, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpsertDocumentExtractedDataParams) repository.DocumentExtractedDatum); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.DocumentExtractedDatum)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.UpsertDocumentExtractedDataParams) error); ok {
 		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)

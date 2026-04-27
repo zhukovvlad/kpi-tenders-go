@@ -122,3 +122,43 @@ func TestBuildCeleryMessage_UnknownModuleIsRejected(t *testing.T) {
 	err := ValidateModule("not_a_module")
 	assert.Error(t, err)
 }
+
+func TestBuildCeleryMessage_IncludesKwargs(t *testing.T) {
+	req := ProcessRequest{
+		TaskID:      "task-uuid-abc",
+		DocumentID:  "doc-uuid-xyz",
+		ModuleName:  "extract",
+		StoragePath: "tenders/doc.md",
+		Kwargs: map[string]any{
+			"extraction_keys": []map[string]any{
+				{"id": "key-1", "key_name": "advance_payment_percent"},
+			},
+		},
+	}
+
+	queue, taskName, err := resolveModule(req.ModuleName)
+	require.NoError(t, err)
+
+	msgBytes, err := buildCeleryMessage(req, queue, taskName, "reply-uuid", "delivery-uuid")
+	require.NoError(t, err)
+
+	var msg map[string]any
+	require.NoError(t, json.Unmarshal(msgBytes, &msg))
+
+	bodyJSON, err := base64.StdEncoding.DecodeString(msg["body"].(string))
+	require.NoError(t, err)
+
+	var bodyArgs []any
+	require.NoError(t, json.Unmarshal(bodyJSON, &bodyArgs))
+	require.Len(t, bodyArgs, 3)
+
+	kwargs, ok := bodyArgs[1].(map[string]any)
+	require.True(t, ok)
+	keys, ok := kwargs["extraction_keys"].([]any)
+	require.True(t, ok)
+	require.Len(t, keys, 1)
+
+	key := keys[0].(map[string]any)
+	assert.Equal(t, "key-1", key["id"])
+	assert.Equal(t, "advance_payment_percent", key["key_name"])
+}

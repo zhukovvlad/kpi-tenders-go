@@ -29,6 +29,7 @@ type Server struct {
 	constructionSiteService *service.ConstructionSiteService
 	documentService         *service.DocumentService
 	documentTaskService     *service.DocumentTaskService
+	extractionKeyService    *service.ExtractionKeyService
 	workerService           *service.WorkerService
 }
 
@@ -80,6 +81,7 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) (*Serve
 		userService:             service.NewUserService(db, log),
 		constructionSiteService: service.NewConstructionSiteService(db, log),
 		documentService:         service.NewDocumentService(db, docStorage, log),
+		extractionKeyService:    service.NewExtractionKeyService(db, log),
 	}
 
 	// pythonClient publishes Celery tasks directly to Redis, shared by both
@@ -197,6 +199,11 @@ func (s *Server) setupRouter() {
 				tasks.GET("/:id", s.GetDocumentTask)
 				tasks.PATCH("/:id/status", s.UpdateDocumentTaskStatus)
 				tasks.DELETE("/:id", s.DeleteDocumentTask)
+			}
+
+			extractionKeys := protected.Group("/extraction-keys")
+			{
+				extractionKeys.POST("/resolve", s.ResolveExtractionKey)
 			}
 
 			users := protected.Group("/users")
