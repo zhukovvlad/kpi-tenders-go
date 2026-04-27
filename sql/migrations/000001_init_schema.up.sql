@@ -92,8 +92,7 @@ CREATE TABLE documents (
     CONSTRAINT documents_parent_artifact_kind_chk CHECK (
         (parent_id IS NULL AND artifact_kind IS NULL) OR
         (parent_id IS NOT NULL AND artifact_kind IS NOT NULL AND btrim(artifact_kind) <> '')
-    ),
-    CONSTRAINT uq_documents_id_organization UNIQUE (id, organization_id)
+    )
 );
 
 COMMENT ON TABLE  documents                    IS 'Метаданные загруженных файлов и AI-артефактов; физические файлы — в MinIO';
@@ -103,60 +102,6 @@ COMMENT ON COLUMN documents.storage_path       IS 'Путь к файлу в Min
 COMMENT ON COLUMN documents.mime_type          IS 'MIME-тип файла, определяется при загрузке; NULL если не определён';
 COMMENT ON COLUMN documents.file_size_bytes    IS 'Размер файла в байтах; NULL если не известен на момент создания записи';
 COMMENT ON COLUMN documents.artifact_kind      IS 'Тип артефакта: NULL — загружен пользователем; convert_md — результат конвертации в Markdown; anonymize_doc — анонимизированный документ; anonymize_entities — карта сущностей анонимизации';
-
--- ==========================================
--- КЛЮЧИ ИЗВЛЕЧЕНИЯ ДАННЫХ
--- ==========================================
-
-CREATE TABLE extraction_keys (
-    id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    organization_id UUID         NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    key_name        TEXT         NOT NULL CHECK (btrim(key_name) <> ''),
-    source_query    TEXT         NOT NULL CHECK (btrim(source_query) <> ''),
-    description     TEXT,
-    data_type       TEXT         NOT NULL DEFAULT 'string'
-        CHECK (data_type IN ('string', 'number', 'integer', 'boolean', 'date', 'json')),
-    is_required     BOOLEAN      NOT NULL DEFAULT false,
-    created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    CONSTRAINT uq_extraction_keys_id_organization UNIQUE (id, organization_id),
-    CONSTRAINT uq_extraction_keys_org_key UNIQUE (organization_id, key_name)
-);
-
-COMMENT ON TABLE  extraction_keys                 IS 'Нормализованные ключи извлечения данных из документов';
-COMMENT ON COLUMN extraction_keys.organization_id IS 'Организация-владелец ключа';
-COMMENT ON COLUMN extraction_keys.key_name        IS 'Техническое имя ключа, например advance_payment_percent';
-COMMENT ON COLUMN extraction_keys.source_query    IS 'Исходный пользовательский вопрос, из которого был получен ключ';
-COMMENT ON COLUMN extraction_keys.description     IS 'Краткое описание смысла ключа для воркера извлечения';
-COMMENT ON COLUMN extraction_keys.data_type       IS 'Ожидаемый тип значения: string | number | integer | boolean | date | json';
-COMMENT ON COLUMN extraction_keys.is_required     IS 'true — отсутствие значения должно считаться важной проблемой качества извлечения';
-
-CREATE TABLE document_extracted_data (
-    id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    organization_id UUID         NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    document_id     UUID         NOT NULL,
-    key_id          UUID         NOT NULL,
-    extracted_value JSONB        NOT NULL,
-    confidence      DOUBLE PRECISION CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
-    created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    CONSTRAINT fk_extracted_data_document_org
-        FOREIGN KEY (document_id, organization_id)
-        REFERENCES documents(id, organization_id)
-        ON DELETE CASCADE,
-    CONSTRAINT fk_extracted_data_key_org
-        FOREIGN KEY (key_id, organization_id)
-        REFERENCES extraction_keys(id, organization_id)
-        ON DELETE CASCADE,
-    CONSTRAINT uq_document_extracted_data_org_document_key UNIQUE (organization_id, document_id, key_id)
-);
-
-COMMENT ON TABLE  document_extracted_data                 IS 'Значения, извлечённые воркером из документа по нормализованным ключам';
-COMMENT ON COLUMN document_extracted_data.organization_id IS 'Организация для tenant isolation';
-COMMENT ON COLUMN document_extracted_data.document_id     IS 'Документ, из которого извлечено значение';
-COMMENT ON COLUMN document_extracted_data.key_id          IS 'Нормализованный ключ извлечения';
-COMMENT ON COLUMN document_extracted_data.extracted_value IS 'Извлечённое значение в JSONB, чтобы сохранить исходный тип';
-COMMENT ON COLUMN document_extracted_data.confidence      IS 'Уверенность воркера от 0 до 1; NULL если не передана';
 
 -- ==========================================
 -- ЗАДАЧИ AI-ВОРКЕРА
@@ -206,11 +151,6 @@ CREATE INDEX idx_sites_parent_id           ON construction_sites(parent_id);
 CREATE INDEX idx_documents_organization_id ON documents(organization_id);
 CREATE INDEX idx_documents_site_id         ON documents(site_id);
 CREATE INDEX idx_documents_parent_id       ON documents(parent_id);
-CREATE INDEX idx_extraction_keys_org_created_at
-    ON extraction_keys(organization_id, created_at);
-CREATE INDEX idx_extraction_keys_org_norm_source_query
-    ON extraction_keys(organization_id, lower(btrim(source_query)));
-CREATE INDEX idx_extracted_data_key_org    ON document_extracted_data(key_id, organization_id);
 CREATE INDEX idx_tasks_document_id         ON document_tasks(document_id);
 CREATE INDEX idx_tasks_status              ON document_tasks(status);
 
@@ -350,12 +290,4 @@ CREATE TRIGGER trg_sites_prevent_org_change
 
 CREATE TRIGGER trg_documents_prevent_org_change
     BEFORE UPDATE OF organization_id ON documents
-    FOR EACH ROW EXECUTE FUNCTION prevent_organization_id_change();
-
-CREATE TRIGGER trg_extraction_keys_prevent_org_change
-    BEFORE UPDATE OF organization_id ON extraction_keys
-    FOR EACH ROW EXECUTE FUNCTION prevent_organization_id_change();
-
-CREATE TRIGGER trg_document_extracted_data_prevent_org_change
-    BEFORE UPDATE OF organization_id ON document_extracted_data
     FOR EACH ROW EXECUTE FUNCTION prevent_organization_id_change();
