@@ -753,7 +753,7 @@ func (_m *MockQuerier) ListDocumentsByParent(ctx context.Context, arg repository
 }
 
 // ListExtractionKeyPayloadsByOrganization provides a mock function with given fields: ctx, organizationID
-func (_m *MockQuerier) ListExtractionKeyPayloadsByOrganization(ctx context.Context, organizationID pgtype.UUID) ([]repository.ListExtractionKeyPayloadsByOrganizationRow, error) {
+func (_m *MockQuerier) ListExtractionKeyPayloadsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]repository.ListExtractionKeyPayloadsByOrganizationRow, error) {
 	ret := _m.Called(ctx, organizationID)
 
 	if len(ret) == 0 {
@@ -762,10 +762,10 @@ func (_m *MockQuerier) ListExtractionKeyPayloadsByOrganization(ctx context.Conte
 
 	var r0 []repository.ListExtractionKeyPayloadsByOrganizationRow
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, pgtype.UUID) ([]repository.ListExtractionKeyPayloadsByOrganizationRow, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]repository.ListExtractionKeyPayloadsByOrganizationRow, error)); ok {
 		return rf(ctx, organizationID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, pgtype.UUID) []repository.ListExtractionKeyPayloadsByOrganizationRow); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) []repository.ListExtractionKeyPayloadsByOrganizationRow); ok {
 		r0 = rf(ctx, organizationID)
 	} else {
 		if ret.Get(0) != nil {
@@ -773,7 +773,7 @@ func (_m *MockQuerier) ListExtractionKeyPayloadsByOrganization(ctx context.Conte
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, pgtype.UUID) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
 		r1 = rf(ctx, organizationID)
 	} else {
 		r1 = ret.Error(1)
@@ -783,7 +783,7 @@ func (_m *MockQuerier) ListExtractionKeyPayloadsByOrganization(ctx context.Conte
 }
 
 // ListExtractionKeysByOrganization provides a mock function with given fields: ctx, organizationID
-func (_m *MockQuerier) ListExtractionKeysByOrganization(ctx context.Context, organizationID pgtype.UUID) ([]repository.ExtractionKey, error) {
+func (_m *MockQuerier) ListExtractionKeysByOrganization(ctx context.Context, organizationID uuid.UUID) ([]repository.ExtractionKey, error) {
 	ret := _m.Called(ctx, organizationID)
 
 	if len(ret) == 0 {
@@ -792,10 +792,10 @@ func (_m *MockQuerier) ListExtractionKeysByOrganization(ctx context.Context, org
 
 	var r0 []repository.ExtractionKey
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, pgtype.UUID) ([]repository.ExtractionKey, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]repository.ExtractionKey, error)); ok {
 		return rf(ctx, organizationID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, pgtype.UUID) []repository.ExtractionKey); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) []repository.ExtractionKey); ok {
 		r0 = rf(ctx, organizationID)
 	} else {
 		if ret.Get(0) != nil {
@@ -803,7 +803,7 @@ func (_m *MockQuerier) ListExtractionKeysByOrganization(ctx context.Context, org
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, pgtype.UUID) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
 		r1 = rf(ctx, organizationID)
 	} else {
 		r1 = ret.Error(1)

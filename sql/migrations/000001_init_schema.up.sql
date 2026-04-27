@@ -110,7 +110,7 @@ COMMENT ON COLUMN documents.artifact_kind      IS 'Тип артефакта: NU
 
 CREATE TABLE extraction_keys (
     id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    organization_id UUID         REFERENCES organizations(id) ON DELETE CASCADE,
+    organization_id UUID         NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     key_name        TEXT         NOT NULL CHECK (btrim(key_name) <> ''),
     source_query    TEXT         NOT NULL CHECK (btrim(source_query) <> ''),
     description     TEXT,
@@ -120,11 +120,11 @@ CREATE TABLE extraction_keys (
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
     CONSTRAINT uq_extraction_keys_id_organization UNIQUE (id, organization_id),
-    CONSTRAINT uq_extraction_keys_org_key UNIQUE NULLS NOT DISTINCT (organization_id, key_name)
+    CONSTRAINT uq_extraction_keys_org_key UNIQUE (organization_id, key_name)
 );
 
 COMMENT ON TABLE  extraction_keys                 IS 'Нормализованные ключи извлечения данных из документов';
-COMMENT ON COLUMN extraction_keys.organization_id IS 'Организация-владелец ключа; NULL — глобальный ключ';
+COMMENT ON COLUMN extraction_keys.organization_id IS 'Организация-владелец ключа';
 COMMENT ON COLUMN extraction_keys.key_name        IS 'Техническое имя ключа, например advance_payment_percent';
 COMMENT ON COLUMN extraction_keys.source_query    IS 'Исходный пользовательский вопрос, из которого был получен ключ';
 COMMENT ON COLUMN extraction_keys.description     IS 'Краткое описание смысла ключа для воркера извлечения';

@@ -132,7 +132,7 @@ _Нет активных заглушек._
 
 | Миграция | Таблицы / изменения |
 |----------|---------------------|
-| 000001 | Полная схема: organizations, users, construction_sites, documents (artifact_kind, parent_id CASCADE, UNIQUE id+organization_id), extraction_keys (UNIQUE NULLS NOT DISTINCT organization_id+key_name, idx_extraction_keys_org_created_at, idx_extraction_keys_org_norm_source_query), document_extracted_data (UNIQUE organization_id+document_id+key_id, composite FK document_id+organization_id, key_id+organization_id), document_tasks (retry_count, input_storage_path TEXT NOT NULL CHECK(btrim<>«»), UNIQUE document_id+module_name); все FK-индексы; idx_document_tasks_stale (WHERE status IN ('pending','processing')); idx_documents_root (WHERE parent_id IS NULL); idx_documents_artifact_kind UNIQUE (WHERE parent_id IS NOT NULL); documents_parent_artifact_kind_chk CHECK(parent_id IS NOT NULL → artifact_kind IS NOT NULL AND btrim<>«»); триггеры tenant isolation + запрет смены organization_id |
+| 000001 | Полная схема: organizations, users, construction_sites, documents (artifact_kind, parent_id CASCADE, UNIQUE id+organization_id), extraction_keys (organization_id NOT NULL, UNIQUE organization_id+key_name, idx_extraction_keys_org_created_at, idx_extraction_keys_org_norm_source_query), document_extracted_data (UNIQUE organization_id+document_id+key_id, composite FK document_id+organization_id, key_id+organization_id), document_tasks (retry_count, input_storage_path TEXT NOT NULL CHECK(btrim<>«»), UNIQUE document_id+module_name); все FK-индексы; idx_document_tasks_stale (WHERE status IN ('pending','processing')); idx_documents_root (WHERE parent_id IS NULL); idx_documents_artifact_kind UNIQUE (WHERE parent_id IS NOT NULL); documents_parent_artifact_kind_chk CHECK(parent_id IS NOT NULL → artifact_kind IS NOT NULL AND btrim<>«»); триггеры tenant isolation + запрет смены organization_id |
 
 `catalog_positions.embedding` — тип `vector` без фиксированной размерности  
 (зафиксируй как `vector(1536)` когда определишься с моделью эмбеддингов).
@@ -142,7 +142,7 @@ _Нет активных заглушек._
 ## Extraction flow
 
 1. Пользователь вызывает `POST /api/v1/extraction-keys/resolve` с `source_query`.
-2. Go ищет дубль по нормализованному `source_query`; если не нашёл — генерирует deterministic `key_name` (snake_case + transliteration) и проверяет дубль по `(organization_id, key_name)`.
+2. Go ищет дубль по нормализованному `source_query`; если не нашёл — генерирует deterministic ASCII snake_case fallback `key_name` (transliteration для кириллицы) и проверяет дубль по `(organization_id, key_name)`. Целевой будущий вариант — LLM-based английские ключи (`advance_payment_percent`, `total_amount_m2`) с тем же regex/DB contract.
 3. При создании `POST /api/v1/tasks` с `module_name="extract"` Go читает все ключи tenant и отправляет их Python-воркеру в Celery protocol v2 `kwargs.extraction_keys`.
 4. Когда worker присылает `completed`, `WorkerService` сохраняет результат в `document_extracted_data`. Поддерживаемые формы payload:
    - `{"extracted_data":[{"key_name":"...","value":...,"confidence":0.9}]}`

@@ -380,7 +380,7 @@ func (s *WorkerService) saveExtractedData(ctx context.Context, task repository.D
 		return fmt.Errorf("get document organization: %w", err)
 	}
 
-	keys, err := s.repo.ListExtractionKeysByOrganization(ctx, pgtype.UUID{Bytes: orgID, Valid: true})
+	keys, err := s.repo.ListExtractionKeysByOrganization(ctx, orgID)
 	if err != nil {
 		return fmt.Errorf("list extraction keys: %w", err)
 	}

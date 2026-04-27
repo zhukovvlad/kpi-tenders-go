@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -20,6 +22,14 @@ import (
 func TestNormalizeExtractionKeyName_Cyrillic(t *testing.T) {
 	assert.Equal(t, "kakoy_protsent_avansa", normalizeExtractionKeyName(" Какой процент аванса? "))
 	assert.Equal(t, "dogovor_2026", normalizeExtractionKeyName("Договор №2026"))
+}
+
+func TestNormalizeExtractionKeyName_ASCIIOnlyFallback(t *testing.T) {
+	key := normalizeExtractionKeyName("总金额 " + strings.Repeat("界", 120) + " total_amount_m2")
+
+	assert.Equal(t, "total_amount_m2", key)
+	assert.True(t, utf8.ValidString(key))
+	assert.LessOrEqual(t, len(key), 80)
 }
 
 func TestExtractionKeyService_Resolve_EmptySourceQuery(t *testing.T) {
@@ -45,14 +55,14 @@ func TestExtractionKeyService_Resolve_DuplicateBySourceQuery(t *testing.T) {
 	orgID := uuid.New()
 	expected := repository.ExtractionKey{
 		ID:             uuid.New(),
-		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
+		OrganizationID: orgID,
 		KeyName:        "advance_payment_percent",
 		SourceQuery:    "Какой процент аванса?",
 		DataType:       "number",
 	}
 
 	mq.On("GetExtractionKeyByOrgAndSourceQuery", mock.Anything, repository.GetExtractionKeyByOrgAndSourceQueryParams{
-		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
+		OrganizationID: orgID,
 		SourceQuery:    "Какой процент аванса?",
 	}).Return(expected, nil)
 
@@ -75,7 +85,7 @@ func TestExtractionKeyService_Resolve_DuplicateByKeyName(t *testing.T) {
 	orgID := uuid.New()
 	expected := repository.ExtractionKey{
 		ID:             uuid.New(),
-		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
+		OrganizationID: orgID,
 		KeyName:        "kakoy_protsent_avansa",
 		SourceQuery:    "Какой % аванса?",
 		DataType:       "number",
@@ -84,7 +94,7 @@ func TestExtractionKeyService_Resolve_DuplicateByKeyName(t *testing.T) {
 	mq.On("GetExtractionKeyByOrgAndSourceQuery", mock.Anything, mock.Anything).
 		Return(repository.ExtractionKey{}, pgx.ErrNoRows)
 	mq.On("GetExtractionKeyByOrgAndKeyName", mock.Anything, repository.GetExtractionKeyByOrgAndKeyNameParams{
-		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
+		OrganizationID: orgID,
 		KeyName:        "kakoy_protsent_avansa",
 	}).Return(expected, nil)
 
@@ -107,7 +117,7 @@ func TestExtractionKeyService_Resolve_CreatesNewKey(t *testing.T) {
 	orgID := uuid.New()
 	expected := repository.ExtractionKey{
 		ID:             uuid.New(),
-		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
+		OrganizationID: orgID,
 		KeyName:        "kakoy_protsent_avansa",
 		SourceQuery:    "Какой процент аванса?",
 		Description:    pgtype.Text{String: "Какой процент аванса?", Valid: true},
@@ -119,7 +129,7 @@ func TestExtractionKeyService_Resolve_CreatesNewKey(t *testing.T) {
 	mq.On("GetExtractionKeyByOrgAndKeyName", mock.Anything, mock.Anything).
 		Return(repository.ExtractionKey{}, pgx.ErrNoRows)
 	mq.On("CreateExtractionKey", mock.Anything, mock.MatchedBy(func(p repository.CreateExtractionKeyParams) bool {
-		return p.OrganizationID == (pgtype.UUID{Bytes: orgID, Valid: true}) &&
+		return p.OrganizationID == orgID &&
 			p.KeyName == "kakoy_protsent_avansa" &&
 			p.SourceQuery == "Какой процент аванса?" &&
 			p.Description.Valid &&
@@ -146,7 +156,7 @@ func TestExtractionKeyService_Resolve_UniqueRaceReadsExistingKey(t *testing.T) {
 	orgID := uuid.New()
 	expected := repository.ExtractionKey{
 		ID:             uuid.New(),
-		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
+		OrganizationID: orgID,
 		KeyName:        "kakoy_protsent_avansa",
 		SourceQuery:    "Какой процент аванса?",
 		DataType:       "number",
@@ -160,7 +170,7 @@ func TestExtractionKeyService_Resolve_UniqueRaceReadsExistingKey(t *testing.T) {
 	mq.On("CreateExtractionKey", mock.Anything, mock.Anything).
 		Return(repository.ExtractionKey{}, uniqueErr)
 	mq.On("GetExtractionKeyByOrgAndKeyName", mock.Anything, repository.GetExtractionKeyByOrgAndKeyNameParams{
-		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
+		OrganizationID: orgID,
 		KeyName:        "kakoy_protsent_avansa",
 	}).Return(expected, nil).Once()
 

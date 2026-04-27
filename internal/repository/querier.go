@@ -57,8 +57,8 @@ type Querier interface {
 	ListConstructionSitesByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ConstructionSite, error)
 	// Все артефакты, порождённые данным документом; scoped by organization_id for tenant isolation.
 	ListDocumentsByParent(ctx context.Context, arg ListDocumentsByParentParams) ([]Document, error)
-	ListExtractionKeyPayloadsByOrganization(ctx context.Context, organizationID pgtype.UUID) ([]ListExtractionKeyPayloadsByOrganizationRow, error)
-	ListExtractionKeysByOrganization(ctx context.Context, organizationID pgtype.UUID) ([]ExtractionKey, error)
+	ListExtractionKeyPayloadsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ListExtractionKeyPayloadsByOrganizationRow, error)
+	ListExtractionKeysByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ExtractionKey, error)
 	// Только корневые документы (загруженные пользователем, не артефакты)
 	ListRootDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]Document, error)
 	ListRootDocumentsBySite(ctx context.Context, arg ListRootDocumentsBySiteParams) ([]Document, error)

@@ -6,13 +6,13 @@ RETURNING *;
 -- name: GetExtractionKeyByOrgAndKeyName :one
 SELECT *
 FROM extraction_keys
-WHERE organization_id IS NOT DISTINCT FROM $1
+WHERE organization_id = $1
   AND key_name = $2;
 
 -- name: GetExtractionKeyByOrgAndSourceQuery :one
 SELECT *
 FROM extraction_keys
-WHERE organization_id IS NOT DISTINCT FROM $1
+WHERE organization_id = $1
   AND lower(btrim(source_query)) = lower(btrim(sqlc.arg(source_query)))
 ORDER BY created_at ASC
 LIMIT 1;
@@ -20,13 +20,13 @@ LIMIT 1;
 -- name: ListExtractionKeysByOrganization :many
 SELECT *
 FROM extraction_keys
-WHERE organization_id IS NOT DISTINCT FROM $1
+WHERE organization_id = $1
 ORDER BY created_at ASC;
 
 -- name: ListExtractionKeyPayloadsByOrganization :many
 SELECT id, key_name, source_query, description, data_type, is_required
 FROM extraction_keys
-WHERE organization_id IS NOT DISTINCT FROM $1
+WHERE organization_id = $1
 ORDER BY created_at ASC;
 
 -- name: UpsertDocumentExtractedData :one

@@ -389,10 +389,10 @@ func TestWorkerService_HandleStatusUpdate_ExtractCompleted_SavesExtractedData(t 
 
 	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.Anything).Return(returnedTask, nil)
 	ms.On("GetDocumentOrganizationID", mock.Anything, docID).Return(orgID, nil)
-	ms.On("ListExtractionKeysByOrganization", mock.Anything, pgtype.UUID{Bytes: orgID, Valid: true}).
+	ms.On("ListExtractionKeysByOrganization", mock.Anything, orgID).
 		Return([]repository.ExtractionKey{{
 			ID:             keyID,
-			OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
+			OrganizationID: orgID,
 			KeyName:        "advance_payment_percent",
 			SourceQuery:    "Какой процент аванса?",
 			DataType:       "number",
@@ -508,10 +508,10 @@ func TestWorkerService_HandleStatusUpdate_ExtractCompleted_ContinuesAfterUpsertE
 
 	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.Anything).Return(returnedTask, nil)
 	ms.On("GetDocumentOrganizationID", mock.Anything, docID).Return(orgID, nil)
-	ms.On("ListExtractionKeysByOrganization", mock.Anything, pgtype.UUID{Bytes: orgID, Valid: true}).
+	ms.On("ListExtractionKeysByOrganization", mock.Anything, orgID).
 		Return([]repository.ExtractionKey{
-			{ID: firstKeyID, OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true}, KeyName: "advance_payment_percent"},
-			{ID: secondKeyID, OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true}, KeyName: "contract_price"},
+			{ID: firstKeyID, OrganizationID: orgID, KeyName: "advance_payment_percent"},
+			{ID: secondKeyID, OrganizationID: orgID, KeyName: "contract_price"},
 		}, nil)
 	ms.On("UpsertDocumentExtractedData", mock.Anything, mock.MatchedBy(func(p repository.UpsertDocumentExtractedDataParams) bool {
 		return p.KeyID == firstKeyID

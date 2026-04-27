@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
-	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -47,10 +46,8 @@ func (s *ExtractionKeyService) Resolve(ctx context.Context, params ResolveExtrac
 		return repository.ExtractionKey{}, false, errs.New(errs.CodeValidationFailed, "source_query is required", nil)
 	}
 
-	orgID := pgtype.UUID{Bytes: params.OrganizationID, Valid: true}
-
 	existing, err := s.repo.GetExtractionKeyByOrgAndSourceQuery(ctx, repository.GetExtractionKeyByOrgAndSourceQueryParams{
-		OrganizationID: orgID,
+		OrganizationID: params.OrganizationID,
 		SourceQuery:    sourceQuery,
 	})
 	if err == nil {
@@ -62,11 +59,11 @@ func (s *ExtractionKeyService) Resolve(ctx context.Context, params ResolveExtrac
 
 	keyName := normalizeExtractionKeyName(sourceQuery)
 	if keyName == "" {
-		return repository.ExtractionKey{}, false, errs.New(errs.CodeValidationFailed, "source_query must contain letters or digits", nil)
+		return repository.ExtractionKey{}, false, errs.New(errs.CodeValidationFailed, "source_query must contain ASCII letters, digits, or supported Cyrillic text", nil)
 	}
 
 	existing, err = s.repo.GetExtractionKeyByOrgAndKeyName(ctx, repository.GetExtractionKeyByOrgAndKeyNameParams{
-		OrganizationID: orgID,
+		OrganizationID: params.OrganizationID,
 		KeyName:        keyName,
 	})
 	if err == nil {
@@ -77,7 +74,7 @@ func (s *ExtractionKeyService) Resolve(ctx context.Context, params ResolveExtrac
 	}
 
 	key, err := s.repo.CreateExtractionKey(ctx, repository.CreateExtractionKeyParams{
-		OrganizationID: orgID,
+		OrganizationID: params.OrganizationID,
 		KeyName:        keyName,
 		SourceQuery:    sourceQuery,
 		Description:    pgtype.Text{String: sourceQuery, Valid: true},
@@ -87,7 +84,7 @@ func (s *ExtractionKeyService) Resolve(ctx context.Context, params ResolveExtrac
 	if err != nil {
 		if pgutil.IsUniqueViolation(err, "uq_extraction_keys_org_key") {
 			existing, getErr := s.repo.GetExtractionKeyByOrgAndKeyName(ctx, repository.GetExtractionKeyByOrgAndKeyNameParams{
-				OrganizationID: orgID,
+				OrganizationID: params.OrganizationID,
 				KeyName:        keyName,
 			})
 			if getErr == nil {
@@ -104,8 +101,9 @@ func (s *ExtractionKeyService) Resolve(ctx context.Context, params ResolveExtrac
 // multiUnderscore collapses repeated separators after key-name normalization.
 var multiUnderscore = regexp.MustCompile(`_+`)
 
-// cyrillicTransliteration maps Cyrillic runes to ASCII fragments used in
-// deterministic extraction key names.
+// cyrillicTransliteration maps Cyrillic runes to ASCII fragments used by the
+// deterministic fallback normalizer. The long-term target is LLM-generated
+// English key names validated against the same ASCII snake_case contract.
 var cyrillicTransliteration = map[rune]string{
 	'а': "a", 'б': "b", 'в': "v", 'г': "g", 'д': "d", 'е': "e", 'ё': "e", 'ж': "zh",
 	'з': "z", 'и': "i", 'й': "y", 'к': "k", 'л': "l", 'м': "m", 'н': "n", 'о': "o",
@@ -113,11 +111,17 @@ var cyrillicTransliteration = map[rune]string{
 	'ч': "ch", 'ш': "sh", 'щ': "sch", 'ъ': "", 'ы': "y", 'ь': "", 'э': "e", 'ю': "yu", 'я': "ya",
 }
 
-// normalizeExtractionKeyName produces a stable ASCII-ish technical key from the
-// user's question. This is intentionally deterministic and local; a future LLM
-// or embedding-based resolver can replace it without changing the DB contract.
+// normalizeExtractionKeyName produces a stable ASCII snake_case technical key
+// from the user's question. It is intentionally a deterministic fallback; a
+// future LLM-based resolver can generate better English names while keeping this
+// DB/API contract and validation shape.
 func normalizeExtractionKeyName(query string) string {
 	var b strings.Builder
+	if len(query) > 80 {
+		b.Grow(80)
+	} else {
+		b.Grow(len(query))
+	}
 	lastUnderscore := false
 	for _, r := range strings.ToLower(strings.TrimSpace(query)) {
 		if mapped, ok := transliterateRune(r); ok {
@@ -125,7 +129,7 @@ func normalizeExtractionKeyName(query string) string {
 			lastUnderscore = false
 			continue
 		}
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+		if isASCIIAlphaNum(r) {
 			b.WriteRune(r)
 			lastUnderscore = false
 			continue
@@ -145,6 +149,12 @@ func normalizeExtractionKeyName(query string) string {
 	return key
 }
 
+// isASCIIAlphaNum allows only ASCII letters and digits into key_name. Other
+// scripts are either transliterated explicitly or treated as separators.
+func isASCIIAlphaNum(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+}
+
 // inferExtractionDataType applies a small deterministic heuristic for the
 // worker-facing data_type until a richer schema/LLM classifier is introduced.
 func inferExtractionDataType(query string) string {
@@ -162,7 +172,7 @@ func inferExtractionDataType(query string) string {
 }
 
 // transliterateRune covers Russian/Kazakh Cyrillic text well enough for stable
-// snake_case keys while preserving non-Cyrillic letters through unicode.IsLetter.
+// snake_case fallback keys.
 func transliterateRune(r rune) (string, bool) {
 	v, ok := cyrillicTransliteration[r]
 	return v, ok
@@ -172,7 +182,7 @@ func transliterateRune(r rune) (string, bool) {
 // in Celery kwargs. It deliberately omits timestamps and tenant fields; the task
 // already scopes the worker run to one document/organization.
 func extractionKeyPayloads(ctx context.Context, repo repository.Querier, orgID uuid.UUID) ([]map[string]any, error) {
-	keys, err := repo.ListExtractionKeyPayloadsByOrganization(ctx, pgtype.UUID{Bytes: orgID, Valid: true})
+	keys, err := repo.ListExtractionKeyPayloadsByOrganization(ctx, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("list extraction keys: %w", err)
 	}

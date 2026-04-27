@@ -236,7 +236,7 @@ func TestDocumentTaskService_Create_ExtractPassesExtractionKeys(t *testing.T) {
 		InputStoragePath: "orgs/abc/anon.md",
 	}
 
-	mq.On("ListExtractionKeyPayloadsByOrganization", mock.Anything, pgtype.UUID{Bytes: orgID, Valid: true}).
+	mq.On("ListExtractionKeyPayloadsByOrganization", mock.Anything, orgID).
 		Return([]repository.ListExtractionKeyPayloadsByOrganizationRow{{
 			ID:          keyID,
 			KeyName:     "advance_payment_percent",

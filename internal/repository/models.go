@@ -91,8 +91,8 @@ type DocumentTask struct {
 // Нормализованные ключи извлечения данных из документов
 type ExtractionKey struct {
 	ID uuid.UUID `json:"id"`
-	// Организация-владелец ключа; NULL — глобальный ключ
-	OrganizationID pgtype.UUID `json:"organization_id"`
+	// Организация-владелец ключа
+	OrganizationID uuid.UUID `json:"organization_id"`
 	// Техническое имя ключа, например advance_payment_percent
 	KeyName string `json:"key_name"`
 	// Исходный пользовательский вопрос, из которого был получен ключ

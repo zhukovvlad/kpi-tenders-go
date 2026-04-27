@@ -20,7 +20,7 @@ RETURNING id, organization_id, key_name, source_query, description, data_type, i
 `
 
 type CreateExtractionKeyParams struct {
-	OrganizationID pgtype.UUID `json:"organization_id"`
+	OrganizationID uuid.UUID   `json:"organization_id"`
 	KeyName        string      `json:"key_name"`
 	SourceQuery    string      `json:"source_query"`
 	Description    pgtype.Text `json:"description"`
@@ -68,13 +68,13 @@ func (q *Queries) GetDocumentOrganizationID(ctx context.Context, id uuid.UUID) (
 const getExtractionKeyByOrgAndKeyName = `-- name: GetExtractionKeyByOrgAndKeyName :one
 SELECT id, organization_id, key_name, source_query, description, data_type, is_required, created_at, updated_at
 FROM extraction_keys
-WHERE organization_id IS NOT DISTINCT FROM $1
+WHERE organization_id = $1
   AND key_name = $2
 `
 
 type GetExtractionKeyByOrgAndKeyNameParams struct {
-	OrganizationID pgtype.UUID `json:"organization_id"`
-	KeyName        string      `json:"key_name"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+	KeyName        string    `json:"key_name"`
 }
 
 func (q *Queries) GetExtractionKeyByOrgAndKeyName(ctx context.Context, arg GetExtractionKeyByOrgAndKeyNameParams) (ExtractionKey, error) {
@@ -97,15 +97,15 @@ func (q *Queries) GetExtractionKeyByOrgAndKeyName(ctx context.Context, arg GetEx
 const getExtractionKeyByOrgAndSourceQuery = `-- name: GetExtractionKeyByOrgAndSourceQuery :one
 SELECT id, organization_id, key_name, source_query, description, data_type, is_required, created_at, updated_at
 FROM extraction_keys
-WHERE organization_id IS NOT DISTINCT FROM $1
+WHERE organization_id = $1
   AND lower(btrim(source_query)) = lower(btrim($2))
 ORDER BY created_at ASC
 LIMIT 1
 `
 
 type GetExtractionKeyByOrgAndSourceQueryParams struct {
-	OrganizationID pgtype.UUID `json:"organization_id"`
-	SourceQuery    string      `json:"source_query"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+	SourceQuery    string    `json:"source_query"`
 }
 
 func (q *Queries) GetExtractionKeyByOrgAndSourceQuery(ctx context.Context, arg GetExtractionKeyByOrgAndSourceQueryParams) (ExtractionKey, error) {
@@ -128,7 +128,7 @@ func (q *Queries) GetExtractionKeyByOrgAndSourceQuery(ctx context.Context, arg G
 const listExtractionKeyPayloadsByOrganization = `-- name: ListExtractionKeyPayloadsByOrganization :many
 SELECT id, key_name, source_query, description, data_type, is_required
 FROM extraction_keys
-WHERE organization_id IS NOT DISTINCT FROM $1
+WHERE organization_id = $1
 ORDER BY created_at ASC
 `
 
@@ -141,7 +141,7 @@ type ListExtractionKeyPayloadsByOrganizationRow struct {
 	IsRequired  bool        `json:"is_required"`
 }
 
-func (q *Queries) ListExtractionKeyPayloadsByOrganization(ctx context.Context, organizationID pgtype.UUID) ([]ListExtractionKeyPayloadsByOrganizationRow, error) {
+func (q *Queries) ListExtractionKeyPayloadsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ListExtractionKeyPayloadsByOrganizationRow, error) {
 	rows, err := q.db.Query(ctx, listExtractionKeyPayloadsByOrganization, organizationID)
 	if err != nil {
 		return nil, err
@@ -171,11 +171,11 @@ func (q *Queries) ListExtractionKeyPayloadsByOrganization(ctx context.Context, o
 const listExtractionKeysByOrganization = `-- name: ListExtractionKeysByOrganization :many
 SELECT id, organization_id, key_name, source_query, description, data_type, is_required, created_at, updated_at
 FROM extraction_keys
-WHERE organization_id IS NOT DISTINCT FROM $1
+WHERE organization_id = $1
 ORDER BY created_at ASC
 `
 
-func (q *Queries) ListExtractionKeysByOrganization(ctx context.Context, organizationID pgtype.UUID) ([]ExtractionKey, error) {
+func (q *Queries) ListExtractionKeysByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ExtractionKey, error) {
 	rows, err := q.db.Query(ctx, listExtractionKeysByOrganization, organizationID)
 	if err != nil {
 		return nil, err

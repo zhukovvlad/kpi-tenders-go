@@ -38,7 +38,7 @@ func TestResolveExtractionKey_SuccessCreated(t *testing.T) {
 	keyID := uuid.New()
 	expected := repository.ExtractionKey{
 		ID:             keyID,
-		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
+		OrganizationID: orgID,
 		KeyName:        "kakoy_protsent_avansa",
 		SourceQuery:    "Какой процент аванса?",
 		Description:    pgtype.Text{String: "Какой процент аванса?", Valid: true},
@@ -82,7 +82,7 @@ func TestResolveExtractionKey_DuplicateReturnsOK(t *testing.T) {
 	keyID := uuid.New()
 	expected := repository.ExtractionKey{
 		ID:             keyID,
-		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
+		OrganizationID: orgID,
 		KeyName:        "advance_payment_percent",
 		SourceQuery:    "Какой процент аванса?",
 		DataType:       "number",
