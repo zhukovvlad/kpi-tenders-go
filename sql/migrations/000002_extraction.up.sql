@@ -97,25 +97,13 @@ CREATE TRIGGER trg_document_extracted_data_key_org
 -- ==========================================
 -- IMMUTABLE organization_id ENFORCEMENT
 -- ==========================================
--- Once a row is created with a given tenant, its organization_id must never
--- change. A silent UPDATE could bypass all composite FK + trigger guards.
-
-CREATE OR REPLACE FUNCTION trg_prevent_org_change()
-RETURNS TRIGGER LANGUAGE plpgsql AS $$
-BEGIN
-    IF NEW.organization_id IS DISTINCT FROM OLD.organization_id THEN
-        RAISE EXCEPTION
-            'organization_id is immutable: cannot change from % to % on table %',
-            OLD.organization_id, NEW.organization_id, TG_TABLE_NAME;
-    END IF;
-    RETURN NEW;
-END;
-$$;
+-- Reuse prevent_organization_id_change() defined in 000001_init_schema.up.sql.
+-- Using BEFORE UPDATE OF organization_id avoids firing on unrelated updates.
 
 CREATE TRIGGER trg_immut_org_extraction_keys
-    BEFORE UPDATE ON extraction_keys
-    FOR EACH ROW EXECUTE FUNCTION trg_prevent_org_change();
+    BEFORE UPDATE OF organization_id ON extraction_keys
+    FOR EACH ROW EXECUTE FUNCTION prevent_organization_id_change();
 
 CREATE TRIGGER trg_immut_org_document_extracted_data
-    BEFORE UPDATE ON document_extracted_data
-    FOR EACH ROW EXECUTE FUNCTION trg_prevent_org_change();
+    BEFORE UPDATE OF organization_id ON document_extracted_data
+    FOR EACH ROW EXECUTE FUNCTION prevent_organization_id_change();

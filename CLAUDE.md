@@ -133,7 +133,7 @@ _Нет активных заглушек._
 | Миграция | Таблицы / изменения |
 |----------|---------------------|
 | 000001 | Полная схема: organizations, users, construction_sites, documents (artifact_kind, parent_id CASCADE), document_tasks (retry_count, input_storage_path, md_document_id, UNIQUE document_id+module_name); все FK-индексы; idx_document_tasks_stale; триггеры tenant isolation |
-| 000002 | `extraction_keys` (org_id nullable, key_name, source_query, data_type; UNIQUE NULLS NOT DISTINCT org+name) + `document_extracted_data` (org_id, document_id, key_id, extracted_value; composite FK doc+org → documents; `uq_extracted_data_doc_key` UNIQUE (org_id, document_id, key_id); trigger `trg_check_extracted_data_key_org` блокирует cross-tenant key_id; trigger `trg_prevent_org_change` + `trg_immut_org_*` запрещают изменение org_id после вставки; `idx_extracted_data_key_org`) + composite UNIQUE constraint `uq_documents_id_org` на таблице documents |
+| 000002 | `extraction_keys` (org_id nullable, key_name, source_query, data_type; UNIQUE NULLS NOT DISTINCT org+name) + `document_extracted_data` (org_id, document_id, key_id, extracted_value; composite FK doc+org → documents; `uq_extracted_data_doc_key` UNIQUE (org_id, document_id, key_id); trigger `trg_check_extracted_data_key_org` блокирует cross-tenant key_id; триггеры `trg_immut_org_*` через `prevent_organization_id_change()` из 000001 запрещают изменение org_id после вставки; `idx_extracted_data_key_org`) + composite UNIQUE constraint `uq_documents_id_org` на таблице documents |
 
 > **Примечание:** следующая миграция — `catalog_positions` (pgvector RAG), будет `000003`.
 
