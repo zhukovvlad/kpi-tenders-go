@@ -206,10 +206,10 @@ CREATE INDEX idx_sites_parent_id           ON construction_sites(parent_id);
 CREATE INDEX idx_documents_organization_id ON documents(organization_id);
 CREATE INDEX idx_documents_site_id         ON documents(site_id);
 CREATE INDEX idx_documents_parent_id       ON documents(parent_id);
-CREATE INDEX idx_extraction_keys_org       ON extraction_keys(organization_id);
+CREATE INDEX idx_extraction_keys_org_created_at
+    ON extraction_keys(organization_id, created_at);
 CREATE INDEX idx_extraction_keys_org_norm_source_query
     ON extraction_keys(organization_id, lower(btrim(source_query)));
-CREATE INDEX idx_extracted_data_org_doc    ON document_extracted_data(organization_id, document_id);
 CREATE INDEX idx_extracted_data_key_id     ON document_extracted_data(key_id);
 CREATE INDEX idx_tasks_document_id         ON document_tasks(document_id);
 CREATE INDEX idx_tasks_status              ON document_tasks(status);
