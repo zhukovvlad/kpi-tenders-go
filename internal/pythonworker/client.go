@@ -116,7 +116,7 @@ func buildCeleryMessage(req ProcessRequest, queue, taskName, replyTo, deliveryTa
 			"root_id":     req.TaskID,
 			"parent_id":   nil,
 			"argsrepr":    fmt.Sprintf("(%s, %s, %s)", strconv.Quote(req.TaskID), strconv.Quote(req.DocumentID), strconv.Quote(req.StoragePath)),
-			"kwargsrepr":  "{}",
+			"kwargsrepr":  kwargsRepr(kwargs),
 			"origin":      "go-kpi-tenders",
 		},
 		"properties": map[string]any{
@@ -138,6 +138,20 @@ func buildCeleryMessage(req ProcessRequest, queue, taskName, replyTo, deliveryTa
 		return nil, fmt.Errorf("pythonworker: marshal message: %w", err)
 	}
 	return msgJSON, nil
+}
+
+// kwargsRepr returns a JSON string representation of kwargs for use in the
+// Celery message headers kwargsrepr field. Marshalling errors are silently
+// ignored — the field is informational only and does not affect execution.
+func kwargsRepr(kwargs map[string]any) string {
+	if len(kwargs) == 0 {
+		return "{}"
+	}
+	b, err := json.Marshal(kwargs)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
 }
 
 // resolveModule maps a module name to its Redis queue and Celery task name.

@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	"go-kpi-tenders/internal/pythonworker"
 	"go-kpi-tenders/internal/repository"
@@ -120,7 +119,3 @@ func (s *ExtractionService) Initiate(
 	return task, nil
 }
 
-// toOrgUUID converts a uuid.UUID to pgtype.UUID (nullable) with Valid=true.
-func toOrgUUID(id uuid.UUID) pgtype.UUID {
-	return pgtype.UUID{Bytes: id, Valid: true}
-}

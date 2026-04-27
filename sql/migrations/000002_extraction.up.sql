@@ -64,3 +64,31 @@ COMMENT ON COLUMN document_extracted_data.organization_id  IS 'Тенант; д�
 COMMENT ON COLUMN document_extracted_data.document_id      IS 'Документ, из которого извлечены данные';
 COMMENT ON COLUMN document_extracted_data.key_id           IS 'Ключ извлечения';
 COMMENT ON COLUMN document_extracted_data.extracted_value  IS 'Извлечённое значение; NULL если воркер не смог извлечь';
+
+-- ==========================================
+-- TENANT ISOLATION: key_id FK enforcement
+-- ==========================================
+-- The FK to extraction_keys(id) alone does not prevent cross-tenant key
+-- references. This trigger enforces that the referenced key either is a
+-- system key (organization_id IS NULL) or belongs to the same tenant as
+-- the row being inserted/updated.
+
+CREATE OR REPLACE FUNCTION trg_check_extracted_data_key_org()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM extraction_keys
+        WHERE id = NEW.key_id
+          AND (organization_id IS NULL OR organization_id = NEW.organization_id)
+    ) THEN
+        RAISE EXCEPTION
+            'key_id % does not belong to organization % and is not a system key',
+            NEW.key_id, NEW.organization_id;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_document_extracted_data_key_org
+    BEFORE INSERT OR UPDATE ON document_extracted_data
+    FOR EACH ROW EXECUTE FUNCTION trg_check_extracted_data_key_org();
