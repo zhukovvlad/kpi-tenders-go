@@ -484,10 +484,12 @@ func (s *WorkerService) triggerExtract(ctx context.Context, resolveTask reposito
 
 // handleExtractCompleted persists the data extracted by the Python extract
 // worker into document_extracted_data. The result_payload is expected to be a
-// flat JSON object mapping key_name → extracted_value (string).
+// flat JSON object mapping key_name → extracted_value (string or null).
+// Null values are skipped — they indicate the worker could not extract that key.
 func (s *WorkerService) handleExtractCompleted(ctx context.Context, task repository.DocumentTask) error {
 	// Parse extract result_payload: {"key_name": "value", ...}
-	var extractedData map[string]string
+	// Use *string so JSON null values are handled explicitly (nil = skip).
+	var extractedData map[string]*string
 	if err := json.Unmarshal(task.ResultPayload, &extractedData); err != nil {
 		return fmt.Errorf("parse extract payload: %w", err)
 	}
@@ -522,10 +524,14 @@ func (s *WorkerService) handleExtractCompleted(ctx context.Context, task reposit
 		keyIDByName[k.KeyName] = k.ID
 	}
 
-	// Build parallel slices for batch upsert, skipping unknown keys.
+	// Build parallel slices for batch upsert, skipping unknown keys and null values.
 	keyIDs := make([]uuid.UUID, 0, len(keyIDByName))
 	extractedValues := make([]string, 0, len(keyIDByName))
 	for keyName, value := range extractedData {
+		if value == nil {
+			// Python worker could not extract this key — skip.
+			continue
+		}
 		keyID, ok := keyIDByName[keyName]
 		if !ok {
 			s.log.Warn("worker: extract returned unknown key name, skipping",
@@ -533,7 +539,7 @@ func (s *WorkerService) handleExtractCompleted(ctx context.Context, task reposit
 			continue
 		}
 		keyIDs = append(keyIDs, keyID)
-		extractedValues = append(extractedValues, value)
+		extractedValues = append(extractedValues, *value)
 	}
 	if len(keyIDs) == 0 {
 		return nil

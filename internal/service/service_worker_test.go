@@ -567,3 +567,43 @@ func TestWorkerService_HandleStatusUpdate_ExtractCompleted_UnknownKeySkipped(t *
 	pc.AssertNotCalled(t, "Process")
 	ms.AssertNotCalled(t, "BatchUpsertExtractedData")
 }
+
+// 14. extract completed — payload contains null value for a known key → null skipped, only non-null upserted.
+func TestWorkerService_HandleStatusUpdate_ExtractCompleted_NullValueSkipped(t *testing.T) {
+	ctx := context.Background()
+	ms := new(storemock.MockStore)
+	pc := new(mockPythonClient)
+
+	taskID := uuid.New()
+	docID := uuid.New()
+	orgID := uuid.New()
+	keyID := uuid.New()
+
+	// Python worker returns null for "missing_field" and a real value for "contract_value".
+	resultPayload := json.RawMessage(`{"contract_value":"500 000 тенге","missing_field":null}`)
+
+	returnedTask := makeDocumentTask(taskID, docID, "extract", "completed", resultPayload)
+	doc := repository.Document{ID: docID, OrganizationID: orgID}
+	key := repository.ExtractionKey{ID: keyID, KeyName: "contract_value"}
+
+	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.Anything).Return(returnedTask, nil)
+	ms.On("GetDocumentByID", mock.Anything, docID).Return(doc, nil)
+	ms.On("GetExtractionKeysByNames", mock.Anything, mock.Anything).Return([]repository.ExtractionKey{key}, nil)
+	// Only the non-null key must be upserted.
+	ms.On("BatchUpsertExtractedData", mock.Anything, mock.MatchedBy(func(p repository.BatchUpsertExtractedDataParams) bool {
+		return p.OrganizationID == orgID &&
+			p.DocumentID == docID &&
+			len(p.KeyIds) == 1 && p.KeyIds[0] == keyID &&
+			len(p.ExtractedValues) == 1 && p.ExtractedValues[0] == "500 000 тенге"
+	})).Return(nil)
+
+	svc := newTestWorkerService(ms, pc)
+	task, err := svc.HandleStatusUpdate(ctx, taskID, WorkerStatusUpdate{
+		Status:        "completed",
+		ResultPayload: resultPayload,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "extract", task.ModuleName)
+	ms.AssertExpectations(t)
+}
