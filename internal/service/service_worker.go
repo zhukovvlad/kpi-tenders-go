@@ -518,9 +518,13 @@ func rawString(raw json.RawMessage) string {
 }
 
 // rawConfidence decodes an optional numeric confidence into pgtype.Float8.
+// Values outside the DB-supported range [0, 1] are treated as absent.
 func rawConfidence(raw json.RawMessage) pgtype.Float8 {
 	var f float64
 	if len(raw) == 0 || json.Unmarshal(raw, &f) != nil {
+		return pgtype.Float8{}
+	}
+	if f < 0 || f > 1 {
 		return pgtype.Float8{}
 	}
 	return pgtype.Float8{Float64: f, Valid: true}

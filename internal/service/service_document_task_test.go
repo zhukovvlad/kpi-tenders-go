@@ -265,3 +265,26 @@ func TestDocumentTaskService_Create_ExtractPassesExtractionKeys(t *testing.T) {
 	mq.AssertExpectations(t)
 	pc.AssertExpectations(t)
 }
+
+func TestDocumentTaskService_Create_ExtractWithNoKeys_ReturnsValidationFailed(t *testing.T) {
+	mq := new(storemock.MockQuerier)
+	svc := NewDocumentTaskService(mq, nil, newTestLogger())
+
+	orgID := uuid.New()
+
+	mq.On("ListExtractionKeyPayloadsByOrganization", mock.Anything, orgID).
+		Return([]repository.ListExtractionKeyPayloadsByOrganizationRow{}, nil)
+
+	_, err := svc.Create(context.Background(), repository.CreateDocumentTaskParams{
+		DocumentID:     uuid.New(),
+		ModuleName:     "extract",
+		OrganizationID: orgID,
+	})
+
+	require.Error(t, err)
+	var appErr *errs.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, errs.CodeValidationFailed, appErr.Code)
+	// INSERT must NOT be called when there are no extraction keys.
+	mq.AssertNotCalled(t, "CreateDocumentTask")
+}

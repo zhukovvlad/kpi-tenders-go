@@ -57,6 +57,9 @@ func (s *DocumentTaskService) Create(ctx context.Context, params repository.Crea
 		if err != nil {
 			return repository.DocumentTask{}, errs.New(errs.CodeInternalError, "internal server error", err)
 		}
+		if len(extractionKeys) == 0 {
+			return repository.DocumentTask{}, errs.New(errs.CodeValidationFailed, "no extraction keys configured for this organization", nil)
+		}
 	}
 
 	task, err := s.repo.CreateDocumentTask(ctx, params)

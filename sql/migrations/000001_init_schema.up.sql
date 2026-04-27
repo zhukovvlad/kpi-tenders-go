@@ -211,6 +211,7 @@ CREATE INDEX idx_extraction_keys_org_created_at
 CREATE INDEX idx_extraction_keys_org_norm_source_query
     ON extraction_keys(organization_id, lower(btrim(source_query)));
 CREATE INDEX idx_extracted_data_key_id     ON document_extracted_data(key_id);
+CREATE INDEX idx_extracted_data_key_org    ON document_extracted_data(key_id, organization_id);
 CREATE INDEX idx_tasks_document_id         ON document_tasks(document_id);
 CREATE INDEX idx_tasks_status              ON document_tasks(status);
 
@@ -350,4 +351,8 @@ CREATE TRIGGER trg_sites_prevent_org_change
 
 CREATE TRIGGER trg_documents_prevent_org_change
     BEFORE UPDATE OF organization_id ON documents
+    FOR EACH ROW EXECUTE FUNCTION prevent_organization_id_change();
+
+CREATE TRIGGER trg_extraction_keys_prevent_org_change
+    BEFORE UPDATE OF organization_id ON extraction_keys
     FOR EACH ROW EXECUTE FUNCTION prevent_organization_id_change();

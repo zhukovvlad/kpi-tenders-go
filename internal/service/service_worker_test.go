@@ -530,3 +530,29 @@ func TestWorkerService_HandleStatusUpdate_ExtractCompleted_ContinuesAfterUpsertE
 	ms.AssertExpectations(t)
 	pc.AssertNotCalled(t, "Process")
 }
+
+func TestRawConfidence(t *testing.T) {
+	tests := []struct {
+		name  string
+		raw   string
+		want  float64
+		valid bool
+	}{
+		{"valid zero", "0", 0, true},
+		{"valid one", "1", 1, true},
+		{"valid mid", "0.85", 0.85, true},
+		{"above range", "1.1", 0, false},
+		{"negative", "-0.1", 0, false},
+		{"empty", "", 0, false},
+		{"non-number", `"high"`, 0, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := rawConfidence(json.RawMessage(tt.raw))
+			assert.Equal(t, tt.valid, got.Valid)
+			if tt.valid {
+				assert.InDelta(t, tt.want, got.Float64, 1e-9)
+			}
+		})
+	}
+}
