@@ -18,15 +18,21 @@ import (
 	"go-kpi-tenders/pkg/errs"
 )
 
+// ExtractionKeyService owns tenant-scoped extraction-key resolution and the
+// compact worker payload shape derived from stored keys.
 type ExtractionKeyService struct {
 	repo repository.Querier
 	log  *slog.Logger
 }
 
+// NewExtractionKeyService constructs an extraction-key service backed by the
+// provided repository interface.
 func NewExtractionKeyService(repo repository.Querier, log *slog.Logger) *ExtractionKeyService {
 	return &ExtractionKeyService{repo: repo, log: log}
 }
 
+// ResolveExtractionKeyParams contains the tenant and original user question
+// needed to resolve or create an extraction key.
 type ResolveExtractionKeyParams struct {
 	OrganizationID uuid.UUID
 	SourceQuery    string
@@ -50,7 +56,7 @@ func (s *ExtractionKeyService) Resolve(ctx context.Context, params ResolveExtrac
 	if err == nil {
 		return existing, true, nil
 	}
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if !errors.Is(err, pgx.ErrNoRows) {
 		return repository.ExtractionKey{}, false, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
 
@@ -66,7 +72,7 @@ func (s *ExtractionKeyService) Resolve(ctx context.Context, params ResolveExtrac
 	if err == nil {
 		return existing, true, nil
 	}
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if !errors.Is(err, pgx.ErrNoRows) {
 		return repository.ExtractionKey{}, false, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
 
@@ -95,7 +101,17 @@ func (s *ExtractionKeyService) Resolve(ctx context.Context, params ResolveExtrac
 	return key, false, nil
 }
 
+// multiUnderscore collapses repeated separators after key-name normalization.
 var multiUnderscore = regexp.MustCompile(`_+`)
+
+// cyrillicTransliteration maps Cyrillic runes to ASCII fragments used in
+// deterministic extraction key names.
+var cyrillicTransliteration = map[rune]string{
+	'а': "a", 'б': "b", 'в': "v", 'г': "g", 'д': "d", 'е': "e", 'ё': "e", 'ж': "zh",
+	'з': "z", 'и': "i", 'й': "y", 'к': "k", 'л': "l", 'м': "m", 'н': "n", 'о': "o",
+	'п': "p", 'р': "r", 'с': "s", 'т': "t", 'у': "u", 'ф': "f", 'х': "h", 'ц': "ts",
+	'ч': "ch", 'ш': "sh", 'щ': "sch", 'ъ': "", 'ы': "y", 'ь': "", 'э': "e", 'ю': "yu", 'я': "ya",
+}
 
 // normalizeExtractionKeyName produces a stable ASCII-ish technical key from the
 // user's question. This is intentionally deterministic and local; a future LLM
@@ -129,6 +145,8 @@ func normalizeExtractionKeyName(query string) string {
 	return key
 }
 
+// inferExtractionDataType applies a small deterministic heuristic for the
+// worker-facing data_type until a richer schema/LLM classifier is introduced.
 func inferExtractionDataType(query string) string {
 	q := strings.ToLower(query)
 	switch {
@@ -146,13 +164,7 @@ func inferExtractionDataType(query string) string {
 // transliterateRune covers Russian/Kazakh Cyrillic text well enough for stable
 // snake_case keys while preserving non-Cyrillic letters through unicode.IsLetter.
 func transliterateRune(r rune) (string, bool) {
-	table := map[rune]string{
-		'а': "a", 'б': "b", 'в': "v", 'г': "g", 'д': "d", 'е': "e", 'ё': "e", 'ж': "zh",
-		'з': "z", 'и': "i", 'й': "y", 'к': "k", 'л': "l", 'м': "m", 'н': "n", 'о': "o",
-		'п': "p", 'р': "r", 'с': "s", 'т': "t", 'у': "u", 'ф': "f", 'х': "h", 'ц': "ts",
-		'ч': "ch", 'ш': "sh", 'щ': "sch", 'ъ': "", 'ы': "y", 'ь': "", 'э': "e", 'ю': "yu", 'я': "ya",
-	}
-	v, ok := table[r]
+	v, ok := cyrillicTransliteration[r]
 	return v, ok
 }
 

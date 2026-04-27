@@ -208,7 +208,7 @@ func (q *Queries) ListExtractionKeysByOrganization(ctx context.Context, organiza
 const upsertDocumentExtractedData = `-- name: UpsertDocumentExtractedData :one
 INSERT INTO document_extracted_data (organization_id, document_id, key_id, extracted_value, confidence)
 VALUES ($1, $2, $3, $4, $5)
-ON CONFLICT (document_id, key_id)
+ON CONFLICT (organization_id, document_id, key_id)
 DO UPDATE SET
     extracted_value = EXCLUDED.extracted_value,
     confidence      = EXCLUDED.confidence,

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,14 +26,14 @@ type workerPythonClient interface {
 	Process(ctx context.Context, req pythonworker.ProcessRequest) error
 }
 
-// Module names used in task chaining.
+// Module names used in worker routing, task chaining, and result handling.
 const (
 	moduleConvert   = "convert"
 	moduleAnonymize = "anonymize"
 	moduleExtract   = "extract"
 )
 
-// Task status constants used for chaining checks and orphan cleanup.
+// Task status constants used for chaining checks, result handling, and orphan cleanup.
 const (
 	statusCompleted = "completed"
 	statusFailed    = "failed"
@@ -128,24 +129,32 @@ func (s *WorkerService) HandleStatusUpdate(ctx context.Context, taskID uuid.UUID
 	return task, nil
 }
 
+// convertPayload is the raw result expected from the Python convert worker
+// before Go rewrites result_payload to document IDs.
 type convertPayload struct {
 	MDStoragePath string `json:"md_storage_path"`
 	CharCount     int    `json:"char_count"`
 	SectionCount  int    `json:"section_count"`
 }
 
+// anonymizePayload is the raw result expected from the Python anonymize worker
+// before Go registers the produced artifacts as documents.
 type anonymizePayload struct {
 	AnonymizedStoragePath  string `json:"anonymized_storage_path"`
 	EntitiesMapStoragePath string `json:"entities_map_storage_path"`
 	EntityCount            int    `json:"entity_count"`
 }
 
+// convertResultFinal is the stable payload stored after convert artifacts have
+// been registered in the documents table.
 type convertResultFinal struct {
 	MDDocumentID string `json:"md_document_id"`
 	CharCount    int    `json:"char_count"`
 	SectionCount int    `json:"section_count"`
 }
 
+// anonymizeResultFinal is the stable payload stored after anonymize artifacts
+// have been registered in the documents table.
 type anonymizeResultFinal struct {
 	AnonymizedDocumentID  string `json:"anonymized_document_id"`
 	EntitiesMapDocumentID string `json:"entities_map_document_id"`
@@ -160,6 +169,8 @@ type extractedValueEntry struct {
 	Confidence pgtype.Float8
 }
 
+// triggerAnonymize creates and publishes the next task in the convert →
+// anonymize chain using the markdown path returned by the convert worker.
 func (s *WorkerService) triggerAnonymize(ctx context.Context, convertTask repository.DocumentTask) error {
 	var payload convertPayload
 	if err := json.Unmarshal(convertTask.ResultPayload, &payload); err != nil {
@@ -250,6 +261,8 @@ func (s *WorkerService) registerArtifact(
 	})
 }
 
+// registerConvertArtifacts records the markdown artifact produced by convert
+// and rewrites the task payload from storage paths to document IDs.
 func (s *WorkerService) registerConvertArtifacts(ctx context.Context, task repository.DocumentTask) error {
 	var payload convertPayload
 	if err := json.Unmarshal(task.ResultPayload, &payload); err != nil {
@@ -290,6 +303,8 @@ func (s *WorkerService) registerConvertArtifacts(ctx context.Context, task repos
 	return err
 }
 
+// registerAnonymizeArtifacts records anonymized markdown and entity-map
+// artifacts produced by anonymize and rewrites the task payload to document IDs.
 func (s *WorkerService) registerAnonymizeArtifacts(ctx context.Context, task repository.DocumentTask) error {
 	var payload anonymizePayload
 	if err := json.Unmarshal(task.ResultPayload, &payload); err != nil {
@@ -351,6 +366,8 @@ func (s *WorkerService) registerAnonymizeArtifacts(ctx context.Context, task rep
 	return err
 }
 
+// saveExtractedData materializes a completed extract task's JSON payload into
+// document_extracted_data rows keyed by the tenant's extraction_keys.
 func (s *WorkerService) saveExtractedData(ctx context.Context, task repository.DocumentTask) error {
 	if len(task.ResultPayload) == 0 || string(task.ResultPayload) == "null" {
 		return nil
@@ -376,6 +393,7 @@ func (s *WorkerService) saveExtractedData(ctx context.Context, task repository.D
 	if err != nil {
 		return fmt.Errorf("parse extract payload: %w", err)
 	}
+	var upsertErrors []string
 	for _, entry := range entries {
 		keyID, ok := keyIDs[entry.KeyName]
 		if !ok || len(entry.Value) == 0 {
@@ -388,8 +406,18 @@ func (s *WorkerService) saveExtractedData(ctx context.Context, task repository.D
 			ExtractedValue: entry.Value,
 			Confidence:     entry.Confidence,
 		}); err != nil {
-			return fmt.Errorf("upsert extracted data for key %s: %w", entry.KeyName, err)
+			s.log.Error("worker: failed to save extracted key",
+				"task_id", task.ID,
+				"document_id", task.DocumentID,
+				"key_name", entry.KeyName,
+				"key_id", keyID,
+				"err", err,
+			)
+			upsertErrors = append(upsertErrors, fmt.Sprintf("%s: %v", entry.KeyName, err))
 		}
+	}
+	if len(upsertErrors) > 0 {
+		return fmt.Errorf("save extracted data: %s", strings.Join(upsertErrors, "; "))
 	}
 	return nil
 }
@@ -468,6 +496,8 @@ func parseExtractedValueEntries(raw json.RawMessage) ([]extractedValueEntry, err
 	return entries, nil
 }
 
+// isExtractEnvelopeField identifies non-data top-level fields that may appear
+// beside model output and should not be treated as extraction key names.
 func isExtractEnvelopeField(field string) bool {
 	switch field {
 	case "metadata", "usage", "model", "errors":
@@ -477,6 +507,8 @@ func isExtractEnvelopeField(field string) bool {
 	}
 }
 
+// rawString decodes a JSON string field and returns empty string on absence or
+// type mismatch.
 func rawString(raw json.RawMessage) string {
 	var s string
 	if len(raw) == 0 || json.Unmarshal(raw, &s) != nil {
@@ -485,6 +517,7 @@ func rawString(raw json.RawMessage) string {
 	return s
 }
 
+// rawConfidence decodes an optional numeric confidence into pgtype.Float8.
 func rawConfidence(raw json.RawMessage) pgtype.Float8 {
 	var f float64
 	if len(raw) == 0 || json.Unmarshal(raw, &f) != nil {

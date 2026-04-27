@@ -5,17 +5,22 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"go-kpi-tenders/internal/repository"
 	"go-kpi-tenders/internal/service"
 	"go-kpi-tenders/pkg/errs"
 )
 
+// resolveExtractionKeyRequest is the JSON body for resolving a natural-language
+// question into a normalized extraction key.
 type resolveExtractionKeyRequest struct {
 	SourceQuery string `json:"source_query" binding:"required"`
 }
 
+// resolveExtractionKeyResponse returns the resolved key plus whether it was
+// reused from an existing source query/key_name.
 type resolveExtractionKeyResponse struct {
-	Key       any  `json:"key"`
-	Duplicate bool `json:"duplicate"`
+	Key       repository.ExtractionKey `json:"key"`
+	Duplicate bool                     `json:"duplicate"`
 }
 
 // ResolveExtractionKey converts a user's natural-language question into a

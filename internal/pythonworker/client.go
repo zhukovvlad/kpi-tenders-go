@@ -141,6 +141,8 @@ func buildCeleryMessage(req ProcessRequest, queue, taskName, replyTo, deliveryTa
 	return msgJSON, nil
 }
 
+// kwargsRepr mirrors Celery's human-readable kwargs header. It is not used for
+// execution, but it keeps queue inspection/debugging useful for extract tasks.
 func kwargsRepr(kwargs map[string]any) string {
 	if len(kwargs) == 0 {
 		return "{}"

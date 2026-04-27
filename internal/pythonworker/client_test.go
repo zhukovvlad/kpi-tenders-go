@@ -161,4 +161,9 @@ func TestBuildCeleryMessage_IncludesKwargs(t *testing.T) {
 	key := keys[0].(map[string]any)
 	assert.Equal(t, "key-1", key["id"])
 	assert.Equal(t, "advance_payment_percent", key["key_name"])
+
+	headers, ok := msg["headers"].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, headers["kwargsrepr"], "extraction_keys")
+	assert.Contains(t, headers["kwargsrepr"], "advance_payment_percent")
 }
