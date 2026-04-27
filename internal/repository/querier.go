@@ -45,8 +45,10 @@ type Querier interface {
 	// Prefer GetDocument when organization-scoped access is required.
 	GetDocumentByID(ctx context.Context, id uuid.UUID) (Document, error)
 	GetDocumentTask(ctx context.Context, arg GetDocumentTaskParams) (DocumentTask, error)
-	// Lookup extraction keys by key_name for a tenant. Returns both org-specific
-	// keys and system keys (organization_id IS NULL) that match the given names.
+	// Lookup extraction keys by key_name for a tenant. Returns org-specific keys
+	// and system keys (organization_id IS NULL) that match the given names.
+	// When both a tenant key and a system key share the same key_name, the tenant
+	// key is selected (DISTINCT ON + ORDER BY ensures deterministic precedence).
 	// Used in the extract callback to map key_name → key_id for bulk data insert.
 	GetExtractionKeysByNames(ctx context.Context, arg GetExtractionKeysByNamesParams) ([]ExtractionKey, error)
 	GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organization, error)

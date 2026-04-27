@@ -16,12 +16,15 @@ ON CONFLICT ON CONSTRAINT uq_extraction_keys_org_name DO UPDATE
 RETURNING *;
 
 -- name: GetExtractionKeysByNames :many
--- Lookup extraction keys by key_name for a tenant. Returns both org-specific
--- keys and system keys (organization_id IS NULL) that match the given names.
+-- Lookup extraction keys by key_name for a tenant. Returns org-specific keys
+-- and system keys (organization_id IS NULL) that match the given names.
+-- When both a tenant key and a system key share the same key_name, the tenant
+-- key is selected (DISTINCT ON + ORDER BY ensures deterministic precedence).
 -- Used in the extract callback to map key_name → key_id for bulk data insert.
-SELECT * FROM extraction_keys
+SELECT DISTINCT ON (key_name) * FROM extraction_keys
 WHERE key_name = ANY(sqlc.arg(key_names)::text[])
-  AND (organization_id = sqlc.arg(organization_id)::uuid OR organization_id IS NULL);
+  AND (organization_id = sqlc.arg(organization_id)::uuid OR organization_id IS NULL)
+ORDER BY key_name, (organization_id IS NULL) ASC;
 
 -- name: UpsertExtractedDatum :exec
 -- Idempotent upsert: inserts a single extracted key-value pair for a document.

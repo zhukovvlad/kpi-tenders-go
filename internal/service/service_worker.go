@@ -440,6 +440,10 @@ func (s *WorkerService) triggerExtract(ctx context.Context, resolveTask reposito
 	if err != nil {
 		return fmt.Errorf("get md document %s: %w", payload.MDDocumentID, err)
 	}
+	if mdDoc.OrganizationID != doc.OrganizationID {
+		return fmt.Errorf("md document %s does not belong to the organization of document %s",
+			payload.MDDocumentID, resolveTask.DocumentID)
+	}
 
 	// Create the extract task. ON CONFLICT DO NOTHING → pgx.ErrNoRows means
 	// the task already exists (idempotent retry of the resolve_keys callback).

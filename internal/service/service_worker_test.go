@@ -413,7 +413,7 @@ func TestWorkerService_HandleStatusUpdate_ResolveKeysCompleted_TriggersExtract(t
 
 	returnedTask := makeDocumentTask(taskID, docID, "resolve_keys", "completed", resultPayload)
 	doc := repository.Document{ID: docID, OrganizationID: orgID}
-	mdDoc := repository.Document{ID: mdDocID, StoragePath: mdPath}
+	mdDoc := repository.Document{ID: mdDocID, OrganizationID: orgID, StoragePath: mdPath}
 	extractTask := makeDocumentTask(extractTaskID, docID, "extract", "pending", nil)
 
 	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.Anything).Return(returnedTask, nil)
@@ -466,7 +466,7 @@ func TestWorkerService_HandleStatusUpdate_ResolveKeysCompleted_ExtractAlreadyExi
 
 	returnedTask := makeDocumentTask(taskID, docID, "resolve_keys", "completed", resultPayload)
 	doc := repository.Document{ID: docID, OrganizationID: orgID}
-	mdDoc := repository.Document{ID: mdDocID, StoragePath: mdPath}
+	mdDoc := repository.Document{ID: mdDocID, OrganizationID: orgID, StoragePath: mdPath}
 
 	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.Anything).Return(returnedTask, nil)
 	ms.On("GetDocumentByID", mock.Anything, docID).Return(doc, nil)

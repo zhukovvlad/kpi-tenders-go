@@ -13,9 +13,10 @@ import (
 )
 
 const getExtractionKeysByNames = `-- name: GetExtractionKeysByNames :many
-SELECT id, organization_id, key_name, source_query, data_type, created_at FROM extraction_keys
+SELECT DISTINCT ON (key_name) id, organization_id, key_name, source_query, data_type, created_at FROM extraction_keys
 WHERE key_name = ANY($1::text[])
   AND (organization_id = $2::uuid OR organization_id IS NULL)
+ORDER BY key_name, (organization_id IS NULL) ASC
 `
 
 type GetExtractionKeysByNamesParams struct {
@@ -23,8 +24,10 @@ type GetExtractionKeysByNamesParams struct {
 	OrganizationID uuid.UUID `json:"organization_id"`
 }
 
-// Lookup extraction keys by key_name for a tenant. Returns both org-specific
-// keys and system keys (organization_id IS NULL) that match the given names.
+// Lookup extraction keys by key_name for a tenant. Returns org-specific keys
+// and system keys (organization_id IS NULL) that match the given names.
+// When both a tenant key and a system key share the same key_name, the tenant
+// key is selected (DISTINCT ON + ORDER BY ensures deterministic precedence).
 // Used in the extract callback to map key_name → key_id for bulk data insert.
 func (q *Queries) GetExtractionKeysByNames(ctx context.Context, arg GetExtractionKeysByNamesParams) ([]ExtractionKey, error) {
 	rows, err := q.db.Query(ctx, getExtractionKeysByNames, arg.KeyNames, arg.OrganizationID)

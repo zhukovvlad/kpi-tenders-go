@@ -57,7 +57,7 @@ type Server struct {
 - `DocumentService` дополнительно принимает consumer-side interface `documentStorage` (только `PresignedURLWithParams`); `nil`-safe — при отсутствии S3 возвращает 500.
 - `DocumentTaskService` принимает `repository.Querier` и тот же consumer-side interface `workerPythonClient`; `nil`-safe — при отсутствии Python-клиента триггер пропускается. После INSERT берёт `input_storage_path` из `document_tasks` (заполняется subquery в SQL), передаёт в `pythonClient.Process` (best-effort: ошибки логируются, наружу не пробрасываются).
 - `WorkerService` принимает `repository.Querier` и consumer-side interface `workerPythonClient` (только `Process`); реализован `*pythonworker.Publisher`. Redis обязателен — `pythonworker.New` вызывается в `NewServer()`, при ошибке `NewServer()` возвращает `error`; завершение процесса происходит в `cmd/api/main.go`.
-- `ExtractionService` принимает `repository.Querier` и `workerPythonClient`; `Initiate(ctx, docID, orgID, questions)` создаёт задачу `resolve_keys` и триггерит Python (best-effort). `WorkerService.HandleStatusUpdate` при `resolve_keys completed` вызывает `triggerExtract` (upsert ключей + создание `extract`-задачи), при `extract completed` — `handleExtractCompleted` (upsert `extracted_data`).
+- `ExtractionService` принимает `repository.Querier` и `workerPythonClient`; `Initiate(ctx, docID, orgID, questions)` создаёт задачу `resolve_keys` и триггерит Python (best-effort). `WorkerService.HandleStatusUpdate` при `resolve_keys completed` вызывает `triggerExtract` (upsert ключей → **tenant-check mdDoc.OrganizationID == doc.OrganizationID** → создание `extract`-задачи), при `extract completed` — `handleExtractCompleted` (upsert `extracted_data`).
 - В `NewServer()` экземпляр `*pythonworker.Publisher` создаётся **один раз** через `cfg.RedisURL` и передаётся в оба сервиса (`DocumentTaskService` и `WorkerService`). `workerService` создаётся безусловно при успешной инициализации сервера. `srv.Close()` освобождает пул Redis-соединений при graceful shutdown.
 - Watchdog запускается горутиной из `cmd/api/main.go`; завершение ожидается через `sync.WaitGroup` (`watchdogDone.Wait()`) после `watchdogCancel()` и до `srv.Close()` — иначе in-flight `LPUSH` может попасть на закрытый пул.
 - `store.SQLStore` — production-реализация поверх `*pgxpool.Pool`.
@@ -133,7 +133,7 @@ _Нет активных заглушек._
 | Миграция | Таблицы / изменения |
 |----------|---------------------|
 | 000001 | Полная схема: organizations, users, construction_sites, documents (artifact_kind, parent_id CASCADE), document_tasks (retry_count, input_storage_path, md_document_id, UNIQUE document_id+module_name); все FK-индексы; idx_document_tasks_stale; триггеры tenant isolation |
-| 000002 | `extraction_keys` (org_id, key_name, source_query, data_type; UNIQUE org+name) + `extracted_data` (org_id, document_id, key_id, extracted_value; UNIQUE doc+key) + `document_tasks.md_document_id UUID` |
+| 000002 | `extraction_keys` (org_id nullable, key_name, source_query, data_type; UNIQUE NULLS NOT DISTINCT org+name) + `document_extracted_data` (org_id, document_id, key_id, extracted_value; composite FK doc+org → documents) + composite UNIQUE constraint `uq_documents_id_org` на таблице documents |
 
 > **Примечание:** следующая миграция — `catalog_positions` (pgvector RAG), будет `000003`.
 
@@ -141,9 +141,6 @@ _Нет активных заглушек._
 
 ### Unit-тесты (без Docker)
 ```text
-internal/service/service_auth_test.go               — AuthService: login, timing, JWT
-internal/service/service_organization_test.go       — OrganizationService: register, conflicts
-internal/service/service_user_test.go               — UserService: GetProfile, tenant isolation
 internal/service/service_auth_test.go               — AuthService: login, timing, JWT
 internal/service/service_organization_test.go       — OrganizationService: register, conflicts
 internal/service/service_user_test.go               — UserService: GetProfile, tenant isolation

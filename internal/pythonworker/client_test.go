@@ -186,7 +186,9 @@ func TestBuildCeleryMessage_NilKwargsProducesEmptyMap(t *testing.T) {
 	var msg map[string]any
 	require.NoError(t, json.Unmarshal(msgBytes, &msg))
 
-	bodyJSON, _ := base64.StdEncoding.DecodeString(msg["body"].(string))
+	bodyJSON, decodeErr := base64.StdEncoding.DecodeString(msg["body"].(string))
+	require.NoError(t, decodeErr)
+
 	var bodyArgs []any
 	require.NoError(t, json.Unmarshal(bodyJSON, &bodyArgs))
 
