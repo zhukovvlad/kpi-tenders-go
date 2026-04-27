@@ -49,6 +49,19 @@ type Document struct {
 	UpdatedAt    time.Time   `json:"updated_at"`
 }
 
+// Извлечённые значения ключей для конкретного документа
+type DocumentExtractedDatum struct {
+	ID uuid.UUID `json:"id"`
+	// Тенант; денормализован для composite FK-защиты (→ documents)
+	OrganizationID uuid.UUID `json:"organization_id"`
+	// Документ, из которого извлечены данные
+	DocumentID uuid.UUID `json:"document_id"`
+	// Ключ извлечения
+	KeyID uuid.UUID `json:"key_id"`
+	// Извлечённое значение; NULL если воркер не смог извлечь
+	ExtractedValue pgtype.Text `json:"extracted_value"`
+}
+
 // Задачи AI-воркера на Python для обработки документов
 type DocumentTask struct {
 	ID         uuid.UUID `json:"id"`
@@ -69,6 +82,20 @@ type DocumentTask struct {
 	InputStoragePath string    `json:"input_storage_path"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+// Ключи для семантического извлечения данных из документов
+type ExtractionKey struct {
+	ID uuid.UUID `json:"id"`
+	// NULL — системный ключ (общий для всех тенантов); NOT NULL — ключ конкретного тенанта
+	OrganizationID pgtype.UUID `json:"organization_id"`
+	// Машинное имя ключа (латиница + подчёркивание, макс. 50 симв.)
+	KeyName string `json:"key_name"`
+	// Исходный вопрос на естественном языке, на основе которого создан ключ
+	SourceQuery string `json:"source_query"`
+	// Тип значения: string | number | date | boolean
+	DataType  string    `json:"data_type"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Организации — изолированные тенанты системы

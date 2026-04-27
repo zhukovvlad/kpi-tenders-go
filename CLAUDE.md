@@ -57,6 +57,7 @@ type Server struct {
 - `DocumentService` дополнительно принимает consumer-side interface `documentStorage` (только `PresignedURLWithParams`); `nil`-safe — при отсутствии S3 возвращает 500.
 - `DocumentTaskService` принимает `repository.Querier` и тот же consumer-side interface `workerPythonClient`; `nil`-safe — при отсутствии Python-клиента триггер пропускается. После INSERT берёт `input_storage_path` из `document_tasks` (заполняется subquery в SQL), передаёт в `pythonClient.Process` (best-effort: ошибки логируются, наружу не пробрасываются).
 - `WorkerService` принимает `repository.Querier` и consumer-side interface `workerPythonClient` (только `Process`); реализован `*pythonworker.Publisher`. Redis обязателен — `pythonworker.New` вызывается в `NewServer()`, при ошибке `NewServer()` возвращает `error`; завершение процесса происходит в `cmd/api/main.go`.
+- `ExtractionService` принимает `repository.Querier` и `workerPythonClient`; `Initiate(ctx, docID, orgID, questions)` создаёт задачу `resolve_keys` и триггерит Python (best-effort). `WorkerService.HandleStatusUpdate` при `resolve_keys completed` вызывает `triggerExtract` (upsert ключей → **tenant-check mdDoc.OrganizationID == doc.OrganizationID** → создание `extract`-задачи), при `extract completed` — `handleExtractCompleted` (**batch** upsert `extracted_data` одним `BatchUpsertExtractedData` вызовом: параллельные массивы `key_ids`/`extracted_values` через `unnest`; ошибка пробрасывается наружу, логирует `HandleStatusUpdate`).
 - В `NewServer()` экземпляр `*pythonworker.Publisher` создаётся **один раз** через `cfg.RedisURL` и передаётся в оба сервиса (`DocumentTaskService` и `WorkerService`). `workerService` создаётся безусловно при успешной инициализации сервера. `srv.Close()` освобождает пул Redis-соединений при graceful shutdown.
 - Watchdog запускается горутиной из `cmd/api/main.go`; завершение ожидается через `sync.WaitGroup` (`watchdogDone.Wait()`) после `watchdogCancel()` и до `srv.Close()` — иначе in-flight `LPUSH` может попасть на закрытый пул.
 - `store.SQLStore` — production-реализация поверх `*pgxpool.Pool`.
@@ -111,6 +112,8 @@ PATCH            /internal/worker/tasks/:id/status  (worker callback, ServiceBea
 
 POST/GET         /api/v1/sites
 GET/PATCH/DELETE /api/v1/sites/:id
+
+POST             /api/v1/documents/:id/extract  (запуск семантической экстракции: resolve_keys → extract)
 ```
 
 ### Заглушки / TODO
@@ -120,7 +123,7 @@ _Нет активных заглушек._
 ### Не реализовано
 
 - Projects (таблица есть, хендлеров/сервисов/запросов нет)
-- `catalog_positions` SQLC-запросы (таблица будет создана в 000002)
+- `catalog_positions` SQLC-запросы (таблица будет создана в `000003`)
 
 ## База данных
 
@@ -129,12 +132,10 @@ _Нет активных заглушек._
 
 | Миграция | Таблицы / изменения |
 |----------|---------------------|
-| 000001 | Полная схема: organizations, users, construction_sites, documents (artifact_kind, parent_id CASCADE), document_tasks (retry_count, input_storage_path TEXT NOT NULL CHECK(btrim<>«»), UNIQUE document_id+module_name); все FK-индексы; idx_document_tasks_stale (WHERE status IN ('pending','processing')); idx_documents_root (WHERE parent_id IS NULL); idx_documents_artifact_kind UNIQUE (WHERE parent_id IS NOT NULL); documents_parent_artifact_kind_chk CHECK(parent_id IS NOT NULL → artifact_kind IS NOT NULL AND btrim<>«»); триггеры tenant isolation + запрет смены organization_id |
+| 000001 | Полная схема: organizations, users, construction_sites, documents (artifact_kind, parent_id CASCADE), document_tasks (retry_count, input_storage_path, md_document_id, UNIQUE document_id+module_name); все FK-индексы; idx_document_tasks_stale; триггеры tenant isolation |
+| 000002 | `extraction_keys` (org_id nullable, key_name, source_query, data_type; UNIQUE NULLS NOT DISTINCT org+name) + `document_extracted_data` (org_id, document_id, key_id, extracted_value; composite FK doc+org → documents; `uq_extracted_data_doc_key` UNIQUE (org_id, document_id, key_id); trigger `trg_check_extracted_data_key_org` блокирует cross-tenant key_id; триггеры `trg_immut_org_*` через `prevent_organization_id_change()` из 000001 запрещают изменение org_id после вставки; `idx_extracted_data_key_org`) + composite UNIQUE constraint `uq_documents_id_org` на таблице documents |
 
-`catalog_positions.embedding` — тип `vector` без фиксированной размерности  
-(зафиксируй как `vector(1536)` когда определишься с моделью эмбеддингов).
-
-> **Примечание:** следующая миграция — `catalog_positions` (pgvector RAG), будет `000002`.
+> **Примечание:** следующая миграция — `catalog_positions` (pgvector RAG), будет `000003`.
 
 ## Стратегия тестирования
 
@@ -144,14 +145,16 @@ internal/service/service_auth_test.go               — AuthService: login, timi
 internal/service/service_organization_test.go       — OrganizationService: register, conflicts
 internal/service/service_user_test.go               — UserService: GetProfile, tenant isolation
 internal/service/service_document_task_test.go      — DocumentTaskService: Create success, not found, conflict, db error, python trigger, python error best-effort (6 кейсов)
-internal/service/service_worker_test.go             — WorkerService: chaining, idempotency, errors, python client, CreateArtifactDocument idempotent upsert, InputStoragePath forwarding (9 кейсов)
+internal/service/service_worker_test.go             — WorkerService: chaining, idempotency, errors, python client, artifacts, resolve_keys→extract chaining, extract completed upsert (13 кейсов)
+internal/service/service_extraction_test.go         — ExtractionService: Initiate success, empty questions, not found, already exists, nil client, python error best-effort (6 кейсов)
 internal/server/errors_test.go                      — respondWithError маппинг
 internal/server/health_test.go                      — health endpoint
 internal/server/middleware_test.go                  — AuthMiddleware, ServiceBearerAuth
 internal/server/handler_user_test.go                — GET /api/v1/auth/me
-internal/server/handler_document_test.go            — POST /api/v1/documents/upload; GET ?parent_id= (valid, invalid UUID, parent not found)
+internal/server/handler_document_test.go            — POST /api/v1/documents/upload; GET ?parent_id=; GET /:id; DELETE /:id; GET /:id/url (16 кейсов)
+internal/server/handler_extraction_test.go          — POST /api/v1/documents/:id/extract: no auth, invalid id, missing/empty questions, not found, conflict, success, db error (8 кейсов)
 internal/storage/client_test.go                     — PresignedURL, Upload, Delete error wrapping + TestSafeExt (10 кейсов)
-internal/pythonworker/client_test.go                — buildCeleryMessage: поля, маршрутизация модулей, неизвестный модуль (3 кейса)
+internal/pythonworker/client_test.go                — buildCeleryMessage: поля, маршрутизация модулей, kwargs passthrough, nil kwargs, неизвестный модуль (5 кейсов)
 internal/watchdog/watchdog_test.go                  — runOnce: re-queue, maxRetries exceeded, no tasks, CAS skip, best-effort publish error, pending status re-queue (6 кейсов)
 ```
 

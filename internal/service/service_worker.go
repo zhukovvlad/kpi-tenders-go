@@ -27,8 +27,10 @@ type workerPythonClient interface {
 
 // Module names used in task chaining.
 const (
-	moduleConvert   = "convert"
-	moduleAnonymize = "anonymize"
+	moduleConvert     = "convert"
+	moduleAnonymize   = "anonymize"
+	moduleResolveKeys = "resolve_keys"
+	moduleExtract     = "extract"
 )
 
 // Task status constants used for chaining checks and orphan cleanup.
@@ -112,6 +114,20 @@ func (s *WorkerService) HandleStatusUpdate(ctx context.Context, taskID uuid.UUID
 	if task.ModuleName == moduleAnonymize && task.Status == statusCompleted {
 		if err := runWithArtifactTimeout(ctx, task, s.registerAnonymizeArtifacts); err != nil {
 			s.log.Error("worker: failed to register anonymize artifacts", "task_id", task.ID, "err", err)
+		}
+	}
+
+	// Chain: resolve_keys completed → insert new keys + trigger extract.
+	if task.ModuleName == moduleResolveKeys && task.Status == statusCompleted {
+		if err := s.triggerExtract(ctx, task); err != nil {
+			s.log.Error("worker: failed to trigger extract from resolve_keys", "task_id", task.ID, "err", err)
+		}
+	}
+
+	// Persist extracted data when extract completes.
+	if task.ModuleName == moduleExtract && task.Status == statusCompleted {
+		if err := runWithArtifactTimeout(ctx, task, s.handleExtractCompleted); err != nil {
+			s.log.Error("worker: failed to persist extracted data", "task_id", task.ID, "err", err)
 		}
 	}
 
@@ -344,4 +360,194 @@ func runWithArtifactTimeout(
 	artifactCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
 	return fn(artifactCtx, task)
+}
+
+// ── resolve_keys → extract chain ─────────────────────────────────────────────
+
+// resolveKeysPayload is the result_payload structure returned by the Python
+// resolve_keys worker after matching user questions to extraction keys.
+type resolveKeysPayload struct {
+	// NewKeys are keys the LLM identified as new (not in existing_keys).
+	// Go must INSERT them into extraction_keys before chaining.
+	NewKeys []resolveKeysNewKey `json:"new_keys"`
+	// ResolvedSchema is the full list of keys to extract, covering both new
+	// and existing keys that matched the user's questions.
+	ResolvedSchema []extractionSchemaEntry `json:"resolved_schema"`
+	// MDDocumentID is the UUID of the markdown artifact document in the DB.
+	// The extract worker reads this file from MinIO.
+	MDDocumentID string `json:"md_document_id"`
+}
+
+type resolveKeysNewKey struct {
+	KeyName     string `json:"key_name"`
+	SourceQuery string `json:"source_query"`
+	DataType    string `json:"data_type"`
+}
+
+type extractionSchemaEntry struct {
+	KeyName  string `json:"key_name"`
+	DataType string `json:"data_type"`
+}
+
+// triggerExtract processes a completed resolve_keys task:
+//  1. Inserts new extraction keys returned by Python.
+//  2. Looks up the MD artifact document to get its storage_path.
+//  3. Creates an extract task (idempotent via ON CONFLICT DO NOTHING).
+//  4. Enqueues the extract Celery task with extraction_schema and md_document_id.
+func (s *WorkerService) triggerExtract(ctx context.Context, resolveTask repository.DocumentTask) error {
+	var payload resolveKeysPayload
+	if err := json.Unmarshal(resolveTask.ResultPayload, &payload); err != nil {
+		return fmt.Errorf("parse resolve_keys payload: %w", err)
+	}
+	if payload.MDDocumentID == "" {
+		return fmt.Errorf("md_document_id is empty in resolve_keys result_payload")
+	}
+	if len(payload.ResolvedSchema) == 0 {
+		return fmt.Errorf("resolved_schema is empty in resolve_keys result_payload")
+	}
+
+	// Detach from the request context so chaining survives worker disconnect.
+	chainCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+
+	// Fetch the document to get the tenant's organization_id.
+	doc, err := s.repo.GetDocumentByID(chainCtx, resolveTask.DocumentID)
+	if err != nil {
+		return fmt.Errorf("get document for resolve_keys chain: %w", err)
+	}
+	orgUUID := pgtype.UUID{Bytes: doc.OrganizationID, Valid: true}
+
+	// Insert new keys returned by Python. Best-effort per key: a single
+	// failure does not abort the whole chain.
+	for _, k := range payload.NewKeys {
+		if _, err := s.repo.UpsertExtractionKey(chainCtx, repository.UpsertExtractionKeyParams{
+			OrganizationID: orgUUID,
+			KeyName:        k.KeyName,
+			SourceQuery:    k.SourceQuery,
+			DataType:       k.DataType,
+		}); err != nil {
+			s.log.Error("worker: failed to upsert extraction key",
+				"key_name", k.KeyName, "document_id", resolveTask.DocumentID, "err", err)
+		}
+	}
+
+	// Get the MD document's storage_path for the extract task's input_storage_path.
+	mdDocID, err := uuid.Parse(payload.MDDocumentID)
+	if err != nil {
+		return fmt.Errorf("parse md_document_id %q: %w", payload.MDDocumentID, err)
+	}
+	mdDoc, err := s.repo.GetDocumentByID(chainCtx, mdDocID)
+	if err != nil {
+		return fmt.Errorf("get md document %s: %w", payload.MDDocumentID, err)
+	}
+	if mdDoc.OrganizationID != doc.OrganizationID {
+		return fmt.Errorf("md document %s does not belong to the organization of document %s",
+			payload.MDDocumentID, resolveTask.DocumentID)
+	}
+
+	// Create the extract task. ON CONFLICT DO NOTHING → pgx.ErrNoRows means
+	// the task already exists (idempotent retry of the resolve_keys callback).
+	extractTask, err := s.repo.CreateDocumentTaskInternal(chainCtx, repository.CreateDocumentTaskInternalParams{
+		DocumentID:       resolveTask.DocumentID,
+		ModuleName:       moduleExtract,
+		InputStoragePath: mdDoc.StoragePath,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		s.log.Info("worker: extract task already exists, skipping",
+			"document_id", resolveTask.DocumentID)
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("create extract task: %w", err)
+	}
+
+	if err := s.pythonClient.Process(chainCtx, pythonworker.ProcessRequest{
+		TaskID:      extractTask.ID.String(),
+		DocumentID:  extractTask.DocumentID.String(),
+		ModuleName:  moduleExtract,
+		StoragePath: mdDoc.StoragePath,
+		Kwargs: map[string]any{
+			"extraction_schema": payload.ResolvedSchema,
+			"md_document_id":    payload.MDDocumentID,
+		},
+	}); err != nil {
+		if markErr := s.markTaskFailed(chainCtx, extractTask.ID, err.Error()); markErr != nil {
+			s.log.Error("worker: failed to mark orphaned extract task as failed",
+				"task_id", extractTask.ID, "err", markErr)
+		}
+		return fmt.Errorf("trigger extract: %w", err)
+	}
+	return nil
+}
+
+// ── extract callback handler ──────────────────────────────────────────────────
+
+// handleExtractCompleted persists the data extracted by the Python extract
+// worker into document_extracted_data. The result_payload is expected to be a
+// flat JSON object mapping key_name → extracted_value (string or null).
+// Null values are skipped — they indicate the worker could not extract that key.
+func (s *WorkerService) handleExtractCompleted(ctx context.Context, task repository.DocumentTask) error {
+	// Parse extract result_payload: {"key_name": "value", ...}
+	// Use *string so JSON null values are handled explicitly (nil = skip).
+	var extractedData map[string]*string
+	if err := json.Unmarshal(task.ResultPayload, &extractedData); err != nil {
+		return fmt.Errorf("parse extract payload: %w", err)
+	}
+	if len(extractedData) == 0 {
+		return nil // nothing to persist
+	}
+
+	// Get the document to determine organization_id for tenant scoping.
+	doc, err := s.repo.GetDocumentByID(ctx, task.DocumentID)
+	if err != nil {
+		return fmt.Errorf("get document for extract: %w", err)
+	}
+
+	// Collect the key names present in the payload.
+	keyNames := make([]string, 0, len(extractedData))
+	for name := range extractedData {
+		keyNames = append(keyNames, name)
+	}
+
+	// Look up extraction keys by name for this tenant (includes system keys).
+	keys, err := s.repo.GetExtractionKeysByNames(ctx, repository.GetExtractionKeysByNamesParams{
+		KeyNames:       keyNames,
+		OrganizationID: doc.OrganizationID,
+	})
+	if err != nil {
+		return fmt.Errorf("get extraction keys by names: %w", err)
+	}
+
+	// Build name → ID index for fast lookup.
+	keyIDByName := make(map[string]uuid.UUID, len(keys))
+	for _, k := range keys {
+		keyIDByName[k.KeyName] = k.ID
+	}
+
+	// Build parallel slices for batch upsert, skipping unknown keys and null values.
+	keyIDs := make([]uuid.UUID, 0, len(keyIDByName))
+	extractedValues := make([]string, 0, len(keyIDByName))
+	for keyName, value := range extractedData {
+		if value == nil {
+			// Python worker could not extract this key — skip.
+			continue
+		}
+		keyID, ok := keyIDByName[keyName]
+		if !ok {
+			s.log.Warn("worker: extract returned unknown key name, skipping",
+				"key_name", keyName, "document_id", task.DocumentID)
+			continue
+		}
+		keyIDs = append(keyIDs, keyID)
+		extractedValues = append(extractedValues, *value)
+	}
+	if len(keyIDs) == 0 {
+		return nil
+	}
+	return s.repo.BatchUpsertExtractedData(ctx, repository.BatchUpsertExtractedDataParams{
+		OrganizationID:  doc.OrganizationID,
+		DocumentID:      task.DocumentID,
+		KeyIds:          keyIDs,
+		ExtractedValues: extractedValues,
+	})
 }

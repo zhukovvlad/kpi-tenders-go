@@ -83,6 +83,7 @@ func TestBuildCeleryMessage_AllModules(t *testing.T) {
 		{"convert", "io", "app.workers.convert.convert_task"},
 		{"parse_invoice", "io", "app.workers.parse_invoice.parse_invoice_task"},
 		{"anonymize", "llm", "app.workers.anonymize.anonymize_task"},
+		{"resolve_keys", "llm", "app.workers.resolve_keys.resolve_keys_task"},
 		{"extract", "llm", "app.workers.extract.extract_task"},
 	}
 
@@ -121,4 +122,77 @@ func TestBuildCeleryMessage_AllModules(t *testing.T) {
 func TestBuildCeleryMessage_UnknownModuleIsRejected(t *testing.T) {
 	err := ValidateModule("not_a_module")
 	assert.Error(t, err)
+}
+
+// TestBuildCeleryMessage_KwargsAreMergedIntoBody verifies that extra kwargs
+// supplied via ProcessRequest.Kwargs appear in the Celery v2 body kwargs map.
+// This is critical for resolve_keys and extract which need raw_questions,
+// existing_keys, extraction_schema, and md_document_id passed as kwargs.
+func TestBuildCeleryMessage_KwargsAreMergedIntoBody(t *testing.T) {
+	req := ProcessRequest{
+		TaskID:      "task-id",
+		DocumentID:  "doc-id",
+		ModuleName:  "resolve_keys",
+		StoragePath: "tenders/doc.pdf",
+		Kwargs: map[string]any{
+			"raw_questions": []string{"What is the price?"},
+			"existing_keys": []map[string]string{{"key_name": "price"}},
+		},
+	}
+
+	queue, taskName, err := resolveModule(req.ModuleName)
+	require.NoError(t, err)
+
+	msgBytes, err := buildCeleryMessage(req, queue, taskName, "reply-id", "delivery-id")
+	require.NoError(t, err)
+
+	var msg map[string]any
+	require.NoError(t, json.Unmarshal(msgBytes, &msg))
+
+	bodyB64, ok := msg["body"].(string)
+	require.True(t, ok)
+
+	bodyJSON, err := base64.StdEncoding.DecodeString(bodyB64)
+	require.NoError(t, err)
+
+	var bodyArgs []any
+	require.NoError(t, json.Unmarshal(bodyJSON, &bodyArgs))
+	require.Len(t, bodyArgs, 3)
+
+	kwargs, ok := bodyArgs[1].(map[string]any)
+	require.True(t, ok, "second element must be the kwargs map")
+
+	assert.Contains(t, kwargs, "raw_questions", "raw_questions must be in kwargs")
+	assert.Contains(t, kwargs, "existing_keys", "existing_keys must be in kwargs")
+}
+
+// TestBuildCeleryMessage_NilKwargsProducesEmptyMap ensures that a nil Kwargs
+// field does not cause a panic and results in an empty kwargs map in the body.
+func TestBuildCeleryMessage_NilKwargsProducesEmptyMap(t *testing.T) {
+	req := ProcessRequest{
+		TaskID:      "t",
+		DocumentID:  "d",
+		ModuleName:  "convert",
+		StoragePath: "p.pdf",
+		Kwargs:      nil,
+	}
+
+	queue, taskName, err := resolveModule(req.ModuleName)
+	require.NoError(t, err)
+
+	msgBytes, err := buildCeleryMessage(req, queue, taskName, "r", "d2")
+	require.NoError(t, err)
+
+	var msg map[string]any
+	require.NoError(t, json.Unmarshal(msgBytes, &msg))
+
+	bodyJSON, decodeErr := base64.StdEncoding.DecodeString(msg["body"].(string))
+	require.NoError(t, decodeErr)
+
+	var bodyArgs []any
+	require.NoError(t, json.Unmarshal(bodyJSON, &bodyArgs))
+
+	kwargs, ok := bodyArgs[1].(map[string]any)
+	require.True(t, ok)
+	assert.Empty(t, kwargs, "nil Kwargs must produce an empty map, not nil")
 }

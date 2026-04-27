@@ -12,6 +12,13 @@ import (
 )
 
 type Querier interface {
+	// Batch idempotent upsert: inserts all extracted key-value pairs for a document
+	// in a single statement. Two unnest() calls in the SELECT list are expanded
+	// in lockstep by PostgreSQL (guaranteed since PG 10), zipping key_ids with
+	// extracted_values row-by-row. FROM unnest(arr, arr) would be cleaner but
+	// sqlc does not support multi-arg unnest in the FROM clause. On conflict,
+	// latest value wins.
+	BatchUpsertExtractedData(ctx context.Context, arg BatchUpsertExtractedDataParams) error
 	// Idempotent artifact creation: on conflict (parent_id, artifact_kind) updates
 	// artifact metadata from the latest callback so that RETURNING yields the current row state.
 	// Prevents duplicate artifact documents when a worker sends a duplicate 'completed' callback.
@@ -45,6 +52,12 @@ type Querier interface {
 	// Prefer GetDocument when organization-scoped access is required.
 	GetDocumentByID(ctx context.Context, id uuid.UUID) (Document, error)
 	GetDocumentTask(ctx context.Context, arg GetDocumentTaskParams) (DocumentTask, error)
+	// Lookup extraction keys by key_name for a tenant. Returns org-specific keys
+	// and system keys (organization_id IS NULL) that match the given names.
+	// When both a tenant key and a system key share the same key_name, the tenant
+	// key is selected (DISTINCT ON + ORDER BY ensures deterministic precedence).
+	// Used in the extract callback to map key_name → key_id for bulk data insert.
+	GetExtractionKeysByNames(ctx context.Context, arg GetExtractionKeysByNamesParams) ([]ExtractionKey, error)
 	GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organization, error)
 	GetOrganizationByINN(ctx context.Context, inn pgtype.Text) (Organization, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
@@ -53,13 +66,17 @@ type Querier interface {
 	ListConstructionSitesByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ConstructionSite, error)
 	// Все артефакты, порождённые данным документом; scoped by organization_id for tenant isolation.
 	ListDocumentsByParent(ctx context.Context, arg ListDocumentsByParentParams) ([]Document, error)
+	// Returns all keys visible to the given tenant: org-specific keys AND system
+	// keys (organization_id IS NULL) shared across all tenants.
+	ListExtractionKeysByOrg(ctx context.Context, dollar_1 uuid.UUID) ([]ExtractionKey, error)
 	// Только корневые документы (загруженные пользователем, не артефакты)
 	ListRootDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]Document, error)
 	ListRootDocumentsBySite(ctx context.Context, arg ListRootDocumentsBySiteParams) ([]Document, error)
-	// Watchdog: returns stuck tasks (pending or processing) whose updated_at is older than $1
-	// (cutoff timestamp). Uses dt.input_storage_path so the correct file path is returned
-	// for every module: 'convert' tasks get the original document path, 'anonymize' tasks
-	// get the convert_md artifact path (stored at task creation time).
+	// Watchdog: returns stuck tasks (pending or processing) whose updated_at is older than
+	// sqlc.arg(cutoff). Results are limited by sqlc.arg(batch_size). Uses
+	// dt.input_storage_path so the correct file path is returned for every module:
+	// 'convert' tasks get the original document path, 'anonymize' tasks get the
+	// convert_md artifact path (stored at task creation time).
 	// Covers two failure modes: worker died mid-processing (processing) and
 	// Redis message was lost before worker picked it up (pending).
 	// No org-check; caller must be trusted (watchdog goroutine only).
@@ -86,6 +103,13 @@ type Querier interface {
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (UpdateUserRow, error)
 	// Internal: no org-check; callers must be authenticated via SERVICE_TOKEN.
 	UpdateWorkerTaskStatus(ctx context.Context, arg UpdateWorkerTaskStatusParams) (DocumentTask, error)
+	// Idempotent upsert: inserts a single extracted key-value pair for a document.
+	// On conflict (organization_id, document_id, key_id) updates the value so repeated worker
+	// callbacks are safe and the latest value wins.
+	UpsertExtractedDatum(ctx context.Context, arg UpsertExtractedDatumParams) error
+	// Idempotent upsert: on conflict (org, key_name), updates source_query and
+	// data_type so that RETURNING always yields the current row.
+	UpsertExtractionKey(ctx context.Context, arg UpsertExtractionKeyParams) (ExtractionKey, error)
 }
 
 var _ Querier = (*Queries)(nil)

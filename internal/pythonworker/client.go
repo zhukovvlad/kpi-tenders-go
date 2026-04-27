@@ -50,6 +50,9 @@ type ProcessRequest struct {
 	DocumentID  string
 	ModuleName  string
 	StoragePath string
+	// Kwargs are merged into the Celery task kwargs (empty map when nil).
+	// Use for modules that require extra named arguments (e.g. resolve_keys, extract).
+	Kwargs map[string]any
 }
 
 // Process publishes a Celery v2 task message to the appropriate Redis queue.
@@ -76,9 +79,13 @@ func (p *Publisher) Process(ctx context.Context, req ProcessRequest) error {
 // deterministic and straightforward to unit test.
 func buildCeleryMessage(req ProcessRequest, queue, taskName, replyTo, deliveryTag string) ([]byte, error) {
 	// Celery protocol v2 body: [args, kwargs, embed]
+	kwargs := map[string]any{}
+	for k, v := range req.Kwargs {
+		kwargs[k] = v
+	}
 	bodyArgs := []any{
 		[]any{req.TaskID, req.DocumentID, req.StoragePath},
-		map[string]any{},
+		kwargs,
 		map[string]any{
 			"callbacks": nil,
 			"errbacks":  nil,
@@ -109,7 +116,7 @@ func buildCeleryMessage(req ProcessRequest, queue, taskName, replyTo, deliveryTa
 			"root_id":     req.TaskID,
 			"parent_id":   nil,
 			"argsrepr":    fmt.Sprintf("(%s, %s, %s)", strconv.Quote(req.TaskID), strconv.Quote(req.DocumentID), strconv.Quote(req.StoragePath)),
-			"kwargsrepr":  "{}",
+			"kwargsrepr":  kwargsRepr(kwargs),
 			"origin":      "go-kpi-tenders",
 		},
 		"properties": map[string]any{
@@ -133,6 +140,20 @@ func buildCeleryMessage(req ProcessRequest, queue, taskName, replyTo, deliveryTa
 	return msgJSON, nil
 }
 
+// kwargsRepr returns a JSON string representation of kwargs for use in the
+// Celery message headers kwargsrepr field. Marshalling errors are silently
+// ignored — the field is informational only and does not affect execution.
+func kwargsRepr(kwargs map[string]any) string {
+	if len(kwargs) == 0 {
+		return "{}"
+	}
+	b, err := json.Marshal(kwargs)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
+
 // resolveModule maps a module name to its Redis queue and Celery task name.
 func resolveModule(module string) (queue, taskName string, err error) {
 	switch module {
@@ -142,6 +163,8 @@ func resolveModule(module string) (queue, taskName string, err error) {
 		return "io", "app.workers.parse_invoice.parse_invoice_task", nil
 	case "anonymize":
 		return "llm", "app.workers.anonymize.anonymize_task", nil
+	case "resolve_keys":
+		return "llm", "app.workers.resolve_keys.resolve_keys_task", nil
 	case "extract":
 		return "llm", "app.workers.extract.extract_task", nil
 	default:
