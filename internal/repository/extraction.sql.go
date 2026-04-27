@@ -139,7 +139,7 @@ type UpsertExtractedDatumParams struct {
 }
 
 // Idempotent upsert: inserts a single extracted key-value pair for a document.
-// On conflict (document_id, key_id) updates the value so repeated worker
+// On conflict (organization_id, document_id, key_id) updates the value so repeated worker
 // callbacks are safe and the latest value wins.
 func (q *Queries) UpsertExtractedDatum(ctx context.Context, arg UpsertExtractedDatumParams) error {
 	_, err := q.db.Exec(ctx, upsertExtractedDatum,

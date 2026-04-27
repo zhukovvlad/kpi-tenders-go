@@ -104,7 +104,7 @@ type Querier interface {
 	// Internal: no org-check; callers must be authenticated via SERVICE_TOKEN.
 	UpdateWorkerTaskStatus(ctx context.Context, arg UpdateWorkerTaskStatusParams) (DocumentTask, error)
 	// Idempotent upsert: inserts a single extracted key-value pair for a document.
-	// On conflict (document_id, key_id) updates the value so repeated worker
+	// On conflict (organization_id, document_id, key_id) updates the value so repeated worker
 	// callbacks are safe and the latest value wins.
 	UpsertExtractedDatum(ctx context.Context, arg UpsertExtractedDatumParams) error
 	// Idempotent upsert: on conflict (org, key_name), updates source_query and

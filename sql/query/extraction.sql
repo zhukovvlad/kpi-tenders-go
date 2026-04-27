@@ -28,7 +28,7 @@ ORDER BY key_name, (organization_id IS NULL) ASC;
 
 -- name: UpsertExtractedDatum :exec
 -- Idempotent upsert: inserts a single extracted key-value pair for a document.
--- On conflict (document_id, key_id) updates the value so repeated worker
+-- On conflict (organization_id, document_id, key_id) updates the value so repeated worker
 -- callbacks are safe and the latest value wins.
 INSERT INTO document_extracted_data (organization_id, document_id, key_id, extracted_value)
 VALUES ($1, $2, $3, $4)
