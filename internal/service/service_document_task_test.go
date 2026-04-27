@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -211,4 +212,79 @@ func TestDocumentTaskService_Create_PythonError_ReturnsTaskWithoutError(t *testi
 	assert.Equal(t, task, result)
 	mq.AssertExpectations(t)
 	pc.AssertExpectations(t)
+}
+
+func TestDocumentTaskService_Create_ExtractPassesExtractionKeys(t *testing.T) {
+	mq := new(storemock.MockQuerier)
+	pc := new(mockPythonClient)
+	svc := NewDocumentTaskService(mq, pc, newTestLogger())
+
+	docID := uuid.New()
+	orgID := uuid.New()
+	taskID := uuid.New()
+	keyID := uuid.New()
+
+	params := repository.CreateDocumentTaskParams{
+		DocumentID:     docID,
+		ModuleName:     "extract",
+		OrganizationID: orgID,
+	}
+	task := repository.DocumentTask{
+		ID:               taskID,
+		DocumentID:       docID,
+		ModuleName:       "extract",
+		InputStoragePath: "orgs/abc/anon.md",
+	}
+
+	mq.On("ListExtractionKeyPayloadsByOrganization", mock.Anything, orgID).
+		Return([]repository.ListExtractionKeyPayloadsByOrganizationRow{{
+			ID:          keyID,
+			KeyName:     "advance_payment_percent",
+			SourceQuery: "Какой процент аванса?",
+			Description: pgtype.Text{String: "Какой процент аванса?", Valid: true},
+			DataType:    "number",
+			IsRequired:  false,
+		}}, nil)
+	mq.On("CreateDocumentTask", mock.Anything, params).Return(task, nil)
+	pc.On("Process", mock.Anything, mock.MatchedBy(func(req pythonworker.ProcessRequest) bool {
+		keys, ok := req.Kwargs["extraction_keys"].([]map[string]any)
+		return ok &&
+			req.TaskID == taskID.String() &&
+			req.DocumentID == docID.String() &&
+			req.ModuleName == "extract" &&
+			req.StoragePath == "orgs/abc/anon.md" &&
+			len(keys) == 1 &&
+			keys[0]["id"] == keyID.String() &&
+			keys[0]["key_name"] == "advance_payment_percent"
+	})).Return(nil)
+
+	result, err := svc.Create(context.Background(), params)
+
+	require.NoError(t, err)
+	assert.Equal(t, task, result)
+	mq.AssertExpectations(t)
+	pc.AssertExpectations(t)
+}
+
+func TestDocumentTaskService_Create_ExtractWithNoKeys_ReturnsValidationFailed(t *testing.T) {
+	mq := new(storemock.MockQuerier)
+	svc := NewDocumentTaskService(mq, nil, newTestLogger())
+
+	orgID := uuid.New()
+
+	mq.On("ListExtractionKeyPayloadsByOrganization", mock.Anything, orgID).
+		Return([]repository.ListExtractionKeyPayloadsByOrganizationRow{}, nil)
+
+	_, err := svc.Create(context.Background(), repository.CreateDocumentTaskParams{
+		DocumentID:     uuid.New(),
+		ModuleName:     "extract",
+		OrganizationID: orgID,
+	})
+
+	require.Error(t, err)
+	var appErr *errs.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, errs.CodeValidationFailed, appErr.Code)
+	// INSERT must NOT be called when there are no extraction keys.
+	mq.AssertNotCalled(t, "CreateDocumentTask")
 }

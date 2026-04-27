@@ -365,3 +365,194 @@ func TestWorkerService_HandleStatusUpdate_AnonymizeCompleted_RegistersArtifacts(
 	ms.AssertExpectations(t)
 	pc.AssertNotCalled(t, "Process")
 }
+
+func TestWorkerService_HandleStatusUpdate_ExtractCompleted_SavesExtractedData(t *testing.T) {
+	ctx := context.Background()
+	ms := new(storemock.MockStore)
+	pc := new(mockPythonClient)
+
+	taskID := uuid.New()
+	docID := uuid.New()
+	orgID := uuid.New()
+	keyID := uuid.New()
+
+	payload, _ := json.Marshal(map[string]any{
+		"extracted_data": []map[string]any{
+			{
+				"key_name":   "advance_payment_percent",
+				"value":      15.5,
+				"confidence": 0.91,
+			},
+		},
+	})
+	returnedTask := makeDocumentTask(taskID, docID, "extract", "completed", payload)
+
+	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.Anything).Return(returnedTask, nil)
+	ms.On("GetDocumentOrganizationID", mock.Anything, docID).Return(orgID, nil)
+	ms.On("ListExtractionKeysByOrganization", mock.Anything, orgID).
+		Return([]repository.ExtractionKey{{
+			ID:             keyID,
+			OrganizationID: orgID,
+			KeyName:        "advance_payment_percent",
+			SourceQuery:    "Какой процент аванса?",
+			DataType:       "number",
+		}}, nil)
+	ms.On("UpsertDocumentExtractedData", mock.Anything, mock.MatchedBy(func(p repository.UpsertDocumentExtractedDataParams) bool {
+		return p.OrganizationID == orgID &&
+			p.DocumentID == docID &&
+			p.KeyID == keyID &&
+			string(p.ExtractedValue) == "15.5" &&
+			p.Confidence.Valid &&
+			p.Confidence.Float64 == 0.91
+	})).Return(repository.DocumentExtractedDatum{ID: uuid.New()}, nil)
+
+	svc := newTestWorkerService(ms, pc)
+	_, err := svc.HandleStatusUpdate(ctx, taskID, WorkerStatusUpdate{
+		Status:        "completed",
+		ResultPayload: payload,
+	})
+
+	require.NoError(t, err)
+	ms.AssertExpectations(t)
+	pc.AssertNotCalled(t, "Process")
+}
+
+func TestParseExtractedValueEntries_AcceptsSupportedPayloadShapes(t *testing.T) {
+	cases := []struct {
+		name              string
+		payload           string
+		wantKey           string
+		wantValue         string
+		wantConfidence    float64
+		wantConfidenceSet bool
+		wantLen           int
+	}{
+		{
+			name:              "enveloped array",
+			payload:           `{"extracted_data":[{"key_name":"advance_payment_percent","value":15.5,"confidence":0.91,"extra":"ignored"}]}`,
+			wantKey:           "advance_payment_percent",
+			wantValue:         `15.5`,
+			wantConfidence:    0.91,
+			wantConfidenceSet: true,
+			wantLen:           1,
+		},
+		{
+			name:              "plain array",
+			payload:           `[{"key":"advance_payment_percent","extracted_value":15,"confidence":0.8}]`,
+			wantKey:           "advance_payment_percent",
+			wantValue:         `15`,
+			wantConfidence:    0.8,
+			wantConfidenceSet: true,
+			wantLen:           1,
+		},
+		{
+			name:              "nested object value",
+			payload:           `{"advance_payment_percent":{"value":15,"confidence":0.75}}`,
+			wantKey:           "advance_payment_percent",
+			wantValue:         `15`,
+			wantConfidence:    0.75,
+			wantConfidenceSet: true,
+			wantLen:           1,
+		},
+		{
+			name:      "direct object value with metadata ignored",
+			payload:   `{"advance_payment_percent":15,"metadata":{"model":"test"},"usage":{"tokens":10}}`,
+			wantKey:   "advance_payment_percent",
+			wantValue: `15`,
+			wantLen:   1,
+		},
+		{
+			name:    "unknown envelope fields only",
+			payload: `{"metadata":{"model":"test"},"usage":{"tokens":10}}`,
+			wantLen: 0,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			entries, err := parseExtractedValueEntries(json.RawMessage(tc.payload))
+
+			require.NoError(t, err)
+			require.Len(t, entries, tc.wantLen)
+			if tc.wantLen == 0 {
+				return
+			}
+			assert.Equal(t, tc.wantKey, entries[0].KeyName)
+			assert.JSONEq(t, tc.wantValue, string(entries[0].Value))
+			assert.Equal(t, tc.wantConfidenceSet, entries[0].Confidence.Valid)
+			if tc.wantConfidenceSet {
+				assert.Equal(t, tc.wantConfidence, entries[0].Confidence.Float64)
+			}
+		})
+	}
+}
+
+func TestWorkerService_HandleStatusUpdate_ExtractCompleted_ContinuesAfterUpsertError(t *testing.T) {
+	ctx := context.Background()
+	ms := new(storemock.MockStore)
+	pc := new(mockPythonClient)
+
+	taskID := uuid.New()
+	docID := uuid.New()
+	orgID := uuid.New()
+	firstKeyID := uuid.New()
+	secondKeyID := uuid.New()
+
+	payload, _ := json.Marshal(map[string]any{
+		"extracted_data": []map[string]any{
+			{"key_name": "advance_payment_percent", "value": 15},
+			{"key_name": "contract_price", "value": 1000},
+		},
+	})
+	returnedTask := makeDocumentTask(taskID, docID, "extract", "completed", payload)
+
+	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.Anything).Return(returnedTask, nil)
+	ms.On("GetDocumentOrganizationID", mock.Anything, docID).Return(orgID, nil)
+	ms.On("ListExtractionKeysByOrganization", mock.Anything, orgID).
+		Return([]repository.ExtractionKey{
+			{ID: firstKeyID, OrganizationID: orgID, KeyName: "advance_payment_percent"},
+			{ID: secondKeyID, OrganizationID: orgID, KeyName: "contract_price"},
+		}, nil)
+	ms.On("UpsertDocumentExtractedData", mock.Anything, mock.MatchedBy(func(p repository.UpsertDocumentExtractedDataParams) bool {
+		return p.KeyID == firstKeyID
+	})).Return(repository.DocumentExtractedDatum{}, errors.New("bad value")).Once()
+	ms.On("UpsertDocumentExtractedData", mock.Anything, mock.MatchedBy(func(p repository.UpsertDocumentExtractedDataParams) bool {
+		return p.KeyID == secondKeyID && string(p.ExtractedValue) == "1000"
+	})).Return(repository.DocumentExtractedDatum{ID: uuid.New()}, nil).Once()
+
+	svc := newTestWorkerService(ms, pc)
+	_, err := svc.HandleStatusUpdate(ctx, taskID, WorkerStatusUpdate{
+		Status:        "completed",
+		ResultPayload: payload,
+	})
+
+	require.NoError(t, err)
+	ms.AssertExpectations(t)
+	pc.AssertNotCalled(t, "Process")
+}
+
+func TestRawConfidence(t *testing.T) {
+	tests := []struct {
+		name  string
+		raw   string
+		want  float64
+		valid bool
+	}{
+		{"valid zero", "0", 0, true},
+		{"valid one", "1", 1, true},
+		{"valid mid", "0.85", 0.85, true},
+		{"above range", "1.1", 0, false},
+		{"negative", "-0.1", 0, false},
+		{"empty", "", 0, false},
+		{"non-number", `"high"`, 0, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := rawConfidence(json.RawMessage(tt.raw))
+			assert.Equal(t, tt.valid, got.Valid)
+			if tt.valid {
+				assert.InDelta(t, tt.want, got.Float64, 1e-9)
+			}
+		})
+	}
+}

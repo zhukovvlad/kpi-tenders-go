@@ -32,6 +32,7 @@ type Querier interface {
 	// returns pgx.ErrNoRows, which callers should treat as "task already exists".
 	// $3 is input_storage_path: the file path the Python worker will receive for this module.
 	CreateDocumentTaskInternal(ctx context.Context, arg CreateDocumentTaskInternalParams) (DocumentTask, error)
+	CreateExtractionKey(ctx context.Context, arg CreateExtractionKeyParams) (ExtractionKey, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteConstructionSite(ctx context.Context, arg DeleteConstructionSiteParams) (int64, error)
@@ -44,7 +45,10 @@ type Querier interface {
 	// Callers MUST enforce organization isolation at the service layer.
 	// Prefer GetDocument when organization-scoped access is required.
 	GetDocumentByID(ctx context.Context, id uuid.UUID) (Document, error)
+	GetDocumentOrganizationID(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	GetDocumentTask(ctx context.Context, arg GetDocumentTaskParams) (DocumentTask, error)
+	GetExtractionKeyByOrgAndKeyName(ctx context.Context, arg GetExtractionKeyByOrgAndKeyNameParams) (ExtractionKey, error)
+	GetExtractionKeyByOrgAndSourceQuery(ctx context.Context, arg GetExtractionKeyByOrgAndSourceQueryParams) (ExtractionKey, error)
 	GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organization, error)
 	GetOrganizationByINN(ctx context.Context, inn pgtype.Text) (Organization, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
@@ -53,13 +57,16 @@ type Querier interface {
 	ListConstructionSitesByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ConstructionSite, error)
 	// Все артефакты, порождённые данным документом; scoped by organization_id for tenant isolation.
 	ListDocumentsByParent(ctx context.Context, arg ListDocumentsByParentParams) ([]Document, error)
+	ListExtractionKeyPayloadsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ListExtractionKeyPayloadsByOrganizationRow, error)
+	ListExtractionKeysByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ExtractionKey, error)
 	// Только корневые документы (загруженные пользователем, не артефакты)
 	ListRootDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]Document, error)
 	ListRootDocumentsBySite(ctx context.Context, arg ListRootDocumentsBySiteParams) ([]Document, error)
-	// Watchdog: returns stuck tasks (pending or processing) whose updated_at is older than $1
-	// (cutoff timestamp). Uses dt.input_storage_path so the correct file path is returned
-	// for every module: 'convert' tasks get the original document path, 'anonymize' tasks
-	// get the convert_md artifact path (stored at task creation time).
+	// Watchdog: returns stuck tasks (pending or processing) whose updated_at is older than
+	// sqlc.arg(cutoff). Results are limited by sqlc.arg(batch_size). Uses
+	// dt.input_storage_path so the correct file path is returned for every module:
+	// 'convert' tasks get the original document path, 'anonymize' tasks get the
+	// convert_md artifact path (stored at task creation time).
 	// Covers two failure modes: worker died mid-processing (processing) and
 	// Redis message was lost before worker picked it up (pending).
 	// No org-check; caller must be trusted (watchdog goroutine only).
@@ -86,6 +93,7 @@ type Querier interface {
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (UpdateUserRow, error)
 	// Internal: no org-check; callers must be authenticated via SERVICE_TOKEN.
 	UpdateWorkerTaskStatus(ctx context.Context, arg UpdateWorkerTaskStatusParams) (DocumentTask, error)
+	UpsertDocumentExtractedData(ctx context.Context, arg UpsertDocumentExtractedDataParams) (DocumentExtractedDatum, error)
 }
 
 var _ Querier = (*Queries)(nil)

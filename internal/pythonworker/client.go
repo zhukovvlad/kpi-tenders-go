@@ -50,6 +50,9 @@ type ProcessRequest struct {
 	DocumentID  string
 	ModuleName  string
 	StoragePath string
+	// Kwargs are encoded as the second element of the Celery v2 body. Most
+	// modules leave it empty; extract uses it to receive extraction_keys.
+	Kwargs map[string]any
 }
 
 // Process publishes a Celery v2 task message to the appropriate Redis queue.
@@ -75,10 +78,15 @@ func (p *Publisher) Process(ctx context.Context, req ProcessRequest) error {
 // deliveryTag (unique per-message UUIDs) so that the function itself is
 // deterministic and straightforward to unit test.
 func buildCeleryMessage(req ProcessRequest, queue, taskName, replyTo, deliveryTag string) ([]byte, error) {
+	kwargs := req.Kwargs
+	if kwargs == nil {
+		kwargs = map[string]any{}
+	}
+
 	// Celery protocol v2 body: [args, kwargs, embed]
 	bodyArgs := []any{
 		[]any{req.TaskID, req.DocumentID, req.StoragePath},
-		map[string]any{},
+		kwargs,
 		map[string]any{
 			"callbacks": nil,
 			"errbacks":  nil,
@@ -109,7 +117,7 @@ func buildCeleryMessage(req ProcessRequest, queue, taskName, replyTo, deliveryTa
 			"root_id":     req.TaskID,
 			"parent_id":   nil,
 			"argsrepr":    fmt.Sprintf("(%s, %s, %s)", strconv.Quote(req.TaskID), strconv.Quote(req.DocumentID), strconv.Quote(req.StoragePath)),
-			"kwargsrepr":  "{}",
+			"kwargsrepr":  kwargsRepr(kwargs),
 			"origin":      "go-kpi-tenders",
 		},
 		"properties": map[string]any{
@@ -131,6 +139,19 @@ func buildCeleryMessage(req ProcessRequest, queue, taskName, replyTo, deliveryTa
 		return nil, fmt.Errorf("pythonworker: marshal message: %w", err)
 	}
 	return msgJSON, nil
+}
+
+// kwargsRepr mirrors Celery's human-readable kwargs header. It is not used for
+// execution, but it keeps queue inspection/debugging useful for extract tasks.
+func kwargsRepr(kwargs map[string]any) string {
+	if len(kwargs) == 0 {
+		return "{}"
+	}
+	raw, err := json.Marshal(kwargs)
+	if err != nil {
+		return "{...}"
+	}
+	return string(raw)
 }
 
 // resolveModule maps a module name to its Redis queue and Celery task name.
