@@ -13,8 +13,11 @@ import (
 
 type Querier interface {
 	// Batch idempotent upsert: inserts all extracted key-value pairs for a document
-	// in a single statement. key_ids and extracted_values are parallel arrays zipped
-	// by PostgreSQL. On conflict, latest value wins.
+	// in a single statement. Two unnest() calls in the SELECT list are expanded
+	// in lockstep by PostgreSQL (guaranteed since PG 10), zipping key_ids with
+	// extracted_values row-by-row. FROM unnest(arr, arr) would be cleaner but
+	// sqlc does not support multi-arg unnest in the FROM clause. On conflict,
+	// latest value wins.
 	BatchUpsertExtractedData(ctx context.Context, arg BatchUpsertExtractedDataParams) error
 	// Idempotent artifact creation: on conflict (parent_id, artifact_kind) updates
 	// artifact metadata from the latest callback so that RETURNING yields the current row state.

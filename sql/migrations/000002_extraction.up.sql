@@ -49,7 +49,7 @@ CREATE TABLE document_extracted_data (
     key_id          UUID        NOT NULL REFERENCES extraction_keys(id) ON DELETE CASCADE,
     extracted_value TEXT,
     CONSTRAINT uq_extracted_data_doc_key
-        UNIQUE (document_id, key_id),
+        UNIQUE (organization_id, document_id, key_id),
     CONSTRAINT fk_extracted_data_doc_org
         FOREIGN KEY (document_id, organization_id)
         REFERENCES documents (id, organization_id)

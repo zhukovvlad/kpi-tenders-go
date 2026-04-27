@@ -37,8 +37,11 @@ ON CONFLICT ON CONSTRAINT uq_extracted_data_doc_key DO UPDATE
 
 -- name: BatchUpsertExtractedData :exec
 -- Batch idempotent upsert: inserts all extracted key-value pairs for a document
--- in a single statement. key_ids and extracted_values are parallel arrays zipped
--- by PostgreSQL. On conflict, latest value wins.
+-- in a single statement. Two unnest() calls in the SELECT list are expanded
+-- in lockstep by PostgreSQL (guaranteed since PG 10), zipping key_ids with
+-- extracted_values row-by-row. FROM unnest(arr, arr) would be cleaner but
+-- sqlc does not support multi-arg unnest in the FROM clause. On conflict,
+-- latest value wins.
 INSERT INTO document_extracted_data (organization_id, document_id, key_id, extracted_value)
 SELECT sqlc.arg(organization_id)::uuid,
        sqlc.arg(document_id)::uuid,

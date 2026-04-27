@@ -538,15 +538,10 @@ func (s *WorkerService) handleExtractCompleted(ctx context.Context, task reposit
 	if len(keyIDs) == 0 {
 		return nil
 	}
-	if err := s.repo.BatchUpsertExtractedData(ctx, repository.BatchUpsertExtractedDataParams{
+	return s.repo.BatchUpsertExtractedData(ctx, repository.BatchUpsertExtractedDataParams{
 		OrganizationID:  doc.OrganizationID,
 		DocumentID:      task.DocumentID,
 		KeyIds:          keyIDs,
 		ExtractedValues: extractedValues,
-	}); err != nil {
-		s.log.Error("worker: failed to batch upsert extracted data",
-			"document_id", task.DocumentID, "err", err)
-	}
-
-	return nil
+	})
 }
