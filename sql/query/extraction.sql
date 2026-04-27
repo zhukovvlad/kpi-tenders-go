@@ -34,3 +34,15 @@ INSERT INTO document_extracted_data (organization_id, document_id, key_id, extra
 VALUES ($1, $2, $3, $4)
 ON CONFLICT ON CONSTRAINT uq_extracted_data_doc_key DO UPDATE
     SET extracted_value = EXCLUDED.extracted_value;
+
+-- name: BatchUpsertExtractedData :exec
+-- Batch idempotent upsert: inserts all extracted key-value pairs for a document
+-- in a single statement. key_ids and extracted_values are parallel arrays zipped
+-- by PostgreSQL. On conflict, latest value wins.
+INSERT INTO document_extracted_data (organization_id, document_id, key_id, extracted_value)
+SELECT sqlc.arg(organization_id)::uuid,
+       sqlc.arg(document_id)::uuid,
+       unnest(sqlc.arg(key_ids)::uuid[]),
+       unnest(sqlc.arg(extracted_values)::text[])
+ON CONFLICT ON CONSTRAINT uq_extracted_data_doc_key DO UPDATE
+    SET extracted_value = EXCLUDED.extracted_value;

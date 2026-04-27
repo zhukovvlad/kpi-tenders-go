@@ -56,8 +56,9 @@ CREATE TABLE document_extracted_data (
         ON DELETE CASCADE
 );
 
-CREATE INDEX idx_extracted_data_document_id    ON document_extracted_data(document_id);
-CREATE INDEX idx_extracted_data_organization_id ON document_extracted_data(organization_id);
+CREATE INDEX idx_extracted_data_document_id     ON document_extracted_data(document_id);
+CREATE INDEX idx_extracted_data_organization_id  ON document_extracted_data(organization_id);
+CREATE INDEX idx_extracted_data_key_org          ON document_extracted_data(key_id, organization_id);
 
 COMMENT ON TABLE  document_extracted_data                  IS 'Извлечённые значения ключей для конкретного документа';
 COMMENT ON COLUMN document_extracted_data.organization_id  IS 'Тенант; денормализован для composite FK-защиты (→ documents)';
@@ -92,3 +93,29 @@ $$;
 CREATE TRIGGER trg_document_extracted_data_key_org
     BEFORE INSERT OR UPDATE ON document_extracted_data
     FOR EACH ROW EXECUTE FUNCTION trg_check_extracted_data_key_org();
+
+-- ==========================================
+-- IMMUTABLE organization_id ENFORCEMENT
+-- ==========================================
+-- Once a row is created with a given tenant, its organization_id must never
+-- change. A silent UPDATE could bypass all composite FK + trigger guards.
+
+CREATE OR REPLACE FUNCTION trg_prevent_org_change()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.organization_id IS DISTINCT FROM OLD.organization_id THEN
+        RAISE EXCEPTION
+            'organization_id is immutable: cannot change from % to % on table %',
+            OLD.organization_id, NEW.organization_id, TG_TABLE_NAME;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_immut_org_extraction_keys
+    BEFORE UPDATE ON extraction_keys
+    FOR EACH ROW EXECUTE FUNCTION trg_prevent_org_change();
+
+CREATE TRIGGER trg_immut_org_document_extracted_data
+    BEFORE UPDATE ON document_extracted_data
+    FOR EACH ROW EXECUTE FUNCTION trg_prevent_org_change();

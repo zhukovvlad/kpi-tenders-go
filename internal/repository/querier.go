@@ -12,6 +12,10 @@ import (
 )
 
 type Querier interface {
+	// Batch idempotent upsert: inserts all extracted key-value pairs for a document
+	// in a single statement. key_ids and extracted_values are parallel arrays zipped
+	// by PostgreSQL. On conflict, latest value wins.
+	BatchUpsertExtractedData(ctx context.Context, arg BatchUpsertExtractedDataParams) error
 	// Idempotent artifact creation: on conflict (parent_id, artifact_kind) updates
 	// artifact metadata from the latest callback so that RETURNING yields the current row state.
 	// Prevents duplicate artifact documents when a worker sends a duplicate 'completed' callback.

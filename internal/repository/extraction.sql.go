@@ -12,6 +12,36 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const batchUpsertExtractedData = `-- name: BatchUpsertExtractedData :exec
+INSERT INTO document_extracted_data (organization_id, document_id, key_id, extracted_value)
+SELECT $1::uuid,
+       $2::uuid,
+       unnest($3::uuid[]),
+       unnest($4::text[])
+ON CONFLICT ON CONSTRAINT uq_extracted_data_doc_key DO UPDATE
+    SET extracted_value = EXCLUDED.extracted_value
+`
+
+type BatchUpsertExtractedDataParams struct {
+	OrganizationID  uuid.UUID   `json:"organization_id"`
+	DocumentID      uuid.UUID   `json:"document_id"`
+	KeyIds          []uuid.UUID `json:"key_ids"`
+	ExtractedValues []string    `json:"extracted_values"`
+}
+
+// Batch idempotent upsert: inserts all extracted key-value pairs for a document
+// in a single statement. key_ids and extracted_values are parallel arrays zipped
+// by PostgreSQL. On conflict, latest value wins.
+func (q *Queries) BatchUpsertExtractedData(ctx context.Context, arg BatchUpsertExtractedDataParams) error {
+	_, err := q.db.Exec(ctx, batchUpsertExtractedData,
+		arg.OrganizationID,
+		arg.DocumentID,
+		arg.KeyIds,
+		arg.ExtractedValues,
+	)
+	return err
+}
+
 const getExtractionKeysByNames = `-- name: GetExtractionKeysByNames :many
 SELECT DISTINCT ON (key_name) id, organization_id, key_name, source_query, data_type, created_at FROM extraction_keys
 WHERE key_name = ANY($1::text[])

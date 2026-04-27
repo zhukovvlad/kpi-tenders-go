@@ -18,6 +18,24 @@ type MockQuerier struct {
 	mock.Mock
 }
 
+// BatchUpsertExtractedData provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) BatchUpsertExtractedData(ctx context.Context, arg repository.BatchUpsertExtractedDataParams) error {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for BatchUpsertExtractedData")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.BatchUpsertExtractedDataParams) error); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // CreateArtifactDocument provides a mock function with given fields: ctx, arg
 func (_m *MockQuerier) CreateArtifactDocument(ctx context.Context, arg repository.CreateArtifactDocumentParams) (repository.Document, error) {
 	ret := _m.Called(ctx, arg)

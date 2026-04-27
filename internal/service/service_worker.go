@@ -522,8 +522,9 @@ func (s *WorkerService) handleExtractCompleted(ctx context.Context, task reposit
 		keyIDByName[k.KeyName] = k.ID
 	}
 
-	// Upsert each extracted value. Log-and-continue on individual failures so
-	// a single bad row does not abort the whole batch.
+	// Build parallel slices for batch upsert, skipping unknown keys.
+	keyIDs := make([]uuid.UUID, 0, len(keyIDByName))
+	extractedValues := make([]string, 0, len(keyIDByName))
 	for keyName, value := range extractedData {
 		keyID, ok := keyIDByName[keyName]
 		if !ok {
@@ -531,15 +532,20 @@ func (s *WorkerService) handleExtractCompleted(ctx context.Context, task reposit
 				"key_name", keyName, "document_id", task.DocumentID)
 			continue
 		}
-		if err := s.repo.UpsertExtractedDatum(ctx, repository.UpsertExtractedDatumParams{
-			OrganizationID: doc.OrganizationID,
-			DocumentID:     task.DocumentID,
-			KeyID:          keyID,
-			ExtractedValue: pgtype.Text{String: value, Valid: true},
-		}); err != nil {
-			s.log.Error("worker: failed to upsert extracted datum",
-				"key_name", keyName, "document_id", task.DocumentID, "err", err)
-		}
+		keyIDs = append(keyIDs, keyID)
+		extractedValues = append(extractedValues, value)
+	}
+	if len(keyIDs) == 0 {
+		return nil
+	}
+	if err := s.repo.BatchUpsertExtractedData(ctx, repository.BatchUpsertExtractedDataParams{
+		OrganizationID:  doc.OrganizationID,
+		DocumentID:      task.DocumentID,
+		KeyIds:          keyIDs,
+		ExtractedValues: extractedValues,
+	}); err != nil {
+		s.log.Error("worker: failed to batch upsert extracted data",
+			"document_id", task.DocumentID, "err", err)
 	}
 
 	return nil

@@ -515,12 +515,12 @@ func TestWorkerService_HandleStatusUpdate_ExtractCompleted_UpsertsData(t *testin
 	ms.On("GetExtractionKeysByNames", mock.Anything, mock.MatchedBy(func(p repository.GetExtractionKeysByNamesParams) bool {
 		return p.OrganizationID == orgID && len(p.KeyNames) == 1 && p.KeyNames[0] == "contract_value"
 	})).Return([]repository.ExtractionKey{key}, nil)
-	ms.On("UpsertExtractedDatum", mock.Anything, repository.UpsertExtractedDatumParams{
-		OrganizationID: orgID,
-		DocumentID:     docID,
-		KeyID:          keyID,
-		ExtractedValue: pgtype.Text{String: "1 000 000 тенге", Valid: true},
-	}).Return(nil)
+	ms.On("BatchUpsertExtractedData", mock.Anything, mock.MatchedBy(func(p repository.BatchUpsertExtractedDataParams) bool {
+		return p.OrganizationID == orgID &&
+			p.DocumentID == docID &&
+			len(p.KeyIds) == 1 && p.KeyIds[0] == keyID &&
+			len(p.ExtractedValues) == 1 && p.ExtractedValues[0] == "1 000 000 тенге"
+	})).Return(nil)
 
 	svc := newTestWorkerService(ms, pc)
 	task, err := svc.HandleStatusUpdate(ctx, taskID, WorkerStatusUpdate{
@@ -565,5 +565,5 @@ func TestWorkerService_HandleStatusUpdate_ExtractCompleted_UnknownKeySkipped(t *
 	assert.Equal(t, "extract", task.ModuleName)
 	ms.AssertExpectations(t)
 	pc.AssertNotCalled(t, "Process")
-	ms.AssertNotCalled(t, "UpsertExtractedDatum")
+	ms.AssertNotCalled(t, "BatchUpsertExtractedData")
 }
