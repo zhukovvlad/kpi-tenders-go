@@ -18,7 +18,6 @@ import (
 	"go-kpi-tenders/internal/repository"
 	"go-kpi-tenders/internal/service"
 	storemock "go-kpi-tenders/internal/store/mock"
-	"go-kpi-tenders/pkg/errs"
 )
 
 // newServerWithMockDocumentTaskService wires a server whose documentTaskService
@@ -248,7 +247,7 @@ func TestListDocumentTasks_BatchIDs_DBError_Returns500(t *testing.T) {
 	require.NoError(t, err)
 
 	mq.On("ListTasksByDocuments", mock.Anything, mock.Anything).
-		Return([]repository.DocumentTask(nil), errs.New(errs.CodeInternalError, "internal server error", errors.New("db error")))
+		Return([]repository.DocumentTask(nil), errors.New("db error"))
 
 	query := "document_ids=" + uuid.New().String()
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, listTasksURL(query), nil)
