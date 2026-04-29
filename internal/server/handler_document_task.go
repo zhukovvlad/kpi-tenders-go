@@ -53,15 +53,19 @@ func (s *Server) ListDocumentTasks(c *gin.Context) {
 		return
 	}
 
-	docIDStr := c.Query("document_id")
-	docIDsStr := c.Query("document_ids")
+	docIDStr, docIDPresent := c.GetQuery("document_id")
+	docIDsStr, docIDsPresent := c.GetQuery("document_ids")
 
-	if docIDStr != "" && docIDsStr != "" {
+	if docIDPresent && docIDsPresent {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "use document_id or document_ids, not both", nil))
 		return
 	}
 
-	if docIDsStr != "" {
+	if docIDsPresent {
+		if docIDsStr == "" {
+			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "document_ids cannot be empty", nil))
+			return
+		}
 		parts := strings.Split(docIDsStr, ",")
 		if len(parts) > 100 {
 			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "too many document_ids (max 100)", nil))
@@ -85,7 +89,7 @@ func (s *Server) ListDocumentTasks(c *gin.Context) {
 		return
 	}
 
-	if docIDStr == "" {
+	if !docIDPresent {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "document_id or document_ids query param is required", nil))
 		return
 	}

@@ -154,7 +154,7 @@ internal/server/middleware_test.go                  — AuthMiddleware, ServiceB
 internal/server/handler_user_test.go                — GET /api/v1/auth/me
 internal/server/handler_document_test.go            — POST /api/v1/documents/upload; GET ?parent_id=; GET /:id; DELETE /:id; GET /:id/url (16 кейсов)
 internal/server/handler_extraction_test.go          — POST /api/v1/documents/:id/extract: no auth, invalid id, missing/empty questions, not found, conflict, success, db error (8 кейсов)
-internal/server/handler_document_task_test.go      — GET /api/v1/tasks: no auth, no params, both params, invalid id, single success/error, batch success/invalid uuid/too many/error (10 кейсов)
+internal/server/handler_document_task_test.go      — GET /api/v1/tasks: no auth, no params, both params, invalid id, single success/error, batch success/invalid uuid/too many/error, empty document_ids regression (11 кейсов)
 internal/storage/client_test.go                     — PresignedURL, Upload, Delete error wrapping + TestSafeExt (10 кейсов)
 internal/pythonworker/client_test.go                — buildCeleryMessage: поля, маршрутизация модулей, kwargs passthrough, nil kwargs, неизвестный модуль (5 кейсов)
 internal/watchdog/watchdog_test.go                  — runOnce: re-queue, maxRetries exceeded, no tasks, CAS skip, best-effort publish error, pending status re-queue (6 кейсов)

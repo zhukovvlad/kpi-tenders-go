@@ -264,7 +264,10 @@ func TestDocumentTaskService_ListByDocuments_RepoError(t *testing.T) {
 	orgID := uuid.New()
 	ids := []uuid.UUID{uuid.New()}
 
-	mq.On("ListTasksByDocuments", mock.Anything, mock.Anything).Return([]repository.DocumentTask(nil), errors.New("db error"))
+	mq.On("ListTasksByDocuments", mock.Anything, repository.ListTasksByDocumentsParams{
+		DocumentIds:    ids,
+		OrganizationID: orgID,
+	}).Return([]repository.DocumentTask(nil), errors.New("db error"))
 
 	_, err := svc.ListByDocuments(context.Background(), ids, orgID)
 

@@ -259,3 +259,25 @@ func TestListDocumentTasks_BatchIDs_DBError_Returns500(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	mq.AssertExpectations(t)
 }
+
+// 11. document_id present + document_ids present but empty → 400 (mutual-exclusivity regression).
+func TestListDocumentTasks_DocumentIDAndEmptyDocumentIDs_Returns400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	mq := new(storemock.MockQuerier)
+	s := newServerWithMockDocumentTaskService(t, mq)
+
+	userID, orgID := uuid.New(), uuid.New()
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	// ?document_id=<uuid>&document_ids= — both keys present; document_ids is empty.
+	query := "document_id=" + uuid.New().String() + "&document_ids="
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, listTasksURL(query), nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	mq.AssertNotCalled(t, "ListTasksByDocument")
+	mq.AssertNotCalled(t, "ListTasksByDocuments")
+}
