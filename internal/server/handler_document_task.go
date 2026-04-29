@@ -71,7 +71,7 @@ func (s *Server) ListDocumentTasks(c *gin.Context) {
 		for _, p := range parts {
 			id, err := uuid.Parse(strings.TrimSpace(p))
 			if err != nil {
-				s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid document_id: "+p, err))
+				s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid document_id in document_ids", err))
 				return
 			}
 			ids = append(ids, id)

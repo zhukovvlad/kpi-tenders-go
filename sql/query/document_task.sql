@@ -30,8 +30,8 @@ ORDER BY dt.created_at DESC;
 SELECT dt.*
 FROM document_tasks AS dt
 JOIN documents AS d ON d.id = dt.document_id
-WHERE dt.document_id = ANY($1::uuid[])
-  AND d.organization_id = $2
+WHERE dt.document_id = ANY(sqlc.arg(document_ids)::uuid[])
+  AND d.organization_id = sqlc.arg(organization_id)
 ORDER BY dt.document_id, dt.created_at DESC;
 
 -- name: UpdateDocumentTaskStatus :one

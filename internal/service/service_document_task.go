@@ -103,7 +103,7 @@ func (s *DocumentTaskService) ListByDocument(ctx context.Context, documentID, or
 
 func (s *DocumentTaskService) ListByDocuments(ctx context.Context, documentIDs []uuid.UUID, orgID uuid.UUID) ([]repository.DocumentTask, error) {
 	tasks, err := s.repo.ListTasksByDocuments(ctx, repository.ListTasksByDocumentsParams{
-		Column1:        documentIDs,
+		DocumentIds:    documentIDs,
 		OrganizationID: orgID,
 	})
 	if err != nil {

@@ -257,12 +257,12 @@ ORDER BY dt.document_id, dt.created_at DESC
 `
 
 type ListTasksByDocumentsParams struct {
-	Column1        []uuid.UUID `json:"column_1"`
+	DocumentIds    []uuid.UUID `json:"document_ids"`
 	OrganizationID uuid.UUID   `json:"organization_id"`
 }
 
 func (q *Queries) ListTasksByDocuments(ctx context.Context, arg ListTasksByDocumentsParams) ([]DocumentTask, error) {
-	rows, err := q.db.Query(ctx, listTasksByDocuments, arg.Column1, arg.OrganizationID)
+	rows, err := q.db.Query(ctx, listTasksByDocuments, arg.DocumentIds, arg.OrganizationID)
 	if err != nil {
 		return nil, err
 	}

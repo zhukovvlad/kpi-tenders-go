@@ -179,7 +179,7 @@ func TestListDocumentTasks_BatchIDs_Success(t *testing.T) {
 	}
 
 	mq.On("ListTasksByDocuments", mock.Anything, repository.ListTasksByDocumentsParams{
-		Column1:        []uuid.UUID{id1, id2},
+		DocumentIds:    []uuid.UUID{id1, id2},
 		OrganizationID: orgID,
 	}).Return(expected, nil)
 

@@ -228,7 +228,7 @@ func TestDocumentTaskService_ListByDocuments_Success(t *testing.T) {
 	}
 
 	mq.On("ListTasksByDocuments", mock.Anything, repository.ListTasksByDocumentsParams{
-		Column1:        ids,
+		DocumentIds:    ids,
 		OrganizationID: orgID,
 	}).Return(expected, nil)
 
@@ -246,7 +246,7 @@ func TestDocumentTaskService_ListByDocuments_EmptySlice(t *testing.T) {
 	orgID := uuid.New()
 
 	mq.On("ListTasksByDocuments", mock.Anything, repository.ListTasksByDocumentsParams{
-		Column1:        []uuid.UUID{},
+		DocumentIds:    []uuid.UUID{},
 		OrganizationID: orgID,
 	}).Return([]repository.DocumentTask{}, nil)
 
