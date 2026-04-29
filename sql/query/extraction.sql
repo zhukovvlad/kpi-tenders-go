@@ -35,6 +35,22 @@ VALUES ($1, $2, $3, $4)
 ON CONFLICT ON CONSTRAINT uq_extracted_data_doc_key DO UPDATE
     SET extracted_value = EXCLUDED.extracted_value;
 
+-- name: ListExtractedDataForKeys :many
+-- Returns extracted values for a document filtered to the given extraction
+-- keys, joined with key metadata. Tenant-scoped: only data and keys visible
+-- to the given organization (org-specific keys + system keys) are returned.
+-- Used by GET /extraction-requests/:id to assemble the answers map for a
+-- specific request's resolved_schema.
+SELECT k.key_name,
+       k.data_type,
+       d.extracted_value
+FROM document_extracted_data d
+JOIN extraction_keys k ON k.id = d.key_id
+WHERE d.document_id     = sqlc.arg(document_id)::uuid
+  AND d.organization_id = sqlc.arg(organization_id)::uuid
+  AND k.key_name        = ANY(sqlc.arg(key_names)::text[])
+ORDER BY k.key_name;
+
 -- name: BatchUpsertExtractedData :exec
 -- Batch idempotent upsert: inserts all extracted key-value pairs for a document
 -- in a single statement. Two unnest() calls in the SELECT list are expanded

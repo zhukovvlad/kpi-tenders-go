@@ -82,6 +82,8 @@ type DocumentTask struct {
 	InputStoragePath string    `json:"input_storage_path"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
+	// Запрос экстракции, к которому относится таска. NULL для convert/anonymize (singleton документа); NOT NULL для resolve_keys/extract.
+	ExtractionRequestID pgtype.UUID `json:"extraction_request_id"`
 }
 
 // Ключи для семантического извлечения данных из документов
@@ -96,6 +98,24 @@ type ExtractionKey struct {
 	// Тип значения: string | number | date | boolean
 	DataType  string    `json:"data_type"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// Пользовательский запрос на извлечение данных из документа (один комплект вопросов)
+type ExtractionRequest struct {
+	ID             uuid.UUID `json:"id"`
+	DocumentID     uuid.UUID `json:"document_id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+	// Массив строк-вопросов на естественном языке (jsonb array)
+	Questions json.RawMessage `json:"questions"`
+	// true — extract читает анонимизированный артефакт; false — читает markdown-артефакт
+	Anonymize bool `json:"anonymize"`
+	// pending — ждёт prereq-задач; running — resolve_keys/extract в работе; completed — ответы готовы; failed — ошибка
+	Status string `json:"status"`
+	// JSON-схема ключей, возвращённая resolve_keys; используется для выборки ответов из document_extracted_data
+	ResolvedSchema []byte      `json:"resolved_schema"`
+	ErrorMessage   pgtype.Text `json:"error_message"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
 }
 
 // Организации — изолированные тенанты системы

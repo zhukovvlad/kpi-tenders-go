@@ -93,8 +93,11 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) (*Serve
 
 	srv.pythonClient = pythonClient
 	srv.documentTaskService = service.NewDocumentTaskService(db, pythonClient, log)
-	srv.workerService = service.NewWorkerService(db, pythonClient, log)
+	// extractionService is the pipeline owner; workerService delegates to it
+	// from worker callbacks. Order matters: build extraction first, then pass
+	// it to the worker.
 	srv.extractionService = service.NewExtractionService(db, pythonClient, log)
+	srv.workerService = service.NewWorkerService(db, pythonClient, srv.extractionService, log)
 	if sc != nil {
 		// storageClient is set after struct creation to avoid storing a
 		// (*storage.Client)(nil) as a non-nil interface value.
@@ -200,6 +203,11 @@ func (s *Server) setupRouter() {
 				tasks.GET("/:id", s.GetDocumentTask)
 				tasks.PATCH("/:id/status", s.UpdateDocumentTaskStatus)
 				tasks.DELETE("/:id", s.DeleteDocumentTask)
+			}
+
+			extractionRequests := protected.Group("/extraction-requests")
+			{
+				extractionRequests.GET("/:id", s.GetExtractionRequest)
 			}
 
 			users := protected.Group("/users")

@@ -20,7 +20,7 @@ SELECT $1, $2, d.storage_path
 FROM documents d
 WHERE d.id = $1
   AND d.organization_id = $3
-RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, retry_count, input_storage_path, created_at, updated_at
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, retry_count, input_storage_path, created_at, updated_at, extraction_request_id
 `
 
 type CreateDocumentTaskParams struct {
@@ -51,30 +51,38 @@ func (q *Queries) CreateDocumentTask(ctx context.Context, arg CreateDocumentTask
 		&i.InputStoragePath,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExtractionRequestID,
 	)
 	return i, err
 }
 
-const createDocumentTaskInternal = `-- name: CreateDocumentTaskInternal :one
-INSERT INTO document_tasks (document_id, module_name, input_storage_path)
-VALUES ($1, $2, $3)
-ON CONFLICT (document_id, module_name) DO NOTHING
-RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, retry_count, input_storage_path, created_at, updated_at
+const createDocumentTaskForRequest = `-- name: CreateDocumentTaskForRequest :one
+INSERT INTO document_tasks (document_id, module_name, input_storage_path, extraction_request_id)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (extraction_request_id, module_name)
+    WHERE extraction_request_id IS NOT NULL AND module_name IN ('resolve_keys', 'extract')
+    DO NOTHING
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, retry_count, input_storage_path, created_at, updated_at, extraction_request_id
 `
 
-type CreateDocumentTaskInternalParams struct {
-	DocumentID       uuid.UUID `json:"document_id"`
-	ModuleName       string    `json:"module_name"`
-	InputStoragePath string    `json:"input_storage_path"`
+type CreateDocumentTaskForRequestParams struct {
+	DocumentID          uuid.UUID   `json:"document_id"`
+	ModuleName          string      `json:"module_name"`
+	InputStoragePath    string      `json:"input_storage_path"`
+	ExtractionRequestID pgtype.UUID `json:"extraction_request_id"`
 }
 
-// Internal: creates a task directly by document_id without tenant org-check.
-// Use only from trusted internal paths (worker service); never expose publicly.
-// ON CONFLICT DO NOTHING makes this idempotent: duplicate (document_id, module_name)
-// returns pgx.ErrNoRows, which callers should treat as "task already exists".
-// $3 is input_storage_path: the file path the Python worker will receive for this module.
-func (q *Queries) CreateDocumentTaskInternal(ctx context.Context, arg CreateDocumentTaskInternalParams) (DocumentTask, error) {
-	row := q.db.QueryRow(ctx, createDocumentTaskInternal, arg.DocumentID, arg.ModuleName, arg.InputStoragePath)
+// Internal: creates a per-request task (resolve_keys/extract) bound to an
+// extraction_request. Idempotent via partial index uq_document_tasks_request_module —
+// duplicate (extraction_request_id, module_name) returns pgx.ErrNoRows.
+// $4 is the extraction_request_id; $3 is input_storage_path.
+func (q *Queries) CreateDocumentTaskForRequest(ctx context.Context, arg CreateDocumentTaskForRequestParams) (DocumentTask, error) {
+	row := q.db.QueryRow(ctx, createDocumentTaskForRequest,
+		arg.DocumentID,
+		arg.ModuleName,
+		arg.InputStoragePath,
+		arg.ExtractionRequestID,
+	)
 	var i DocumentTask
 	err := row.Scan(
 		&i.ID,
@@ -88,6 +96,48 @@ func (q *Queries) CreateDocumentTaskInternal(ctx context.Context, arg CreateDocu
 		&i.InputStoragePath,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExtractionRequestID,
+	)
+	return i, err
+}
+
+const createDocumentTaskSingleton = `-- name: CreateDocumentTaskSingleton :one
+INSERT INTO document_tasks (document_id, module_name, input_storage_path)
+VALUES ($1, $2, $3)
+ON CONFLICT (document_id, module_name)
+    WHERE module_name IN ('convert', 'anonymize') AND extraction_request_id IS NULL
+    DO NOTHING
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, retry_count, input_storage_path, created_at, updated_at, extraction_request_id
+`
+
+type CreateDocumentTaskSingletonParams struct {
+	DocumentID       uuid.UUID `json:"document_id"`
+	ModuleName       string    `json:"module_name"`
+	InputStoragePath string    `json:"input_storage_path"`
+}
+
+// Internal: creates a singleton task (convert/anonymize) for a document.
+// Idempotent via partial index uq_document_tasks_doc_singleton — duplicate
+// (document_id, module_name) on convert/anonymize returns pgx.ErrNoRows.
+// $3 is input_storage_path: the file path the Python worker will receive for this module.
+// extraction_request_id is intentionally NULL; convert/anonymize artifacts are
+// per-document and reused across all extraction_requests on the same document.
+func (q *Queries) CreateDocumentTaskSingleton(ctx context.Context, arg CreateDocumentTaskSingletonParams) (DocumentTask, error) {
+	row := q.db.QueryRow(ctx, createDocumentTaskSingleton, arg.DocumentID, arg.ModuleName, arg.InputStoragePath)
+	var i DocumentTask
+	err := row.Scan(
+		&i.ID,
+		&i.DocumentID,
+		&i.ModuleName,
+		&i.Status,
+		&i.CeleryTaskID,
+		&i.ResultPayload,
+		&i.ErrorMessage,
+		&i.RetryCount,
+		&i.InputStoragePath,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ExtractionRequestID,
 	)
 	return i, err
 }
@@ -112,7 +162,7 @@ func (q *Queries) DeleteDocumentTask(ctx context.Context, arg DeleteDocumentTask
 }
 
 const getDocumentTask = `-- name: GetDocumentTask :one
-SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id, dt.result_payload, dt.error_message, dt.retry_count, dt.input_storage_path, dt.created_at, dt.updated_at
+SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id, dt.result_payload, dt.error_message, dt.retry_count, dt.input_storage_path, dt.created_at, dt.updated_at, dt.extraction_request_id
 FROM document_tasks AS dt
 JOIN documents AS d ON d.id = dt.document_id
 WHERE dt.id = $1 AND d.organization_id = $2
@@ -138,6 +188,74 @@ func (q *Queries) GetDocumentTask(ctx context.Context, arg GetDocumentTaskParams
 		&i.InputStoragePath,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExtractionRequestID,
+	)
+	return i, err
+}
+
+const getSingletonTaskByDocument = `-- name: GetSingletonTaskByDocument :one
+SELECT id, document_id, module_name, status, celery_task_id, result_payload, error_message, retry_count, input_storage_path, created_at, updated_at, extraction_request_id FROM document_tasks
+WHERE document_id = $1
+  AND module_name = $2
+  AND extraction_request_id IS NULL
+`
+
+type GetSingletonTaskByDocumentParams struct {
+	DocumentID uuid.UUID `json:"document_id"`
+	ModuleName string    `json:"module_name"`
+}
+
+// Returns the singleton convert/anonymize task for a document, if it exists.
+// Used to inspect the current state of prerequisite tasks before deciding
+// what to enqueue next for an extraction_request.
+func (q *Queries) GetSingletonTaskByDocument(ctx context.Context, arg GetSingletonTaskByDocumentParams) (DocumentTask, error) {
+	row := q.db.QueryRow(ctx, getSingletonTaskByDocument, arg.DocumentID, arg.ModuleName)
+	var i DocumentTask
+	err := row.Scan(
+		&i.ID,
+		&i.DocumentID,
+		&i.ModuleName,
+		&i.Status,
+		&i.CeleryTaskID,
+		&i.ResultPayload,
+		&i.ErrorMessage,
+		&i.RetryCount,
+		&i.InputStoragePath,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ExtractionRequestID,
+	)
+	return i, err
+}
+
+const getTaskForExtractionRequest = `-- name: GetTaskForExtractionRequest :one
+SELECT id, document_id, module_name, status, celery_task_id, result_payload, error_message, retry_count, input_storage_path, created_at, updated_at, extraction_request_id FROM document_tasks
+WHERE extraction_request_id = $1
+  AND module_name = $2
+`
+
+type GetTaskForExtractionRequestParams struct {
+	ExtractionRequestID pgtype.UUID `json:"extraction_request_id"`
+	ModuleName          string      `json:"module_name"`
+}
+
+// Returns a per-request task (resolve_keys/extract) for the given extraction_request.
+func (q *Queries) GetTaskForExtractionRequest(ctx context.Context, arg GetTaskForExtractionRequestParams) (DocumentTask, error) {
+	row := q.db.QueryRow(ctx, getTaskForExtractionRequest, arg.ExtractionRequestID, arg.ModuleName)
+	var i DocumentTask
+	err := row.Scan(
+		&i.ID,
+		&i.DocumentID,
+		&i.ModuleName,
+		&i.Status,
+		&i.CeleryTaskID,
+		&i.ResultPayload,
+		&i.ErrorMessage,
+		&i.RetryCount,
+		&i.InputStoragePath,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ExtractionRequestID,
 	)
 	return i, err
 }
@@ -203,7 +321,7 @@ func (q *Queries) ListStaleTasks(ctx context.Context, arg ListStaleTasksParams) 
 }
 
 const listTasksByDocument = `-- name: ListTasksByDocument :many
-SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id, dt.result_payload, dt.error_message, dt.retry_count, dt.input_storage_path, dt.created_at, dt.updated_at
+SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id, dt.result_payload, dt.error_message, dt.retry_count, dt.input_storage_path, dt.created_at, dt.updated_at, dt.extraction_request_id
 FROM document_tasks AS dt
 JOIN documents AS d ON d.id = dt.document_id
 WHERE dt.document_id = $1 AND d.organization_id = $2
@@ -236,6 +354,7 @@ func (q *Queries) ListTasksByDocument(ctx context.Context, arg ListTasksByDocume
 			&i.InputStoragePath,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ExtractionRequestID,
 		); err != nil {
 			return nil, err
 		}
@@ -248,7 +367,7 @@ func (q *Queries) ListTasksByDocument(ctx context.Context, arg ListTasksByDocume
 }
 
 const listTasksByDocuments = `-- name: ListTasksByDocuments :many
-SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id, dt.result_payload, dt.error_message, dt.retry_count, dt.input_storage_path, dt.created_at, dt.updated_at
+SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id, dt.result_payload, dt.error_message, dt.retry_count, dt.input_storage_path, dt.created_at, dt.updated_at, dt.extraction_request_id
 FROM document_tasks AS dt
 JOIN documents AS d ON d.id = dt.document_id
 WHERE dt.document_id = ANY($1::uuid[])
@@ -282,6 +401,7 @@ func (q *Queries) ListTasksByDocuments(ctx context.Context, arg ListTasksByDocum
 			&i.InputStoragePath,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ExtractionRequestID,
 		); err != nil {
 			return nil, err
 		}
@@ -356,7 +476,7 @@ WHERE document_tasks.id = $1
   AND document_tasks.document_id IN (
     SELECT documents.id FROM documents WHERE documents.organization_id = $2
   )
-RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, retry_count, input_storage_path, created_at, updated_at
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, retry_count, input_storage_path, created_at, updated_at, extraction_request_id
 `
 
 type UpdateDocumentTaskStatusParams struct {
@@ -380,6 +500,7 @@ func (q *Queries) UpdateDocumentTaskStatus(ctx context.Context, arg UpdateDocume
 		&i.InputStoragePath,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExtractionRequestID,
 	)
 	return i, err
 }
@@ -389,7 +510,7 @@ UPDATE document_tasks
 SET result_payload = $2,
     updated_at     = now()
 WHERE id = $1
-RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, retry_count, input_storage_path, created_at, updated_at
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, retry_count, input_storage_path, created_at, updated_at, extraction_request_id
 `
 
 type UpdateTaskResultPayloadParams struct {
@@ -416,6 +537,7 @@ func (q *Queries) UpdateTaskResultPayload(ctx context.Context, arg UpdateTaskRes
 		&i.InputStoragePath,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExtractionRequestID,
 	)
 	return i, err
 }
@@ -429,7 +551,7 @@ SET
     error_message  = COALESCE($5, error_message),
     updated_at     = now()
 WHERE id = $1
-RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, retry_count, input_storage_path, created_at, updated_at
+RETURNING id, document_id, module_name, status, celery_task_id, result_payload, error_message, retry_count, input_storage_path, created_at, updated_at, extraction_request_id
 `
 
 type UpdateWorkerTaskStatusParams struct {
@@ -462,6 +584,7 @@ func (q *Queries) UpdateWorkerTaskStatus(ctx context.Context, arg UpdateWorkerTa
 		&i.InputStoragePath,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExtractionRequestID,
 	)
 	return i, err
 }

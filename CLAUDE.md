@@ -56,9 +56,14 @@ type Server struct {
 - **Сервисы без транзакций** (AuthService, DocumentService) принимают `repository.Querier`.
 - `DocumentService` дополнительно принимает consumer-side interface `documentStorage` (только `PresignedURLWithParams`); `nil`-safe — при отсутствии S3 возвращает 500.
 - `DocumentTaskService` принимает `repository.Querier` и тот же consumer-side interface `workerPythonClient`; `nil`-safe — при отсутствии Python-клиента триггер пропускается. После INSERT берёт `input_storage_path` из `document_tasks` (заполняется subquery в SQL), передаёт в `pythonClient.Process` (best-effort: ошибки логируются, наружу не пробрасываются).
-- `WorkerService` принимает `repository.Querier` и consumer-side interface `workerPythonClient` (только `Process`); реализован `*pythonworker.Publisher`. Redis обязателен — `pythonworker.New` вызывается в `NewServer()`, при ошибке `NewServer()` возвращает `error`; завершение процесса происходит в `cmd/api/main.go`.
-- `ExtractionService` принимает `repository.Querier` и `workerPythonClient`; `Initiate(ctx, docID, orgID, questions)` создаёт задачу `resolve_keys` и триггерит Python (best-effort). `WorkerService.HandleStatusUpdate` при `resolve_keys completed` вызывает `triggerExtract` (upsert ключей → **tenant-check mdDoc.OrganizationID == doc.OrganizationID** → создание `extract`-задачи), при `extract completed` — `handleExtractCompleted` (**batch** upsert `extracted_data` одним `BatchUpsertExtractedData` вызовом: параллельные массивы `key_ids`/`extracted_values` через `unnest`; ошибка пробрасывается наружу, логирует `HandleStatusUpdate`).
-- В `NewServer()` экземпляр `*pythonworker.Publisher` создаётся **один раз** через `cfg.RedisURL` и передаётся в оба сервиса (`DocumentTaskService` и `WorkerService`). `workerService` создаётся безусловно при успешной инициализации сервера. `srv.Close()` освобождает пул Redis-соединений при graceful shutdown.
+- `WorkerService` принимает `repository.Querier`, `workerPythonClient` (`Process`) и `extractionPipeline` (`Progress`, `OnResolveKeysCompleted`, `OnExtractCompleted`, `MarkRequestFailed`). Pipeline обязателен; реализован `*service.ExtractionService`. Redis обязателен — `pythonworker.New` вызывается в `NewServer()`, при ошибке `NewServer()` возвращает `error`; завершение процесса происходит в `cmd/api/main.go`.
+- `ExtractionService` владеет жизненным циклом `extraction_requests`: `Initiate(ctx, docID, orgID, questions, anonymize)` валидирует документ → создаёт `extraction_requests` row → вызывает `Progress(ctx, req)`. `Progress` смотрит существующие артефакты документа (`ListDocumentsByParent`) и решает что запустить:
+  - есть нужный артефакт (`anonymize_doc` для `anonymize=true`, `convert_md` для `false`) → `enqueueResolveKeys` (создаёт per-request `resolve_keys`-таску через `CreateDocumentTaskForRequest`, переводит запрос в `running`).
+  - есть MD, но нет anonymize-артефакта при `anonymize=true` → `ensureAnonymizeTask` (singleton).
+  - нет MD → `ensureConvertTask` (singleton). convert→anonymize цепочка в `WorkerService` подхватит дальше.
+- `WorkerService.HandleStatusUpdate` после `convert/anonymize completed` вызывает `progressPendingRequests`, который перебирает `ListPendingExtractionRequestsByDocument` и для каждого зовёт `pipeline.Progress` — это позволяет нескольким параллельным запросам на один документ продвигаться по мере появления артефактов.
+- На `resolve_keys completed` Worker делегирует в `pipeline.OnResolveKeysCompleted`: парсит `{new_keys, resolved_schema}` (без `md_document_id`), upsert ключей, сохраняет `resolved_schema` на запросе, ищет артефакт по `parent_id+artifact_kind` и создаёт `extract`-таску через `CreateDocumentTaskForRequest`. На `extract completed` — `pipeline.OnExtractCompleted`: batch upsert `document_extracted_data` (параллельные массивы `key_ids`/`extracted_values` через `unnest`), затем `extraction_requests.status = 'completed'`. На `failed` resolve_keys/extract с непустым `extraction_request_id` — `pipeline.MarkRequestFailed`.
+- В `NewServer()` экземпляр `*pythonworker.Publisher` создаётся **один раз** через `cfg.RedisURL` и передаётся в `DocumentTaskService`, `ExtractionService` и `WorkerService`. Порядок инициализации важен: `ExtractionService` строится **до** `WorkerService` и подаётся в него как pipeline. `srv.Close()` освобождает пул Redis-соединений при graceful shutdown.
 - Watchdog запускается горутиной из `cmd/api/main.go`; завершение ожидается через `sync.WaitGroup` (`watchdogDone.Wait()`) после `watchdogCancel()` и до `srv.Close()` — иначе in-flight `LPUSH` может попасть на закрытый пул.
 - `store.SQLStore` — production-реализация поверх `*pgxpool.Pool`.
 - `mock.MockStore` — testify-mock для unit-тестов; `ExecTx` hand-written: вызывает `fn(m)` для propagation ошибок из транзакции.
@@ -114,7 +119,8 @@ PATCH            /internal/worker/tasks/:id/status  (worker callback, ServiceBea
 POST/GET         /api/v1/sites
 GET/PATCH/DELETE /api/v1/sites/:id
 
-POST             /api/v1/documents/:id/extract  (запуск семантической экстракции: resolve_keys → extract)
+POST             /api/v1/documents/:id/extract       (создаёт extraction_request; body: { questions, anonymize? }, default anonymize=true; → 201 { extraction_request_id, status })
+GET              /api/v1/extraction-requests/:id     (status + resolved_schema + answers; tenant-scoped)
 ```
 
 ### Заглушки / TODO
@@ -124,7 +130,7 @@ _Нет активных заглушек._
 ### Не реализовано
 
 - Projects (таблица есть, хендлеров/сервисов/запросов нет)
-- `catalog_positions` SQLC-запросы (таблица будет создана в `000003`)
+- `catalog_positions` SQLC-запросы (pgvector RAG, отдельной миграцией позже)
 
 ## База данных
 
@@ -133,10 +139,11 @@ _Нет активных заглушек._
 
 | Миграция | Таблицы / изменения |
 |----------|---------------------|
-| 000001 | Полная схема: organizations, users, construction_sites, documents (artifact_kind, parent_id CASCADE), document_tasks (retry_count, input_storage_path, md_document_id, UNIQUE document_id+module_name); все FK-индексы; idx_document_tasks_stale; триггеры tenant isolation |
+| 000001 | Полная схема: organizations, users, construction_sites, documents (artifact_kind, parent_id CASCADE), document_tasks (retry_count, input_storage_path, UNIQUE document_id+module_name); все FK-индексы; idx_document_tasks_stale; триггеры tenant isolation |
 | 000002 | `extraction_keys` (org_id nullable, key_name, source_query, data_type; UNIQUE NULLS NOT DISTINCT org+name) + `document_extracted_data` (org_id, document_id, key_id, extracted_value; composite FK doc+org → documents; `uq_extracted_data_doc_key` UNIQUE (org_id, document_id, key_id); trigger `trg_check_extracted_data_key_org` блокирует cross-tenant key_id; триггеры `trg_immut_org_*` через `prevent_organization_id_change()` из 000001 запрещают изменение org_id после вставки; `idx_extracted_data_key_org`) + composite UNIQUE constraint `uq_documents_id_org` на таблице documents |
+| 000003 | `extraction_requests` (id, document_id, organization_id, questions jsonb, anonymize bool default true, status, resolved_schema jsonb, error_message; composite FK doc+org → documents; CHECK questions = непустой jsonb-массив; immut org_id триггер; `idx_extraction_requests_doc_pending`). В `document_tasks` добавлена колонка `extraction_request_id` (FK CASCADE на extraction_requests). Старый `UNIQUE(document_id, module_name)` снесён; заменён двумя partial-индексами: `uq_document_tasks_doc_singleton (document_id, module_name) WHERE module_name IN ('convert','anonymize')` и `uq_document_tasks_request_module (extraction_request_id, module_name) WHERE module_name IN ('resolve_keys','extract')`. CHECK `document_tasks_module_request_chk` форсирует инвариант: convert/anonymize ⇔ extraction_request_id IS NULL; resolve_keys/extract ⇔ NOT NULL. |
 
-> **Примечание:** следующая миграция — `catalog_positions` (pgvector RAG), будет `000003`.
+> **Примечание:** следующая миграция — `catalog_positions` (pgvector RAG), будет `000004`.
 
 ## Стратегия тестирования
 
@@ -146,14 +153,14 @@ internal/service/service_auth_test.go               — AuthService: login, timi
 internal/service/service_organization_test.go       — OrganizationService: register, conflicts
 internal/service/service_user_test.go               — UserService: GetProfile, tenant isolation
 internal/service/service_document_task_test.go      — DocumentTaskService: Create success, not found, conflict, db error, python trigger, python error best-effort, ListByDocuments happy/empty/error (9 кейсов)
-internal/service/service_worker_test.go             — WorkerService: chaining, idempotency, errors, python client, artifacts, resolve_keys→extract chaining, extract completed upsert (13 кейсов)
-internal/service/service_extraction_test.go         — ExtractionService: Initiate success, empty questions, not found, already exists, nil client, python error best-effort (6 кейсов)
+internal/service/service_worker_test.go             — WorkerService: status persistence, convert→anonymize cтейтинг через CreateDocumentTaskSingleton, прогрессия pending extraction_requests после convert/anonymize, делегирование OnResolveKeysCompleted/OnExtractCompleted в pipeline-mock, MarkRequestFailed на failed-таски, idempotent reuse anonymize, не-найденная таска (10 кейсов)
+internal/service/service_extraction_test.go         — ExtractionService: валидация, 404 на документ, прогрессия в трёх ветках (нет MD → convert; MD есть, anonymize=false → resolve_keys; MD есть, anonymize=true, нет anon → anonymize; есть anon → resolve_keys на anon-пути), best-effort progress, OnResolveKeysCompleted full flow + missing extraction_request_id, OnExtractCompleted с null-значениями + статус=completed, Progress no-op на терминальном статусе, GetRequest 404 (11 кейсов)
 internal/server/errors_test.go                      — respondWithError маппинг
 internal/server/health_test.go                      — health endpoint
 internal/server/middleware_test.go                  — AuthMiddleware, ServiceBearerAuth
 internal/server/handler_user_test.go                — GET /api/v1/auth/me
 internal/server/handler_document_test.go            — POST /api/v1/documents/upload; GET ?parent_id=; GET /:id; DELETE /:id; GET /:id/url (16 кейсов)
-internal/server/handler_extraction_test.go          — POST /api/v1/documents/:id/extract: no auth, invalid id, missing/empty questions, not found, conflict, success, db error (8 кейсов)
+internal/server/handler_extraction_test.go          — POST /api/v1/documents/:id/extract: no auth, invalid id, missing/empty questions, not found, success (extraction_request_id), db error, anonymize=false propagation (8 кейсов)
 internal/server/handler_document_task_test.go      — GET /api/v1/tasks: no auth, no params, both params, invalid id, single success/error, batch success/invalid uuid/too many/error, empty document_ids regression (11 кейсов)
 internal/storage/client_test.go                     — PresignedURL, Upload, Delete error wrapping + TestSafeExt (10 кейсов)
 internal/pythonworker/client_test.go                — buildCeleryMessage: поля, маршрутизация модулей, kwargs passthrough, nil kwargs, неизвестный модуль (5 кейсов)

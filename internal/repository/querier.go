@@ -33,12 +33,22 @@ type Querier interface {
 	// intentionally reported as 404 to avoid leaking tenant existence. This is
 	// distinct from unique-constraint violations on (document_id, module_name).
 	CreateDocumentTask(ctx context.Context, arg CreateDocumentTaskParams) (DocumentTask, error)
-	// Internal: creates a task directly by document_id without tenant org-check.
-	// Use only from trusted internal paths (worker service); never expose publicly.
-	// ON CONFLICT DO NOTHING makes this idempotent: duplicate (document_id, module_name)
-	// returns pgx.ErrNoRows, which callers should treat as "task already exists".
+	// Internal: creates a per-request task (resolve_keys/extract) bound to an
+	// extraction_request. Idempotent via partial index uq_document_tasks_request_module —
+	// duplicate (extraction_request_id, module_name) returns pgx.ErrNoRows.
+	// $4 is the extraction_request_id; $3 is input_storage_path.
+	CreateDocumentTaskForRequest(ctx context.Context, arg CreateDocumentTaskForRequestParams) (DocumentTask, error)
+	// Internal: creates a singleton task (convert/anonymize) for a document.
+	// Idempotent via partial index uq_document_tasks_doc_singleton — duplicate
+	// (document_id, module_name) on convert/anonymize returns pgx.ErrNoRows.
 	// $3 is input_storage_path: the file path the Python worker will receive for this module.
-	CreateDocumentTaskInternal(ctx context.Context, arg CreateDocumentTaskInternalParams) (DocumentTask, error)
+	// extraction_request_id is intentionally NULL; convert/anonymize artifacts are
+	// per-document and reused across all extraction_requests on the same document.
+	CreateDocumentTaskSingleton(ctx context.Context, arg CreateDocumentTaskSingletonParams) (DocumentTask, error)
+	// Creates a new extraction request for a document. Tenant isolation is enforced
+	// by the composite FK (document_id, organization_id) → documents.
+	// Returns the created request including generated id and timestamps.
+	CreateExtractionRequest(ctx context.Context, arg CreateExtractionRequestParams) (ExtractionRequest, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteConstructionSite(ctx context.Context, arg DeleteConstructionSiteParams) (int64, error)
@@ -58,17 +68,39 @@ type Querier interface {
 	// key is selected (DISTINCT ON + ORDER BY ensures deterministic precedence).
 	// Used in the extract callback to map key_name → key_id for bulk data insert.
 	GetExtractionKeysByNames(ctx context.Context, arg GetExtractionKeysByNamesParams) ([]ExtractionKey, error)
+	// Tenant-scoped lookup by id; callers should map pgx.ErrNoRows to 404.
+	GetExtractionRequest(ctx context.Context, arg GetExtractionRequestParams) (ExtractionRequest, error)
+	// Internal lookup without org check; callers (worker callbacks) must be
+	// authenticated via SERVICE_TOKEN and trust the id from a prior tenant-scoped
+	// write (document_tasks.extraction_request_id).
+	GetExtractionRequestByID(ctx context.Context, id uuid.UUID) (ExtractionRequest, error)
 	GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organization, error)
 	GetOrganizationByINN(ctx context.Context, inn pgtype.Text) (Organization, error)
+	// Returns the singleton convert/anonymize task for a document, if it exists.
+	// Used to inspect the current state of prerequisite tasks before deciding
+	// what to enqueue next for an extraction_request.
+	GetSingletonTaskByDocument(ctx context.Context, arg GetSingletonTaskByDocumentParams) (DocumentTask, error)
+	// Returns a per-request task (resolve_keys/extract) for the given extraction_request.
+	GetTaskForExtractionRequest(ctx context.Context, arg GetTaskForExtractionRequestParams) (DocumentTask, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	GetUserByIDAndOrg(ctx context.Context, arg GetUserByIDAndOrgParams) (GetUserByIDAndOrgRow, error)
 	ListConstructionSitesByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ConstructionSite, error)
 	// Все артефакты, порождённые данным документом; scoped by organization_id for tenant isolation.
 	ListDocumentsByParent(ctx context.Context, arg ListDocumentsByParentParams) ([]Document, error)
+	// Returns extracted values for a document filtered to the given extraction
+	// keys, joined with key metadata. Tenant-scoped: only data and keys visible
+	// to the given organization (org-specific keys + system keys) are returned.
+	// Used by GET /extraction-requests/:id to assemble the answers map for a
+	// specific request's resolved_schema.
+	ListExtractedDataForKeys(ctx context.Context, arg ListExtractedDataForKeysParams) ([]ListExtractedDataForKeysRow, error)
 	// Returns all keys visible to the given tenant: org-specific keys AND system
 	// keys (organization_id IS NULL) shared across all tenants.
 	ListExtractionKeysByOrg(ctx context.Context, dollar_1 uuid.UUID) ([]ExtractionKey, error)
+	// Returns extraction requests for a document that are still in flight
+	// (status pending or running). Used by WorkerService after prerequisite
+	// tasks (convert/anonymize) complete to progress all dependent requests.
+	ListPendingExtractionRequestsByDocument(ctx context.Context, documentID uuid.UUID) ([]ExtractionRequest, error)
 	// Только корневые документы (загруженные пользователем, не артефакты)
 	ListRootDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]Document, error)
 	ListRootDocumentsBySite(ctx context.Context, arg ListRootDocumentsBySiteParams) ([]Document, error)
@@ -93,6 +125,14 @@ type Querier interface {
 	// cannot double-claim the same task, and a task that was refreshed between
 	// ListStaleTasks and this UPDATE will not be incorrectly reset.
 	MarkStaleTaskPending(ctx context.Context, arg MarkStaleTaskPendingParams) (int64, error)
+	// Stores resolved_schema returned by resolve_keys so the GET endpoint can
+	// enumerate which keys' answers belong to this request. Does not change status.
+	SetExtractionRequestResolvedSchema(ctx context.Context, arg SetExtractionRequestResolvedSchemaParams) (ExtractionRequest, error)
+	// Updates status (and optionally error_message) for a request.
+	// Used to transition pending → running on resolve_keys enqueue,
+	// running → completed when extract finishes,
+	// and pending|running → failed when a prerequisite task fails fatally.
+	SetExtractionRequestStatus(ctx context.Context, arg SetExtractionRequestStatusParams) (ExtractionRequest, error)
 	UpdateConstructionSite(ctx context.Context, arg UpdateConstructionSiteParams) (ConstructionSite, error)
 	UpdateDocumentTaskStatus(ctx context.Context, arg UpdateDocumentTaskStatusParams) (DocumentTask, error)
 	UpdateOrganization(ctx context.Context, arg UpdateOrganizationParams) (Organization, error)

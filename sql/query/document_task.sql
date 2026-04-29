@@ -60,16 +60,46 @@ SET
 WHERE id = $1
 RETURNING *;
 
--- name: CreateDocumentTaskInternal :one
--- Internal: creates a task directly by document_id without tenant org-check.
--- Use only from trusted internal paths (worker service); never expose publicly.
--- ON CONFLICT DO NOTHING makes this idempotent: duplicate (document_id, module_name)
--- returns pgx.ErrNoRows, which callers should treat as "task already exists".
+-- name: CreateDocumentTaskSingleton :one
+-- Internal: creates a singleton task (convert/anonymize) for a document.
+-- Idempotent via partial index uq_document_tasks_doc_singleton — duplicate
+-- (document_id, module_name) on convert/anonymize returns pgx.ErrNoRows.
 -- $3 is input_storage_path: the file path the Python worker will receive for this module.
+-- extraction_request_id is intentionally NULL; convert/anonymize artifacts are
+-- per-document and reused across all extraction_requests on the same document.
 INSERT INTO document_tasks (document_id, module_name, input_storage_path)
 VALUES ($1, $2, $3)
-ON CONFLICT (document_id, module_name) DO NOTHING
+ON CONFLICT (document_id, module_name)
+    WHERE module_name IN ('convert', 'anonymize') AND extraction_request_id IS NULL
+    DO NOTHING
 RETURNING *;
+
+-- name: CreateDocumentTaskForRequest :one
+-- Internal: creates a per-request task (resolve_keys/extract) bound to an
+-- extraction_request. Idempotent via partial index uq_document_tasks_request_module —
+-- duplicate (extraction_request_id, module_name) returns pgx.ErrNoRows.
+-- $4 is the extraction_request_id; $3 is input_storage_path.
+INSERT INTO document_tasks (document_id, module_name, input_storage_path, extraction_request_id)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (extraction_request_id, module_name)
+    WHERE extraction_request_id IS NOT NULL AND module_name IN ('resolve_keys', 'extract')
+    DO NOTHING
+RETURNING *;
+
+-- name: GetSingletonTaskByDocument :one
+-- Returns the singleton convert/anonymize task for a document, if it exists.
+-- Used to inspect the current state of prerequisite tasks before deciding
+-- what to enqueue next for an extraction_request.
+SELECT * FROM document_tasks
+WHERE document_id = $1
+  AND module_name = $2
+  AND extraction_request_id IS NULL;
+
+-- name: GetTaskForExtractionRequest :one
+-- Returns a per-request task (resolve_keys/extract) for the given extraction_request.
+SELECT * FROM document_tasks
+WHERE extraction_request_id = $1
+  AND module_name = $2;
 
 -- name: UpdateTaskResultPayload :one
 -- Internal: no org-check; callers must be authenticated via SERVICE_TOKEN.
