@@ -26,6 +26,14 @@ JOIN documents AS d ON d.id = dt.document_id
 WHERE dt.document_id = $1 AND d.organization_id = $2
 ORDER BY dt.created_at DESC;
 
+-- name: ListTasksByDocuments :many
+SELECT dt.*
+FROM document_tasks AS dt
+JOIN documents AS d ON d.id = dt.document_id
+WHERE dt.document_id = ANY($1::uuid[])
+  AND d.organization_id = $2
+ORDER BY dt.document_id, dt.created_at DESC;
+
 -- name: UpdateDocumentTaskStatus :one
 UPDATE document_tasks
 SET status = $3, updated_at = now()

@@ -212,3 +212,65 @@ func TestDocumentTaskService_Create_PythonError_ReturnsTaskWithoutError(t *testi
 	mq.AssertExpectations(t)
 	pc.AssertExpectations(t)
 }
+
+func TestDocumentTaskService_ListByDocuments_Success(t *testing.T) {
+	mq := new(storemock.MockQuerier)
+	svc := NewDocumentTaskService(mq, nil, newTestLogger())
+
+	orgID := uuid.New()
+	docID1 := uuid.New()
+	docID2 := uuid.New()
+	ids := []uuid.UUID{docID1, docID2}
+
+	expected := []repository.DocumentTask{
+		{ID: uuid.New(), DocumentID: docID1, ModuleName: "convert"},
+		{ID: uuid.New(), DocumentID: docID2, ModuleName: "convert"},
+	}
+
+	mq.On("ListTasksByDocuments", mock.Anything, repository.ListTasksByDocumentsParams{
+		Column1:        ids,
+		OrganizationID: orgID,
+	}).Return(expected, nil)
+
+	tasks, err := svc.ListByDocuments(context.Background(), ids, orgID)
+
+	require.NoError(t, err)
+	assert.Equal(t, expected, tasks)
+	mq.AssertExpectations(t)
+}
+
+func TestDocumentTaskService_ListByDocuments_EmptySlice(t *testing.T) {
+	mq := new(storemock.MockQuerier)
+	svc := NewDocumentTaskService(mq, nil, newTestLogger())
+
+	orgID := uuid.New()
+
+	mq.On("ListTasksByDocuments", mock.Anything, repository.ListTasksByDocumentsParams{
+		Column1:        []uuid.UUID{},
+		OrganizationID: orgID,
+	}).Return([]repository.DocumentTask{}, nil)
+
+	tasks, err := svc.ListByDocuments(context.Background(), []uuid.UUID{}, orgID)
+
+	require.NoError(t, err)
+	assert.Empty(t, tasks)
+	mq.AssertExpectations(t)
+}
+
+func TestDocumentTaskService_ListByDocuments_RepoError(t *testing.T) {
+	mq := new(storemock.MockQuerier)
+	svc := NewDocumentTaskService(mq, nil, newTestLogger())
+
+	orgID := uuid.New()
+	ids := []uuid.UUID{uuid.New()}
+
+	mq.On("ListTasksByDocuments", mock.Anything, mock.Anything).Return([]repository.DocumentTask(nil), errors.New("db error"))
+
+	_, err := svc.ListByDocuments(context.Background(), ids, orgID)
+
+	require.Error(t, err)
+	var appErr *errs.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, errs.CodeInternalError, appErr.Code)
+	mq.AssertExpectations(t)
+}

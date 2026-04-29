@@ -836,6 +836,36 @@ func (_m *MockQuerier) ListTasksByDocument(ctx context.Context, arg repository.L
 	return r0, r1
 }
 
+// ListTasksByDocuments provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) ListTasksByDocuments(ctx context.Context, arg repository.ListTasksByDocumentsParams) ([]repository.DocumentTask, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListTasksByDocuments")
+	}
+
+	var r0 []repository.DocumentTask
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListTasksByDocumentsParams) ([]repository.DocumentTask, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListTasksByDocumentsParams) []repository.DocumentTask); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.DocumentTask)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.ListTasksByDocumentsParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // ListUsersByOrganization provides a mock function with given fields: ctx, organizationID
 func (_m *MockQuerier) ListUsersByOrganization(ctx context.Context, organizationID uuid.UUID) ([]repository.ListUsersByOrganizationRow, error) {
 	ret := _m.Called(ctx, organizationID)

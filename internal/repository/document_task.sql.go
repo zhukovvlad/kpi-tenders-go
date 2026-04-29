@@ -247,6 +247,52 @@ func (q *Queries) ListTasksByDocument(ctx context.Context, arg ListTasksByDocume
 	return items, nil
 }
 
+const listTasksByDocuments = `-- name: ListTasksByDocuments :many
+SELECT dt.id, dt.document_id, dt.module_name, dt.status, dt.celery_task_id, dt.result_payload, dt.error_message, dt.retry_count, dt.input_storage_path, dt.created_at, dt.updated_at
+FROM document_tasks AS dt
+JOIN documents AS d ON d.id = dt.document_id
+WHERE dt.document_id = ANY($1::uuid[])
+  AND d.organization_id = $2
+ORDER BY dt.document_id, dt.created_at DESC
+`
+
+type ListTasksByDocumentsParams struct {
+	Column1        []uuid.UUID `json:"column_1"`
+	OrganizationID uuid.UUID   `json:"organization_id"`
+}
+
+func (q *Queries) ListTasksByDocuments(ctx context.Context, arg ListTasksByDocumentsParams) ([]DocumentTask, error) {
+	rows, err := q.db.Query(ctx, listTasksByDocuments, arg.Column1, arg.OrganizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DocumentTask{}
+	for rows.Next() {
+		var i DocumentTask
+		if err := rows.Scan(
+			&i.ID,
+			&i.DocumentID,
+			&i.ModuleName,
+			&i.Status,
+			&i.CeleryTaskID,
+			&i.ResultPayload,
+			&i.ErrorMessage,
+			&i.RetryCount,
+			&i.InputStoragePath,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markStaleTaskFailed = `-- name: MarkStaleTaskFailed :execrows
 UPDATE document_tasks
 SET status        = 'failed',

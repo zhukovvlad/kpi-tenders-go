@@ -82,6 +82,7 @@ type Querier interface {
 	// No org-check; caller must be trusted (watchdog goroutine only).
 	ListStaleTasks(ctx context.Context, arg ListStaleTasksParams) ([]ListStaleTasksRow, error)
 	ListTasksByDocument(ctx context.Context, arg ListTasksByDocumentParams) ([]DocumentTask, error)
+	ListTasksByDocuments(ctx context.Context, arg ListTasksByDocumentsParams) ([]DocumentTask, error)
 	ListUsersByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ListUsersByOrganizationRow, error)
 	// Watchdog: permanently fails a task that has exhausted all retry attempts.
 	// updated_at < cutoff prevents failing a task that was refreshed after ListStaleTasks.

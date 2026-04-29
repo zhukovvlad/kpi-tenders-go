@@ -101,6 +101,17 @@ func (s *DocumentTaskService) ListByDocument(ctx context.Context, documentID, or
 	return tasks, nil
 }
 
+func (s *DocumentTaskService) ListByDocuments(ctx context.Context, documentIDs []uuid.UUID, orgID uuid.UUID) ([]repository.DocumentTask, error) {
+	tasks, err := s.repo.ListTasksByDocuments(ctx, repository.ListTasksByDocumentsParams{
+		Column1:        documentIDs,
+		OrganizationID: orgID,
+	})
+	if err != nil {
+		return nil, errs.New(errs.CodeInternalError, "internal server error", err)
+	}
+	return tasks, nil
+}
+
 func (s *DocumentTaskService) UpdateStatus(ctx context.Context, params repository.UpdateDocumentTaskStatusParams) (repository.DocumentTask, error) {
 	task, err := s.repo.UpdateDocumentTaskStatus(ctx, params)
 	if err != nil {
