@@ -12,6 +12,28 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// Сохранённые сессии сравнения договоров; восстанавливаются по /compare?session=:id
+type ComparisonSession struct {
+	ID             uuid.UUID   `json:"id"`
+	OrganizationID uuid.UUID   `json:"organization_id"`
+	CreatedBy      pgtype.UUID `json:"created_by"`
+	// Человекочитаемое название сессии; NULL — автогенерация в UI
+	Name pgtype.Text `json:"name"`
+	// Тип договора, по которому выполнялось сравнение; NULL если тип был удалён
+	ContractKindID pgtype.UUID `json:"contract_kind_id"`
+	CreatedAt      time.Time   `json:"created_at"`
+}
+
+// Документы, участвующие в сессии сравнения
+type ComparisonSessionDocument struct {
+	SessionID  uuid.UUID `json:"session_id"`
+	DocumentID uuid.UUID `json:"document_id"`
+	// Тенант; денормализован для composite FK-защиты (→ documents)
+	OrganizationID uuid.UUID `json:"organization_id"`
+	// Порядок столбца в таблице сравнения; 0-based
+	Position int16 `json:"position"`
+}
+
 // Объекты строительства (ЖК, очереди, корпуса) — иерархическая структура тенанта
 type ConstructionSite struct {
 	ID             uuid.UUID `json:"id"`
@@ -25,6 +47,14 @@ type ConstructionSite struct {
 	CreatedBy pgtype.UUID `json:"created_by"`
 	CreatedAt time.Time   `json:"created_at"`
 	UpdatedAt time.Time   `json:"updated_at"`
+	// Путь к обложке объекта в MinIO; NULL — плейсхолдер
+	CoverImagePath pgtype.Text `json:"cover_image_path"`
+	// Время последней загрузки обложки
+	CoverImageUploadedAt pgtype.Timestamptz `json:"cover_image_uploaded_at"`
+	// Тип объекта: residential_complex | business_center | warehouse | phase | building | section | other; NULL если не указан
+	SiteType pgtype.Text `json:"site_type"`
+	// Время последней активности в объекте или любом его потомке; обновляется триггером
+	LastActivityAt time.Time `json:"last_activity_at"`
 }
 
 // Метаданные загруженных файлов и AI-артефактов; физические файлы — в MinIO
@@ -47,6 +77,27 @@ type Document struct {
 	ArtifactKind pgtype.Text `json:"artifact_kind"`
 	CreatedAt    time.Time   `json:"created_at"`
 	UpdatedAt    time.Time   `json:"updated_at"`
+	// Тип договора из справочника document_contract_kinds; NULL для артефактов воркера
+	ContractKindID pgtype.UUID `json:"contract_kind_id"`
+	// Роль файла в комплекте из справочника document_file_roles; NULL для артефактов воркера
+	FileRoleID pgtype.UUID `json:"file_role_id"`
+	// Корневой документ комплекта; NULL — документ является корнем или не входит в комплект; артефакты воркера всегда NULL
+	BundleID pgtype.UUID `json:"bundle_id"`
+}
+
+// Справочник типов договоров; управляется тенантом
+type DocumentContractKind struct {
+	ID uuid.UUID `json:"id"`
+	// NULL — системная запись, видна всем тенантам; NOT NULL — запись конкретного тенанта
+	OrganizationID pgtype.UUID `json:"organization_id"`
+	// Человекочитаемое название: «Генподряд», «Стройконтроль», «Отделка» …
+	DisplayName string `json:"display_name"`
+	// Порядок отображения в UI; меньше — выше
+	SortOrder int16 `json:"sort_order"`
+	// false — тип скрыт из выпадающих списков; существующие документы не затрагиваются
+	IsActive  bool      `json:"is_active"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // Извлечённые значения ключей для конкретного документа
@@ -60,6 +111,21 @@ type DocumentExtractedDatum struct {
 	KeyID uuid.UUID `json:"key_id"`
 	// Извлечённое значение; NULL если воркер не смог извлечь
 	ExtractedValue pgtype.Text `json:"extracted_value"`
+}
+
+// Справочник ролей файлов внутри комплекта договора; управляется тенантом
+type DocumentFileRole struct {
+	ID uuid.UUID `json:"id"`
+	// NULL — системная запись, видна всем тенантам; NOT NULL — запись конкретного тенанта
+	OrganizationID pgtype.UUID `json:"organization_id"`
+	// Человекочитаемое название: «Основной договор», «Смета», «ТЗ», «Матрица ответственности» …
+	DisplayName string `json:"display_name"`
+	// Порядок отображения в UI; меньше — выше
+	SortOrder int16 `json:"sort_order"`
+	// false — роль скрыта из выпадающих списков; существующие документы не затрагиваются
+	IsActive  bool      `json:"is_active"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // Задачи AI-воркера на Python для обработки документов
@@ -98,6 +164,12 @@ type ExtractionKey struct {
 	// Тип значения: string | number | date | boolean
 	DataType  string    `json:"data_type"`
 	CreatedAt time.Time `json:"created_at"`
+	// Человекочитаемое имя параметра для UI; NULL — fallback на source_query или key_name
+	DisplayName pgtype.Text `json:"display_name"`
+	// false — ключ скрыт из UI, данные в document_extracted_data сохранены
+	IsActive bool `json:"is_active"`
+	// Смысловая группа: commercial | volumetric | legal | other; NULL — без группировки
+	Category pgtype.Text `json:"category"`
 }
 
 // Пользовательский запрос на извлечение данных из документа (один комплект вопросов)
@@ -132,6 +204,21 @@ type Organization struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// Лог событий объекта для вкладки «История» и блока «Последняя активность»
+type SiteAuditLog struct {
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+	// Объект, в котором произошло событие (всегда конечный объект, не родитель)
+	SiteID uuid.UUID `json:"site_id"`
+	// Инициатор события; NULL для системных событий (watchdog, воркер)
+	ActorUserID pgtype.UUID `json:"actor_user_id"`
+	// Тип события; словарь расширяется приложением без миграции
+	EventType string `json:"event_type"`
+	// Контекст события; схема зависит от event_type
+	Payload   json.RawMessage `json:"payload"`
+	CreatedAt time.Time       `json:"created_at"`
+}
+
 // Пользователи, привязанные к организации
 type User struct {
 	ID             uuid.UUID `json:"id"`
@@ -145,4 +232,33 @@ type User struct {
 	IsActive  bool      `json:"is_active"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	// Время последнего успешного входа; NULL если пользователь ещё не входил
+	LastLoginAt pgtype.Timestamptz `json:"last_login_at"`
+}
+
+// Pending-приглашения пользователей в организацию; токен отправляется на email
+type UserInvitation struct {
+	ID             uuid.UUID   `json:"id"`
+	OrganizationID uuid.UUID   `json:"organization_id"`
+	Email          string      `json:"email"`
+	Role           string      `json:"role"`
+	InvitedBy      pgtype.UUID `json:"invited_by"`
+	// Хэш одноразового токена из письма; сам токен не хранится
+	TokenHash string `json:"token_hash"`
+	// Срок действия приглашения; после истечения токен невалиден
+	ExpiresAt time.Time `json:"expires_at"`
+	// Время принятия; NULL — приглашение ещё не принято
+	AcceptedAt pgtype.Timestamptz `json:"accepted_at"`
+	CreatedAt  time.Time          `json:"created_at"`
+}
+
+// Рекурсивный агрегат статуса объекта по всему поддереву. Одна строка на каждый объект (корневой, промежуточный, конечный). children_* — количество листьев поддерева в каждом статусе. Для конечного объекта ровно один счётчик равен 1.
+type VSiteStatus struct {
+	SiteID             uuid.UUID `json:"site_id"`
+	OrganizationID     uuid.UUID `json:"organization_id"`
+	Status             string    `json:"status"`
+	ChildrenReady      int64     `json:"children_ready"`
+	ChildrenProcessing int64     `json:"children_processing"`
+	ChildrenAttention  int64     `json:"children_attention"`
+	ChildrenEmpty      int64     `json:"children_empty"`
 }

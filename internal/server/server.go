@@ -17,20 +17,25 @@ import (
 )
 
 type Server struct {
-	cfg                     *config.Config
-	log                     *slog.Logger
-	store                   store.Store
-	storageClient           storageClient // nil when S3 not configured
-	router                  *gin.Engine
-	pythonClient            *pythonworker.Publisher // closed on server shutdown
-	authService             *service.AuthService
-	organizationService     *service.OrganizationService
-	userService             *service.UserService
-	constructionSiteService *service.ConstructionSiteService
-	documentService         *service.DocumentService
-	documentTaskService     *service.DocumentTaskService
-	workerService           *service.WorkerService
-	extractionService       *service.ExtractionService
+	cfg                      *config.Config
+	log                      *slog.Logger
+	store                    store.Store
+	storageClient            storageClient // nil when S3 not configured
+	router                   *gin.Engine
+	pythonClient             *pythonworker.Publisher // closed on server shutdown
+	authService              *service.AuthService
+	organizationService      *service.OrganizationService
+	userService              *service.UserService
+	constructionSiteService  *service.ConstructionSiteService
+	documentService          *service.DocumentService
+	documentTaskService      *service.DocumentTaskService
+	workerService            *service.WorkerService
+	extractionService        *service.ExtractionService
+	contractKindService      *service.ContractKindService
+	fileRoleService          *service.FileRoleService
+	invitationService        *service.InvitationService
+	siteAuditService         *service.SiteAuditService
+	comparisonSessionService *service.ComparisonSessionService
 }
 
 func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) (*Server, error) {
@@ -73,14 +78,19 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) (*Serve
 	}
 
 	srv := &Server{
-		cfg:                     cfg,
-		log:                     log,
-		store:                   db,
-		authService:             service.NewAuthService(db, log, cfg.JWTAccessSecret, cfg.JWTRefreshSecret),
-		organizationService:     service.NewOrganizationService(db, log),
-		userService:             service.NewUserService(db, log),
-		constructionSiteService: service.NewConstructionSiteService(db, log),
-		documentService:         service.NewDocumentService(db, docStorage, log),
+		cfg:                      cfg,
+		log:                      log,
+		store:                    db,
+		authService:              service.NewAuthService(db, log, cfg.JWTAccessSecret, cfg.JWTRefreshSecret),
+		organizationService:      service.NewOrganizationService(db, log),
+		userService:              service.NewUserService(db, log),
+		constructionSiteService:  service.NewConstructionSiteService(db, log),
+		documentService:          service.NewDocumentService(db, docStorage, log),
+		contractKindService:      service.NewContractKindService(db, log),
+		fileRoleService:          service.NewFileRoleService(db, log),
+		invitationService:        service.NewInvitationService(db, log),
+		siteAuditService:         service.NewSiteAuditService(db, log),
+		comparisonSessionService: service.NewComparisonSessionService(db, log),
 	}
 
 	// pythonClient publishes Celery tasks directly to Redis, shared by both
@@ -180,9 +190,14 @@ func (s *Server) setupRouter() {
 			{
 				sites.POST("", s.CreateConstructionSite)
 				sites.GET("", s.ListConstructionSites)
+				sites.GET("/root", s.ListRootConstructionSites)
 				sites.GET("/:id", s.GetConstructionSite)
+				sites.GET("/:id/children", s.ListConstructionSitesByParent)
 				sites.PATCH("/:id", s.UpdateConstructionSite)
+				sites.PATCH("/:id/cover", s.UpdateConstructionSiteCover)
+				sites.PATCH("/:id/type", s.UpdateConstructionSiteType)
 				sites.DELETE("/:id", s.DeleteConstructionSite)
+				sites.GET("/:id/audit-log", s.ListSiteAuditLog)
 			}
 
 			documents := protected.Group("/documents")
@@ -192,6 +207,7 @@ func (s *Server) setupRouter() {
 				documents.GET("", s.ListDocuments)
 				documents.GET("/:id", s.GetDocument)
 				documents.GET("/:id/url", s.GetDocumentPresignedURL)
+				documents.PATCH("/:id/meta", s.UpdateDocumentMeta)
 				documents.DELETE("/:id", s.DeleteDocument)
 				documents.POST("/:id/extract", s.InitiateExtraction)
 			}
@@ -208,6 +224,42 @@ func (s *Server) setupRouter() {
 			extractionRequests := protected.Group("/extraction-requests")
 			{
 				extractionRequests.GET("/:id", s.GetExtractionRequest)
+			}
+
+			contractKinds := protected.Group("/contract-kinds")
+			{
+				contractKinds.GET("", s.ListContractKinds)
+				contractKinds.POST("", s.CreateContractKind)
+				contractKinds.GET("/:id", s.GetContractKind)
+				contractKinds.PATCH("/:id", s.UpdateContractKind)
+				contractKinds.DELETE("/:id", s.DeleteContractKind)
+			}
+
+			fileRoles := protected.Group("/file-roles")
+			{
+				fileRoles.GET("", s.ListFileRoles)
+				fileRoles.POST("", s.CreateFileRole)
+				fileRoles.GET("/:id", s.GetFileRole)
+				fileRoles.PATCH("/:id", s.UpdateFileRole)
+				fileRoles.DELETE("/:id", s.DeleteFileRole)
+			}
+
+			invitations := protected.Group("/invitations")
+			invitations.Use(s.AdminOnly())
+			{
+				invitations.GET("", s.ListInvitations)
+				invitations.POST("", s.CreateInvitation)
+				invitations.DELETE("/:id", s.DeleteInvitation)
+			}
+
+			comparisons := protected.Group("/comparison-sessions")
+			{
+				comparisons.GET("", s.ListComparisonSessions)
+				comparisons.POST("", s.CreateComparisonSession)
+				comparisons.GET("/:id", s.GetComparisonSession)
+				comparisons.DELETE("/:id", s.DeleteComparisonSession)
+				comparisons.POST("/:id/documents", s.AddDocumentToSession)
+				comparisons.DELETE("/:id/documents/:doc_id", s.RemoveDocumentFromSession)
 			}
 
 			users := protected.Group("/users")

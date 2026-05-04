@@ -12,6 +12,8 @@ import (
 )
 
 type Querier interface {
+	AcceptUserInvitation(ctx context.Context, id uuid.UUID) (UserInvitation, error)
+	AddDocumentToComparisonSession(ctx context.Context, arg AddDocumentToComparisonSessionParams) (ComparisonSessionDocument, error)
 	// Batch idempotent upsert: inserts all extracted key-value pairs for a document
 	// in a single statement. Two unnest() calls in the SELECT list are expanded
 	// in lockstep by PostgreSQL (guaranteed since PG 10), zipping key_ids with
@@ -23,7 +25,9 @@ type Querier interface {
 	// artifact metadata from the latest callback so that RETURNING yields the current row state.
 	// Prevents duplicate artifact documents when a worker sends a duplicate 'completed' callback.
 	CreateArtifactDocument(ctx context.Context, arg CreateArtifactDocumentParams) (Document, error)
+	CreateComparisonSession(ctx context.Context, arg CreateComparisonSessionParams) (ComparisonSession, error)
 	CreateConstructionSite(ctx context.Context, arg CreateConstructionSiteParams) (ConstructionSite, error)
+	CreateContractKind(ctx context.Context, arg CreateContractKindParams) (DocumentContractKind, error)
 	CreateDocument(ctx context.Context, arg CreateDocumentParams) (Document, error)
 	// Public API: only 'convert' tasks may be created here; the input is always the
 	// original document's storage_path. Other modules (e.g. anonymize) read a derived
@@ -49,13 +53,22 @@ type Querier interface {
 	// by the composite FK (document_id, organization_id) → documents.
 	// Returns the created request including generated id and timestamps.
 	CreateExtractionRequest(ctx context.Context, arg CreateExtractionRequestParams) (ExtractionRequest, error)
+	CreateFileRole(ctx context.Context, arg CreateFileRoleParams) (DocumentFileRole, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
+	CreateSiteAuditEvent(ctx context.Context, arg CreateSiteAuditEventParams) (SiteAuditLog, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	CreateUserInvitation(ctx context.Context, arg CreateUserInvitationParams) (UserInvitation, error)
+	DeleteComparisonSession(ctx context.Context, arg DeleteComparisonSessionParams) (int64, error)
 	DeleteConstructionSite(ctx context.Context, arg DeleteConstructionSiteParams) (int64, error)
+	DeleteContractKind(ctx context.Context, arg DeleteContractKindParams) (int64, error)
 	DeleteDocument(ctx context.Context, arg DeleteDocumentParams) (int64, error)
 	DeleteDocumentTask(ctx context.Context, arg DeleteDocumentTaskParams) (int64, error)
+	DeleteFileRole(ctx context.Context, arg DeleteFileRoleParams) (int64, error)
 	DeleteOrganization(ctx context.Context, id uuid.UUID) (int64, error)
+	DeleteUserInvitation(ctx context.Context, arg DeleteUserInvitationParams) (int64, error)
+	GetComparisonSession(ctx context.Context, arg GetComparisonSessionParams) (ComparisonSession, error)
 	GetConstructionSite(ctx context.Context, arg GetConstructionSiteParams) (ConstructionSite, error)
+	GetContractKind(ctx context.Context, arg GetContractKindParams) (DocumentContractKind, error)
 	GetDocument(ctx context.Context, arg GetDocumentParams) (Document, error)
 	// WARNING: This lookup is intentionally unscoped by organization_id.
 	// Callers MUST enforce organization isolation at the service layer.
@@ -74,18 +87,26 @@ type Querier interface {
 	// authenticated via SERVICE_TOKEN and trust the id from a prior tenant-scoped
 	// write (document_tasks.extraction_request_id).
 	GetExtractionRequestByID(ctx context.Context, id uuid.UUID) (ExtractionRequest, error)
+	GetFileRole(ctx context.Context, arg GetFileRoleParams) (DocumentFileRole, error)
 	GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organization, error)
 	GetOrganizationByINN(ctx context.Context, inn pgtype.Text) (Organization, error)
 	// Returns the singleton convert/anonymize task for a document, if it exists.
 	// Used to inspect the current state of prerequisite tasks before deciding
 	// what to enqueue next for an extraction_request.
 	GetSingletonTaskByDocument(ctx context.Context, arg GetSingletonTaskByDocumentParams) (DocumentTask, error)
+	GetSiteStatus(ctx context.Context, arg GetSiteStatusParams) (VSiteStatus, error)
 	// Returns a per-request task (resolve_keys/extract) for the given extraction_request.
 	GetTaskForExtractionRequest(ctx context.Context, arg GetTaskForExtractionRequestParams) (DocumentTask, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	GetUserByIDAndOrg(ctx context.Context, arg GetUserByIDAndOrgParams) (GetUserByIDAndOrgRow, error)
+	GetUserInvitationByTokenHash(ctx context.Context, tokenHash string) (UserInvitation, error)
+	ListComparisonSessionDocuments(ctx context.Context, sessionID uuid.UUID) ([]ComparisonSessionDocument, error)
+	ListComparisonSessionsByOrg(ctx context.Context, organizationID uuid.UUID) ([]ComparisonSession, error)
 	ListConstructionSitesByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ConstructionSite, error)
+	ListConstructionSitesByParent(ctx context.Context, arg ListConstructionSitesByParentParams) ([]ConstructionSite, error)
+	// Returns all contract kinds visible to the given tenant: org-specific AND system kinds (organization_id IS NULL).
+	ListContractKindsByOrg(ctx context.Context, dollar_1 uuid.UUID) ([]DocumentContractKind, error)
 	// Все артефакты, порождённые данным документом; scoped by organization_id for tenant isolation.
 	ListDocumentsByParent(ctx context.Context, arg ListDocumentsByParentParams) ([]Document, error)
 	// Returns extracted values for a document filtered to the given extraction
@@ -97,13 +118,18 @@ type Querier interface {
 	// Returns all keys visible to the given tenant: org-specific keys AND system
 	// keys (organization_id IS NULL) shared across all tenants.
 	ListExtractionKeysByOrg(ctx context.Context, dollar_1 uuid.UUID) ([]ExtractionKey, error)
+	// Returns all file roles visible to the given tenant: org-specific AND system roles (organization_id IS NULL).
+	ListFileRolesByOrg(ctx context.Context, dollar_1 uuid.UUID) ([]DocumentFileRole, error)
 	// Returns extraction requests for a document that are still in flight
 	// (status pending or running). Used by WorkerService after prerequisite
 	// tasks (convert/anonymize) complete to progress all dependent requests.
 	ListPendingExtractionRequestsByDocument(ctx context.Context, documentID uuid.UUID) ([]ExtractionRequest, error)
+	ListRootConstructionSites(ctx context.Context, organizationID uuid.UUID) ([]ConstructionSite, error)
 	// Только корневые документы (загруженные пользователем, не артефакты)
 	ListRootDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]Document, error)
 	ListRootDocumentsBySite(ctx context.Context, arg ListRootDocumentsBySiteParams) ([]Document, error)
+	ListSiteAuditLogBySite(ctx context.Context, arg ListSiteAuditLogBySiteParams) ([]SiteAuditLog, error)
+	ListSiteStatusesByOrg(ctx context.Context, organizationID uuid.UUID) ([]VSiteStatus, error)
 	// Watchdog: returns stuck tasks (pending or processing) whose updated_at is older than
 	// sqlc.arg(cutoff). Results are limited by sqlc.arg(batch_size). Uses
 	// dt.input_storage_path so the correct file path is returned for every module:
@@ -115,6 +141,7 @@ type Querier interface {
 	ListStaleTasks(ctx context.Context, arg ListStaleTasksParams) ([]ListStaleTasksRow, error)
 	ListTasksByDocument(ctx context.Context, arg ListTasksByDocumentParams) ([]DocumentTask, error)
 	ListTasksByDocuments(ctx context.Context, arg ListTasksByDocumentsParams) ([]DocumentTask, error)
+	ListUserInvitationsByOrg(ctx context.Context, organizationID uuid.UUID) ([]UserInvitation, error)
 	ListUsersByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ListUsersByOrganizationRow, error)
 	// Watchdog: permanently fails a task that has exhausted all retry attempts.
 	// updated_at < cutoff prevents failing a task that was refreshed after ListStaleTasks.
@@ -125,6 +152,7 @@ type Querier interface {
 	// cannot double-claim the same task, and a task that was refreshed between
 	// ListStaleTasks and this UPDATE will not be incorrectly reset.
 	MarkStaleTaskPending(ctx context.Context, arg MarkStaleTaskPendingParams) (int64, error)
+	RemoveDocumentFromComparisonSession(ctx context.Context, arg RemoveDocumentFromComparisonSessionParams) (int64, error)
 	// Stores resolved_schema returned by resolve_keys so the GET endpoint can
 	// enumerate which keys' answers belong to this request. Does not change status.
 	SetExtractionRequestResolvedSchema(ctx context.Context, arg SetExtractionRequestResolvedSchemaParams) (ExtractionRequest, error)
@@ -134,7 +162,14 @@ type Querier interface {
 	// and pending|running → failed when a prerequisite task fails fatally.
 	SetExtractionRequestStatus(ctx context.Context, arg SetExtractionRequestStatusParams) (ExtractionRequest, error)
 	UpdateConstructionSite(ctx context.Context, arg UpdateConstructionSiteParams) (ConstructionSite, error)
+	UpdateConstructionSiteCover(ctx context.Context, arg UpdateConstructionSiteCoverParams) (ConstructionSite, error)
+	UpdateConstructionSiteType(ctx context.Context, arg UpdateConstructionSiteTypeParams) (ConstructionSite, error)
+	UpdateContractKind(ctx context.Context, arg UpdateContractKindParams) (DocumentContractKind, error)
+	// Updates document classification fields (contract_kind, file_role, bundle).
+	// Only applicable to root documents (parent_id IS NULL); artifacts are excluded by DB constraint.
+	UpdateDocumentMeta(ctx context.Context, arg UpdateDocumentMetaParams) (Document, error)
 	UpdateDocumentTaskStatus(ctx context.Context, arg UpdateDocumentTaskStatusParams) (DocumentTask, error)
+	UpdateFileRole(ctx context.Context, arg UpdateFileRoleParams) (DocumentFileRole, error)
 	UpdateOrganization(ctx context.Context, arg UpdateOrganizationParams) (Organization, error)
 	// Internal: no org-check; callers must be authenticated via SERVICE_TOKEN.
 	// Updates result_payload only; does not change status, celery_task_id, or error_message.

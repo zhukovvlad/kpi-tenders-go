@@ -46,7 +46,7 @@ func (q *Queries) BatchUpsertExtractedData(ctx context.Context, arg BatchUpsertE
 }
 
 const getExtractionKeysByNames = `-- name: GetExtractionKeysByNames :many
-SELECT DISTINCT ON (key_name) id, organization_id, key_name, source_query, data_type, created_at FROM extraction_keys
+SELECT DISTINCT ON (key_name) id, organization_id, key_name, source_query, data_type, created_at, display_name, is_active, category FROM extraction_keys
 WHERE key_name = ANY($1::text[])
   AND (organization_id = $2::uuid OR organization_id IS NULL)
 ORDER BY key_name, (organization_id IS NULL) ASC
@@ -78,6 +78,9 @@ func (q *Queries) GetExtractionKeysByNames(ctx context.Context, arg GetExtractio
 			&i.SourceQuery,
 			&i.DataType,
 			&i.CreatedAt,
+			&i.DisplayName,
+			&i.IsActive,
+			&i.Category,
 		); err != nil {
 			return nil, err
 		}
@@ -139,7 +142,7 @@ func (q *Queries) ListExtractedDataForKeys(ctx context.Context, arg ListExtracte
 }
 
 const listExtractionKeysByOrg = `-- name: ListExtractionKeysByOrg :many
-SELECT id, organization_id, key_name, source_query, data_type, created_at FROM extraction_keys
+SELECT id, organization_id, key_name, source_query, data_type, created_at, display_name, is_active, category FROM extraction_keys
 WHERE organization_id = $1::uuid OR organization_id IS NULL
 ORDER BY organization_id NULLS LAST, key_name
 `
@@ -162,6 +165,9 @@ func (q *Queries) ListExtractionKeysByOrg(ctx context.Context, dollar_1 uuid.UUI
 			&i.SourceQuery,
 			&i.DataType,
 			&i.CreatedAt,
+			&i.DisplayName,
+			&i.IsActive,
+			&i.Category,
 		); err != nil {
 			return nil, err
 		}
@@ -206,7 +212,7 @@ VALUES ($1::uuid, $2, $3, $4)
 ON CONFLICT ON CONSTRAINT uq_extraction_keys_org_name DO UPDATE
     SET source_query = EXCLUDED.source_query,
         data_type    = EXCLUDED.data_type
-RETURNING id, organization_id, key_name, source_query, data_type, created_at
+RETURNING id, organization_id, key_name, source_query, data_type, created_at, display_name, is_active, category
 `
 
 type UpsertExtractionKeyParams struct {
@@ -233,6 +239,9 @@ func (q *Queries) UpsertExtractionKey(ctx context.Context, arg UpsertExtractionK
 		&i.SourceQuery,
 		&i.DataType,
 		&i.CreatedAt,
+		&i.DisplayName,
+		&i.IsActive,
+		&i.Category,
 	)
 	return i, err
 }

@@ -143,3 +143,26 @@ func (s *DocumentService) GetPresignedURL(ctx context.Context, docID, orgID uuid
 
 	return presignedURL, nil
 }
+func (s *DocumentService) UpdateMeta(ctx context.Context, id, orgID uuid.UUID, contractKindID, fileRoleID, bundleID *uuid.UUID) (repository.Document, error) {
+	toUUID := func(u *uuid.UUID) pgtype.UUID {
+		if u == nil {
+			return pgtype.UUID{}
+		}
+		return pgtype.UUID{Bytes: *u, Valid: true}
+	}
+	doc, err := s.repo.UpdateDocumentMeta(ctx, repository.UpdateDocumentMetaParams{
+		ID:             id,
+		OrganizationID: orgID,
+		ContractKindID: toUUID(contractKindID),
+		FileRoleID:     toUUID(fileRoleID),
+		BundleID:       toUUID(bundleID),
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return repository.Document{}, errs.New(errs.CodeNotFound, "document not found", err)
+		}
+		s.log.Error("update document meta failed", "err", err, "id", id, "org_id", orgID)
+		return repository.Document{}, errs.New(errs.CodeInternalError, "internal server error", err)
+	}
+	return doc, nil
+}

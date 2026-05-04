@@ -15,7 +15,7 @@ import (
 const createConstructionSite = `-- name: CreateConstructionSite :one
 INSERT INTO construction_sites (organization_id, parent_id, name, status, created_by)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, organization_id, parent_id, name, status, created_by, created_at, updated_at
+RETURNING id, organization_id, parent_id, name, status, created_by, created_at, updated_at, cover_image_path, cover_image_uploaded_at, site_type, last_activity_at
 `
 
 type CreateConstructionSiteParams struct {
@@ -44,6 +44,10 @@ func (q *Queries) CreateConstructionSite(ctx context.Context, arg CreateConstruc
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CoverImagePath,
+		&i.CoverImageUploadedAt,
+		&i.SiteType,
+		&i.LastActivityAt,
 	)
 	return i, err
 }
@@ -66,7 +70,7 @@ func (q *Queries) DeleteConstructionSite(ctx context.Context, arg DeleteConstruc
 }
 
 const getConstructionSite = `-- name: GetConstructionSite :one
-SELECT id, organization_id, parent_id, name, status, created_by, created_at, updated_at FROM construction_sites
+SELECT id, organization_id, parent_id, name, status, created_by, created_at, updated_at, cover_image_path, cover_image_uploaded_at, site_type, last_activity_at FROM construction_sites
 WHERE id = $1 AND organization_id = $2
 `
 
@@ -87,12 +91,16 @@ func (q *Queries) GetConstructionSite(ctx context.Context, arg GetConstructionSi
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CoverImagePath,
+		&i.CoverImageUploadedAt,
+		&i.SiteType,
+		&i.LastActivityAt,
 	)
 	return i, err
 }
 
 const listConstructionSitesByOrganization = `-- name: ListConstructionSitesByOrganization :many
-SELECT id, organization_id, parent_id, name, status, created_by, created_at, updated_at FROM construction_sites
+SELECT id, organization_id, parent_id, name, status, created_by, created_at, updated_at, cover_image_path, cover_image_uploaded_at, site_type, last_activity_at FROM construction_sites
 WHERE organization_id = $1
 ORDER BY created_at DESC
 `
@@ -115,6 +123,93 @@ func (q *Queries) ListConstructionSitesByOrganization(ctx context.Context, organ
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CoverImagePath,
+			&i.CoverImageUploadedAt,
+			&i.SiteType,
+			&i.LastActivityAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listConstructionSitesByParent = `-- name: ListConstructionSitesByParent :many
+SELECT id, organization_id, parent_id, name, status, created_by, created_at, updated_at, cover_image_path, cover_image_uploaded_at, site_type, last_activity_at FROM construction_sites
+WHERE organization_id = $1 AND parent_id = $2
+ORDER BY last_activity_at DESC
+`
+
+type ListConstructionSitesByParentParams struct {
+	OrganizationID uuid.UUID   `json:"organization_id"`
+	ParentID       pgtype.UUID `json:"parent_id"`
+}
+
+func (q *Queries) ListConstructionSitesByParent(ctx context.Context, arg ListConstructionSitesByParentParams) ([]ConstructionSite, error) {
+	rows, err := q.db.Query(ctx, listConstructionSitesByParent, arg.OrganizationID, arg.ParentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ConstructionSite{}
+	for rows.Next() {
+		var i ConstructionSite
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.ParentID,
+			&i.Name,
+			&i.Status,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CoverImagePath,
+			&i.CoverImageUploadedAt,
+			&i.SiteType,
+			&i.LastActivityAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRootConstructionSites = `-- name: ListRootConstructionSites :many
+SELECT id, organization_id, parent_id, name, status, created_by, created_at, updated_at, cover_image_path, cover_image_uploaded_at, site_type, last_activity_at FROM construction_sites
+WHERE organization_id = $1 AND parent_id IS NULL
+ORDER BY last_activity_at DESC
+`
+
+func (q *Queries) ListRootConstructionSites(ctx context.Context, organizationID uuid.UUID) ([]ConstructionSite, error) {
+	rows, err := q.db.Query(ctx, listRootConstructionSites, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ConstructionSite{}
+	for rows.Next() {
+		var i ConstructionSite
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.ParentID,
+			&i.Name,
+			&i.Status,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CoverImagePath,
+			&i.CoverImageUploadedAt,
+			&i.SiteType,
+			&i.LastActivityAt,
 		); err != nil {
 			return nil, err
 		}
@@ -132,7 +227,7 @@ SET name       = $3,
     status     = $4,
     updated_at = now()
 WHERE id = $1 AND organization_id = $2
-RETURNING id, organization_id, parent_id, name, status, created_by, created_at, updated_at
+RETURNING id, organization_id, parent_id, name, status, created_by, created_at, updated_at, cover_image_path, cover_image_uploaded_at, site_type, last_activity_at
 `
 
 type UpdateConstructionSiteParams struct {
@@ -159,6 +254,79 @@ func (q *Queries) UpdateConstructionSite(ctx context.Context, arg UpdateConstruc
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CoverImagePath,
+		&i.CoverImageUploadedAt,
+		&i.SiteType,
+		&i.LastActivityAt,
+	)
+	return i, err
+}
+
+const updateConstructionSiteCover = `-- name: UpdateConstructionSiteCover :one
+UPDATE construction_sites
+SET cover_image_path        = $3,
+    cover_image_uploaded_at = now(),
+    updated_at              = now()
+WHERE id = $1 AND organization_id = $2
+RETURNING id, organization_id, parent_id, name, status, created_by, created_at, updated_at, cover_image_path, cover_image_uploaded_at, site_type, last_activity_at
+`
+
+type UpdateConstructionSiteCoverParams struct {
+	ID             uuid.UUID   `json:"id"`
+	OrganizationID uuid.UUID   `json:"organization_id"`
+	CoverImagePath pgtype.Text `json:"cover_image_path"`
+}
+
+func (q *Queries) UpdateConstructionSiteCover(ctx context.Context, arg UpdateConstructionSiteCoverParams) (ConstructionSite, error) {
+	row := q.db.QueryRow(ctx, updateConstructionSiteCover, arg.ID, arg.OrganizationID, arg.CoverImagePath)
+	var i ConstructionSite
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.ParentID,
+		&i.Name,
+		&i.Status,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CoverImagePath,
+		&i.CoverImageUploadedAt,
+		&i.SiteType,
+		&i.LastActivityAt,
+	)
+	return i, err
+}
+
+const updateConstructionSiteType = `-- name: UpdateConstructionSiteType :one
+UPDATE construction_sites
+SET site_type  = $3,
+    updated_at = now()
+WHERE id = $1 AND organization_id = $2
+RETURNING id, organization_id, parent_id, name, status, created_by, created_at, updated_at, cover_image_path, cover_image_uploaded_at, site_type, last_activity_at
+`
+
+type UpdateConstructionSiteTypeParams struct {
+	ID             uuid.UUID   `json:"id"`
+	OrganizationID uuid.UUID   `json:"organization_id"`
+	SiteType       pgtype.Text `json:"site_type"`
+}
+
+func (q *Queries) UpdateConstructionSiteType(ctx context.Context, arg UpdateConstructionSiteTypeParams) (ConstructionSite, error) {
+	row := q.db.QueryRow(ctx, updateConstructionSiteType, arg.ID, arg.OrganizationID, arg.SiteType)
+	var i ConstructionSite
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.ParentID,
+		&i.Name,
+		&i.Status,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CoverImagePath,
+		&i.CoverImageUploadedAt,
+		&i.SiteType,
+		&i.LastActivityAt,
 	)
 	return i, err
 }

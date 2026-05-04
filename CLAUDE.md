@@ -109,6 +109,7 @@ POST             /api/v1/documents/upload    (multipart/form-data → S3 → Б�
 GET              /api/v1/documents                  (?parent_id=uuid → список артефактов; ?site_id=uuid → по объекту; иначе — корневые)
 GET/DELETE       /api/v1/documents/:id
 GET              /api/v1/documents/:id/url   (?download=true|false → presigned URL, TTL 15 мин)
+PATCH            /api/v1/documents/:id/meta  (contract_kind_id, file_role_id, bundle_id)
 
 POST             /api/v1/tasks
 GET              /api/v1/tasks          (?document_id=uuid → задачи одного документа; ?document_ids=uuid,uuid,… → батч до 100 документов)
@@ -117,10 +118,29 @@ GET/PATCH/DELETE /api/v1/tasks/:id      (status update)
 PATCH            /internal/worker/tasks/:id/status  (worker callback, ServiceBearerAuth)
 
 POST/GET         /api/v1/sites
+GET              /api/v1/sites/root         (корневые объекты, parent_id IS NULL)
 GET/PATCH/DELETE /api/v1/sites/:id
+GET              /api/v1/sites/:id/children (дочерние объекты)
+PATCH            /api/v1/sites/:id/cover    ({ cover_image_path })
+PATCH            /api/v1/sites/:id/type     ({ site_type })
+GET              /api/v1/sites/:id/audit-log (?limit=50&offset=0)
 
 POST             /api/v1/documents/:id/extract       (создаёт extraction_request; body: { questions, anonymize? }, default anonymize=true; → 201 { extraction_request_id, status })
 GET              /api/v1/extraction-requests/:id     (status + resolved_schema + answers; tenant-scoped)
+
+GET/POST         /api/v1/contract-kinds
+GET/PATCH/DELETE /api/v1/contract-kinds/:id
+
+GET/POST         /api/v1/file-roles
+GET/PATCH/DELETE /api/v1/file-roles/:id
+
+GET/POST         /api/v1/invitations         (AdminOnly; POST возвращает { invitation, token })
+DELETE           /api/v1/invitations/:id     (AdminOnly)
+
+GET/POST         /api/v1/comparison-sessions
+GET/DELETE       /api/v1/comparison-sessions/:id
+POST             /api/v1/comparison-sessions/:id/documents
+DELETE           /api/v1/comparison-sessions/:id/documents/:doc_id
 ```
 
 ### Заглушки / TODO
@@ -142,8 +162,9 @@ _Нет активных заглушек._
 | 000001 | Полная схема: organizations, users, construction_sites, documents (artifact_kind, parent_id CASCADE), document_tasks (retry_count, input_storage_path, UNIQUE document_id+module_name); все FK-индексы; idx_document_tasks_stale; триггеры tenant isolation |
 | 000002 | `extraction_keys` (org_id nullable, key_name, source_query, data_type; UNIQUE NULLS NOT DISTINCT org+name) + `document_extracted_data` (org_id, document_id, key_id, extracted_value; composite FK doc+org → documents; `uq_extracted_data_doc_key` UNIQUE (org_id, document_id, key_id); trigger `trg_check_extracted_data_key_org` блокирует cross-tenant key_id; триггеры `trg_immut_org_*` через `prevent_organization_id_change()` из 000001 запрещают изменение org_id после вставки; `idx_extracted_data_key_org`) + composite UNIQUE constraint `uq_documents_id_org` на таблице documents |
 | 000003 | `extraction_requests` (id, document_id, organization_id, questions jsonb, anonymize bool default true, status, resolved_schema jsonb, error_message; composite FK doc+org → documents; CHECK questions = непустой jsonb-массив; immut org_id триггер; `idx_extraction_requests_doc_pending`). В `document_tasks` добавлена колонка `extraction_request_id` (FK CASCADE на extraction_requests). Старый `UNIQUE(document_id, module_name)` снесён; заменён двумя partial-индексами: `uq_document_tasks_doc_singleton (document_id, module_name) WHERE module_name IN ('convert','anonymize')` и `uq_document_tasks_request_module (extraction_request_id, module_name) WHERE module_name IN ('resolve_keys','extract')`. CHECK `document_tasks_module_request_chk` форсирует инвариант: convert/anonymize ⇔ extraction_request_id IS NULL; resolve_keys/extract ⇔ NOT NULL. |
+| 000004 | `document_contract_kinds` + `document_file_roles` (org-specific + системные с nullable org_id); `user_invitations` (хранит sha256-hash токена); `site_audit_log` (INSERT-only); `comparison_sessions` + `comparison_session_documents`. Новые поля: `construction_sites.{cover_image_path,site_type,last_activity_at}`, `documents.{contract_kind_id,file_role_id,bundle_id}`, `extraction_keys.{display_name,is_active,category}`, `users.{last_login_at}` + role CHECK. Вью `v_site_status`, триггеры `propagate_site_activity`, `check_document_kind_role_org`. |
 
-> **Примечание:** следующая миграция — `catalog_positions` (pgvector RAG), будет `000004`.
+> **Примечание:** следующая миграция — `catalog_positions` (pgvector RAG), будет `000005`.
 
 ## Стратегия тестирования
 

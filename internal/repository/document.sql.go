@@ -22,7 +22,7 @@ DO UPDATE SET
     mime_type       = EXCLUDED.mime_type,
     file_size_bytes = EXCLUDED.file_size_bytes,
     updated_at      = now()
-RETURNING id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at
+RETURNING id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at, contract_kind_id, file_role_id, bundle_id
 `
 
 type CreateArtifactDocumentParams struct {
@@ -66,6 +66,9 @@ func (q *Queries) CreateArtifactDocument(ctx context.Context, arg CreateArtifact
 		&i.ArtifactKind,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ContractKindID,
+		&i.FileRoleID,
+		&i.BundleID,
 	)
 	return i, err
 }
@@ -73,7 +76,7 @@ func (q *Queries) CreateArtifactDocument(ctx context.Context, arg CreateArtifact
 const createDocument = `-- name: CreateDocument :one
 INSERT INTO documents (organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at
+RETURNING id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at, contract_kind_id, file_role_id, bundle_id
 `
 
 type CreateDocumentParams struct {
@@ -114,6 +117,9 @@ func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) 
 		&i.ArtifactKind,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ContractKindID,
+		&i.FileRoleID,
+		&i.BundleID,
 	)
 	return i, err
 }
@@ -136,7 +142,7 @@ func (q *Queries) DeleteDocument(ctx context.Context, arg DeleteDocumentParams) 
 }
 
 const getDocument = `-- name: GetDocument :one
-SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at FROM documents
+SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at, contract_kind_id, file_role_id, bundle_id FROM documents
 WHERE id = $1 AND organization_id = $2
 `
 
@@ -161,12 +167,15 @@ func (q *Queries) GetDocument(ctx context.Context, arg GetDocumentParams) (Docum
 		&i.ArtifactKind,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ContractKindID,
+		&i.FileRoleID,
+		&i.BundleID,
 	)
 	return i, err
 }
 
 const getDocumentByID = `-- name: GetDocumentByID :one
-SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at FROM documents WHERE id = $1
+SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at, contract_kind_id, file_role_id, bundle_id FROM documents WHERE id = $1
 `
 
 // WARNING: This lookup is intentionally unscoped by organization_id.
@@ -188,12 +197,15 @@ func (q *Queries) GetDocumentByID(ctx context.Context, id uuid.UUID) (Document, 
 		&i.ArtifactKind,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ContractKindID,
+		&i.FileRoleID,
+		&i.BundleID,
 	)
 	return i, err
 }
 
 const listDocumentsByParent = `-- name: ListDocumentsByParent :many
-SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at FROM documents
+SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at, contract_kind_id, file_role_id, bundle_id FROM documents
 WHERE parent_id = $1 AND organization_id = $2
 ORDER BY created_at ASC
 `
@@ -226,6 +238,9 @@ func (q *Queries) ListDocumentsByParent(ctx context.Context, arg ListDocumentsBy
 			&i.ArtifactKind,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ContractKindID,
+			&i.FileRoleID,
+			&i.BundleID,
 		); err != nil {
 			return nil, err
 		}
@@ -238,7 +253,7 @@ func (q *Queries) ListDocumentsByParent(ctx context.Context, arg ListDocumentsBy
 }
 
 const listRootDocumentsByOrganization = `-- name: ListRootDocumentsByOrganization :many
-SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at FROM documents
+SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at, contract_kind_id, file_role_id, bundle_id FROM documents
 WHERE organization_id = $1 AND parent_id IS NULL
 ORDER BY created_at DESC
 `
@@ -266,6 +281,9 @@ func (q *Queries) ListRootDocumentsByOrganization(ctx context.Context, organizat
 			&i.ArtifactKind,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ContractKindID,
+			&i.FileRoleID,
+			&i.BundleID,
 		); err != nil {
 			return nil, err
 		}
@@ -278,7 +296,7 @@ func (q *Queries) ListRootDocumentsByOrganization(ctx context.Context, organizat
 }
 
 const listRootDocumentsBySite = `-- name: ListRootDocumentsBySite :many
-SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at FROM documents
+SELECT id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at, contract_kind_id, file_role_id, bundle_id FROM documents
 WHERE organization_id = $1 AND site_id = $2 AND parent_id IS NULL
 ORDER BY created_at DESC
 `
@@ -310,6 +328,9 @@ func (q *Queries) ListRootDocumentsBySite(ctx context.Context, arg ListRootDocum
 			&i.ArtifactKind,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ContractKindID,
+			&i.FileRoleID,
+			&i.BundleID,
 		); err != nil {
 			return nil, err
 		}
@@ -319,4 +340,53 @@ func (q *Queries) ListRootDocumentsBySite(ctx context.Context, arg ListRootDocum
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateDocumentMeta = `-- name: UpdateDocumentMeta :one
+UPDATE documents
+SET contract_kind_id = $3,
+    file_role_id     = $4,
+    bundle_id        = $5,
+    updated_at       = now()
+WHERE id = $1 AND organization_id = $2
+RETURNING id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at, contract_kind_id, file_role_id, bundle_id
+`
+
+type UpdateDocumentMetaParams struct {
+	ID             uuid.UUID   `json:"id"`
+	OrganizationID uuid.UUID   `json:"organization_id"`
+	ContractKindID pgtype.UUID `json:"contract_kind_id"`
+	FileRoleID     pgtype.UUID `json:"file_role_id"`
+	BundleID       pgtype.UUID `json:"bundle_id"`
+}
+
+// Updates document classification fields (contract_kind, file_role, bundle).
+// Only applicable to root documents (parent_id IS NULL); artifacts are excluded by DB constraint.
+func (q *Queries) UpdateDocumentMeta(ctx context.Context, arg UpdateDocumentMetaParams) (Document, error) {
+	row := q.db.QueryRow(ctx, updateDocumentMeta,
+		arg.ID,
+		arg.OrganizationID,
+		arg.ContractKindID,
+		arg.FileRoleID,
+		arg.BundleID,
+	)
+	var i Document
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.SiteID,
+		&i.UploadedBy,
+		&i.ParentID,
+		&i.FileName,
+		&i.StoragePath,
+		&i.MimeType,
+		&i.FileSizeBytes,
+		&i.ArtifactKind,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ContractKindID,
+		&i.FileRoleID,
+		&i.BundleID,
+	)
+	return i, err
 }
