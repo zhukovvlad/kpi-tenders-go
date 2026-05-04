@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -52,24 +53,56 @@ func (s *Server) ListDocumentTasks(c *gin.Context) {
 		return
 	}
 
-	docIDStr := c.Query("document_id")
-	if docIDStr == "" {
-		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "document_id query param is required", nil))
+	docIDStr, docIDPresent := c.GetQuery("document_id")
+	docIDsStr, docIDsPresent := c.GetQuery("document_ids")
+
+	if docIDPresent && docIDsPresent {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "use document_id or document_ids, not both", nil))
 		return
 	}
 
+	if docIDsPresent {
+		if docIDsStr == "" {
+			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "document_ids cannot be empty", nil))
+			return
+		}
+		parts := strings.Split(docIDsStr, ",")
+		if len(parts) > 100 {
+			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "too many document_ids (max 100)", nil))
+			return
+		}
+		ids := make([]uuid.UUID, 0, len(parts))
+		for _, p := range parts {
+			id, err := uuid.Parse(strings.TrimSpace(p))
+			if err != nil {
+				s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid document_id in document_ids", err))
+				return
+			}
+			ids = append(ids, id)
+		}
+		tasks, err := s.documentTaskService.ListByDocuments(c.Request.Context(), ids, orgID)
+		if err != nil {
+			s.respondWithError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, tasks)
+		return
+	}
+
+	if !docIDPresent {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "document_id or document_ids query param is required", nil))
+		return
+	}
 	docID, err := uuid.Parse(docIDStr)
 	if err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid document_id", err))
 		return
 	}
-
 	tasks, err := s.documentTaskService.ListByDocument(c.Request.Context(), docID, orgID)
 	if err != nil {
 		s.respondWithError(c, err)
 		return
 	}
-
 	c.JSON(http.StatusOK, tasks)
 }
 

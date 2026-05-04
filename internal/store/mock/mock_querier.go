@@ -18,6 +18,62 @@ type MockQuerier struct {
 	mock.Mock
 }
 
+// AcceptUserInvitation provides a mock function with given fields: ctx, id
+func (_m *MockQuerier) AcceptUserInvitation(ctx context.Context, id uuid.UUID) (repository.UserInvitation, error) {
+	ret := _m.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AcceptUserInvitation")
+	}
+
+	var r0 repository.UserInvitation
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) (repository.UserInvitation, error)); ok {
+		return rf(ctx, id)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) repository.UserInvitation); ok {
+		r0 = rf(ctx, id)
+	} else {
+		r0 = ret.Get(0).(repository.UserInvitation)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = rf(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// AddDocumentToComparisonSession provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) AddDocumentToComparisonSession(ctx context.Context, arg repository.AddDocumentToComparisonSessionParams) (repository.ComparisonSessionDocument, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AddDocumentToComparisonSession")
+	}
+
+	var r0 repository.ComparisonSessionDocument
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.AddDocumentToComparisonSessionParams) (repository.ComparisonSessionDocument, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.AddDocumentToComparisonSessionParams) repository.ComparisonSessionDocument); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.ComparisonSessionDocument)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.AddDocumentToComparisonSessionParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // BatchUpsertExtractedData provides a mock function with given fields: ctx, arg
 func (_m *MockQuerier) BatchUpsertExtractedData(ctx context.Context, arg repository.BatchUpsertExtractedDataParams) error {
 	ret := _m.Called(ctx, arg)
@@ -64,6 +120,34 @@ func (_m *MockQuerier) CreateArtifactDocument(ctx context.Context, arg repositor
 	return r0, r1
 }
 
+// CreateComparisonSession provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) CreateComparisonSession(ctx context.Context, arg repository.CreateComparisonSessionParams) (repository.ComparisonSession, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateComparisonSession")
+	}
+
+	var r0 repository.ComparisonSession
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateComparisonSessionParams) (repository.ComparisonSession, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateComparisonSessionParams) repository.ComparisonSession); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.ComparisonSession)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.CreateComparisonSessionParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // CreateConstructionSite provides a mock function with given fields: ctx, arg
 func (_m *MockQuerier) CreateConstructionSite(ctx context.Context, arg repository.CreateConstructionSiteParams) (repository.ConstructionSite, error) {
 	ret := _m.Called(ctx, arg)
@@ -84,6 +168,34 @@ func (_m *MockQuerier) CreateConstructionSite(ctx context.Context, arg repositor
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, repository.CreateConstructionSiteParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// CreateContractKind provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) CreateContractKind(ctx context.Context, arg repository.CreateContractKindParams) (repository.DocumentContractKind, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateContractKind")
+	}
+
+	var r0 repository.DocumentContractKind
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateContractKindParams) (repository.DocumentContractKind, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateContractKindParams) repository.DocumentContractKind); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.DocumentContractKind)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.CreateContractKindParams) error); ok {
 		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)
@@ -148,26 +260,110 @@ func (_m *MockQuerier) CreateDocumentTask(ctx context.Context, arg repository.Cr
 	return r0, r1
 }
 
-// CreateDocumentTaskInternal provides a mock function with given fields: ctx, arg
-func (_m *MockQuerier) CreateDocumentTaskInternal(ctx context.Context, arg repository.CreateDocumentTaskInternalParams) (repository.DocumentTask, error) {
+// CreateDocumentTaskForRequest provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) CreateDocumentTaskForRequest(ctx context.Context, arg repository.CreateDocumentTaskForRequestParams) (repository.DocumentTask, error) {
 	ret := _m.Called(ctx, arg)
 
 	if len(ret) == 0 {
-		panic("no return value specified for CreateDocumentTaskInternal")
+		panic("no return value specified for CreateDocumentTaskForRequest")
 	}
 
 	var r0 repository.DocumentTask
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateDocumentTaskInternalParams) (repository.DocumentTask, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateDocumentTaskForRequestParams) (repository.DocumentTask, error)); ok {
 		return rf(ctx, arg)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateDocumentTaskInternalParams) repository.DocumentTask); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateDocumentTaskForRequestParams) repository.DocumentTask); ok {
 		r0 = rf(ctx, arg)
 	} else {
 		r0 = ret.Get(0).(repository.DocumentTask)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, repository.CreateDocumentTaskInternalParams) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, repository.CreateDocumentTaskForRequestParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// CreateDocumentTaskSingleton provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) CreateDocumentTaskSingleton(ctx context.Context, arg repository.CreateDocumentTaskSingletonParams) (repository.DocumentTask, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateDocumentTaskSingleton")
+	}
+
+	var r0 repository.DocumentTask
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateDocumentTaskSingletonParams) (repository.DocumentTask, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateDocumentTaskSingletonParams) repository.DocumentTask); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.DocumentTask)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.CreateDocumentTaskSingletonParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// CreateExtractionRequest provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) CreateExtractionRequest(ctx context.Context, arg repository.CreateExtractionRequestParams) (repository.ExtractionRequest, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateExtractionRequest")
+	}
+
+	var r0 repository.ExtractionRequest
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateExtractionRequestParams) (repository.ExtractionRequest, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateExtractionRequestParams) repository.ExtractionRequest); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.ExtractionRequest)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.CreateExtractionRequestParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// CreateFileRole provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) CreateFileRole(ctx context.Context, arg repository.CreateFileRoleParams) (repository.DocumentFileRole, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateFileRole")
+	}
+
+	var r0 repository.DocumentFileRole
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateFileRoleParams) (repository.DocumentFileRole, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateFileRoleParams) repository.DocumentFileRole); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.DocumentFileRole)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.CreateFileRoleParams) error); ok {
 		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)
@@ -204,6 +400,34 @@ func (_m *MockQuerier) CreateOrganization(ctx context.Context, arg repository.Cr
 	return r0, r1
 }
 
+// CreateSiteAuditEvent provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) CreateSiteAuditEvent(ctx context.Context, arg repository.CreateSiteAuditEventParams) (repository.SiteAuditLog, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateSiteAuditEvent")
+	}
+
+	var r0 repository.SiteAuditLog
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateSiteAuditEventParams) (repository.SiteAuditLog, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateSiteAuditEventParams) repository.SiteAuditLog); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.SiteAuditLog)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.CreateSiteAuditEventParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // CreateUser provides a mock function with given fields: ctx, arg
 func (_m *MockQuerier) CreateUser(ctx context.Context, arg repository.CreateUserParams) (repository.User, error) {
 	ret := _m.Called(ctx, arg)
@@ -232,6 +456,62 @@ func (_m *MockQuerier) CreateUser(ctx context.Context, arg repository.CreateUser
 	return r0, r1
 }
 
+// CreateUserInvitation provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) CreateUserInvitation(ctx context.Context, arg repository.CreateUserInvitationParams) (repository.UserInvitation, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateUserInvitation")
+	}
+
+	var r0 repository.UserInvitation
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateUserInvitationParams) (repository.UserInvitation, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.CreateUserInvitationParams) repository.UserInvitation); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.UserInvitation)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.CreateUserInvitationParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// DeleteComparisonSession provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) DeleteComparisonSession(ctx context.Context, arg repository.DeleteComparisonSessionParams) (int64, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteComparisonSession")
+	}
+
+	var r0 int64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.DeleteComparisonSessionParams) (int64, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.DeleteComparisonSessionParams) int64); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.DeleteComparisonSessionParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // DeleteConstructionSite provides a mock function with given fields: ctx, arg
 func (_m *MockQuerier) DeleteConstructionSite(ctx context.Context, arg repository.DeleteConstructionSiteParams) (int64, error) {
 	ret := _m.Called(ctx, arg)
@@ -252,6 +532,34 @@ func (_m *MockQuerier) DeleteConstructionSite(ctx context.Context, arg repositor
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, repository.DeleteConstructionSiteParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// DeleteContractKind provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) DeleteContractKind(ctx context.Context, arg repository.DeleteContractKindParams) (int64, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteContractKind")
+	}
+
+	var r0 int64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.DeleteContractKindParams) (int64, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.DeleteContractKindParams) int64); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.DeleteContractKindParams) error); ok {
 		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)
@@ -316,6 +624,34 @@ func (_m *MockQuerier) DeleteDocumentTask(ctx context.Context, arg repository.De
 	return r0, r1
 }
 
+// DeleteFileRole provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) DeleteFileRole(ctx context.Context, arg repository.DeleteFileRoleParams) (int64, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteFileRole")
+	}
+
+	var r0 int64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.DeleteFileRoleParams) (int64, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.DeleteFileRoleParams) int64); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.DeleteFileRoleParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // DeleteOrganization provides a mock function with given fields: ctx, id
 func (_m *MockQuerier) DeleteOrganization(ctx context.Context, id uuid.UUID) (int64, error) {
 	ret := _m.Called(ctx, id)
@@ -344,6 +680,62 @@ func (_m *MockQuerier) DeleteOrganization(ctx context.Context, id uuid.UUID) (in
 	return r0, r1
 }
 
+// DeleteUserInvitation provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) DeleteUserInvitation(ctx context.Context, arg repository.DeleteUserInvitationParams) (int64, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteUserInvitation")
+	}
+
+	var r0 int64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.DeleteUserInvitationParams) (int64, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.DeleteUserInvitationParams) int64); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.DeleteUserInvitationParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetComparisonSession provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) GetComparisonSession(ctx context.Context, arg repository.GetComparisonSessionParams) (repository.ComparisonSession, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetComparisonSession")
+	}
+
+	var r0 repository.ComparisonSession
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetComparisonSessionParams) (repository.ComparisonSession, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetComparisonSessionParams) repository.ComparisonSession); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.ComparisonSession)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.GetComparisonSessionParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // GetConstructionSite provides a mock function with given fields: ctx, arg
 func (_m *MockQuerier) GetConstructionSite(ctx context.Context, arg repository.GetConstructionSiteParams) (repository.ConstructionSite, error) {
 	ret := _m.Called(ctx, arg)
@@ -364,6 +756,34 @@ func (_m *MockQuerier) GetConstructionSite(ctx context.Context, arg repository.G
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, repository.GetConstructionSiteParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetContractKind provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) GetContractKind(ctx context.Context, arg repository.GetContractKindParams) (repository.DocumentContractKind, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetContractKind")
+	}
+
+	var r0 repository.DocumentContractKind
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetContractKindParams) (repository.DocumentContractKind, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetContractKindParams) repository.DocumentContractKind); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.DocumentContractKind)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.GetContractKindParams) error); ok {
 		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)
@@ -486,6 +906,90 @@ func (_m *MockQuerier) GetExtractionKeysByNames(ctx context.Context, arg reposit
 	return r0, r1
 }
 
+// GetExtractionRequest provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) GetExtractionRequest(ctx context.Context, arg repository.GetExtractionRequestParams) (repository.ExtractionRequest, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetExtractionRequest")
+	}
+
+	var r0 repository.ExtractionRequest
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetExtractionRequestParams) (repository.ExtractionRequest, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetExtractionRequestParams) repository.ExtractionRequest); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.ExtractionRequest)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.GetExtractionRequestParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetExtractionRequestByID provides a mock function with given fields: ctx, id
+func (_m *MockQuerier) GetExtractionRequestByID(ctx context.Context, id uuid.UUID) (repository.ExtractionRequest, error) {
+	ret := _m.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetExtractionRequestByID")
+	}
+
+	var r0 repository.ExtractionRequest
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) (repository.ExtractionRequest, error)); ok {
+		return rf(ctx, id)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) repository.ExtractionRequest); ok {
+		r0 = rf(ctx, id)
+	} else {
+		r0 = ret.Get(0).(repository.ExtractionRequest)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = rf(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetFileRole provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) GetFileRole(ctx context.Context, arg repository.GetFileRoleParams) (repository.DocumentFileRole, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetFileRole")
+	}
+
+	var r0 repository.DocumentFileRole
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetFileRoleParams) (repository.DocumentFileRole, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetFileRoleParams) repository.DocumentFileRole); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.DocumentFileRole)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.GetFileRoleParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // GetOrganizationByID provides a mock function with given fields: ctx, id
 func (_m *MockQuerier) GetOrganizationByID(ctx context.Context, id uuid.UUID) (repository.Organization, error) {
 	ret := _m.Called(ctx, id)
@@ -535,6 +1039,90 @@ func (_m *MockQuerier) GetOrganizationByINN(ctx context.Context, inn pgtype.Text
 
 	if rf, ok := ret.Get(1).(func(context.Context, pgtype.Text) error); ok {
 		r1 = rf(ctx, inn)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetSingletonTaskByDocument provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) GetSingletonTaskByDocument(ctx context.Context, arg repository.GetSingletonTaskByDocumentParams) (repository.DocumentTask, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetSingletonTaskByDocument")
+	}
+
+	var r0 repository.DocumentTask
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetSingletonTaskByDocumentParams) (repository.DocumentTask, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetSingletonTaskByDocumentParams) repository.DocumentTask); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.DocumentTask)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.GetSingletonTaskByDocumentParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetSiteStatus provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) GetSiteStatus(ctx context.Context, arg repository.GetSiteStatusParams) (repository.VSiteStatus, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetSiteStatus")
+	}
+
+	var r0 repository.VSiteStatus
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetSiteStatusParams) (repository.VSiteStatus, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetSiteStatusParams) repository.VSiteStatus); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.VSiteStatus)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.GetSiteStatusParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetTaskForExtractionRequest provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) GetTaskForExtractionRequest(ctx context.Context, arg repository.GetTaskForExtractionRequestParams) (repository.DocumentTask, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetTaskForExtractionRequest")
+	}
+
+	var r0 repository.DocumentTask
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetTaskForExtractionRequestParams) (repository.DocumentTask, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.GetTaskForExtractionRequestParams) repository.DocumentTask); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.DocumentTask)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.GetTaskForExtractionRequestParams) error); ok {
+		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -626,6 +1214,94 @@ func (_m *MockQuerier) GetUserByIDAndOrg(ctx context.Context, arg repository.Get
 	return r0, r1
 }
 
+// GetUserInvitationByTokenHash provides a mock function with given fields: ctx, tokenHash
+func (_m *MockQuerier) GetUserInvitationByTokenHash(ctx context.Context, tokenHash string) (repository.UserInvitation, error) {
+	ret := _m.Called(ctx, tokenHash)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetUserInvitationByTokenHash")
+	}
+
+	var r0 repository.UserInvitation
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) (repository.UserInvitation, error)); ok {
+		return rf(ctx, tokenHash)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string) repository.UserInvitation); ok {
+		r0 = rf(ctx, tokenHash)
+	} else {
+		r0 = ret.Get(0).(repository.UserInvitation)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, tokenHash)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListComparisonSessionDocuments provides a mock function with given fields: ctx, sessionID
+func (_m *MockQuerier) ListComparisonSessionDocuments(ctx context.Context, sessionID uuid.UUID) ([]repository.ComparisonSessionDocument, error) {
+	ret := _m.Called(ctx, sessionID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListComparisonSessionDocuments")
+	}
+
+	var r0 []repository.ComparisonSessionDocument
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]repository.ComparisonSessionDocument, error)); ok {
+		return rf(ctx, sessionID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) []repository.ComparisonSessionDocument); ok {
+		r0 = rf(ctx, sessionID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.ComparisonSessionDocument)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = rf(ctx, sessionID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListComparisonSessionsByOrg provides a mock function with given fields: ctx, organizationID
+func (_m *MockQuerier) ListComparisonSessionsByOrg(ctx context.Context, organizationID uuid.UUID) ([]repository.ComparisonSession, error) {
+	ret := _m.Called(ctx, organizationID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListComparisonSessionsByOrg")
+	}
+
+	var r0 []repository.ComparisonSession
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]repository.ComparisonSession, error)); ok {
+		return rf(ctx, organizationID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) []repository.ComparisonSession); ok {
+		r0 = rf(ctx, organizationID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.ComparisonSession)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = rf(ctx, organizationID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // ListConstructionSitesByOrganization provides a mock function with given fields: ctx, organizationID
 func (_m *MockQuerier) ListConstructionSitesByOrganization(ctx context.Context, organizationID uuid.UUID) ([]repository.ConstructionSite, error) {
 	ret := _m.Called(ctx, organizationID)
@@ -649,6 +1325,66 @@ func (_m *MockQuerier) ListConstructionSitesByOrganization(ctx context.Context, 
 
 	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
 		r1 = rf(ctx, organizationID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListConstructionSitesByParent provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) ListConstructionSitesByParent(ctx context.Context, arg repository.ListConstructionSitesByParentParams) ([]repository.ConstructionSite, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListConstructionSitesByParent")
+	}
+
+	var r0 []repository.ConstructionSite
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListConstructionSitesByParentParams) ([]repository.ConstructionSite, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListConstructionSitesByParentParams) []repository.ConstructionSite); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.ConstructionSite)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.ListConstructionSitesByParentParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListContractKindsByOrg provides a mock function with given fields: ctx, dollar_1
+func (_m *MockQuerier) ListContractKindsByOrg(ctx context.Context, dollar_1 uuid.UUID) ([]repository.DocumentContractKind, error) {
+	ret := _m.Called(ctx, dollar_1)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListContractKindsByOrg")
+	}
+
+	var r0 []repository.DocumentContractKind
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]repository.DocumentContractKind, error)); ok {
+		return rf(ctx, dollar_1)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) []repository.DocumentContractKind); ok {
+		r0 = rf(ctx, dollar_1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.DocumentContractKind)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = rf(ctx, dollar_1)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -686,6 +1422,36 @@ func (_m *MockQuerier) ListDocumentsByParent(ctx context.Context, arg repository
 	return r0, r1
 }
 
+// ListExtractedDataForKeys provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) ListExtractedDataForKeys(ctx context.Context, arg repository.ListExtractedDataForKeysParams) ([]repository.ListExtractedDataForKeysRow, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListExtractedDataForKeys")
+	}
+
+	var r0 []repository.ListExtractedDataForKeysRow
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListExtractedDataForKeysParams) ([]repository.ListExtractedDataForKeysRow, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListExtractedDataForKeysParams) []repository.ListExtractedDataForKeysRow); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.ListExtractedDataForKeysRow)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.ListExtractedDataForKeysParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // ListExtractionKeysByOrg provides a mock function with given fields: ctx, dollar_1
 func (_m *MockQuerier) ListExtractionKeysByOrg(ctx context.Context, dollar_1 uuid.UUID) ([]repository.ExtractionKey, error) {
 	ret := _m.Called(ctx, dollar_1)
@@ -709,6 +1475,96 @@ func (_m *MockQuerier) ListExtractionKeysByOrg(ctx context.Context, dollar_1 uui
 
 	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
 		r1 = rf(ctx, dollar_1)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListFileRolesByOrg provides a mock function with given fields: ctx, dollar_1
+func (_m *MockQuerier) ListFileRolesByOrg(ctx context.Context, dollar_1 uuid.UUID) ([]repository.DocumentFileRole, error) {
+	ret := _m.Called(ctx, dollar_1)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListFileRolesByOrg")
+	}
+
+	var r0 []repository.DocumentFileRole
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]repository.DocumentFileRole, error)); ok {
+		return rf(ctx, dollar_1)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) []repository.DocumentFileRole); ok {
+		r0 = rf(ctx, dollar_1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.DocumentFileRole)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = rf(ctx, dollar_1)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListPendingExtractionRequestsByDocument provides a mock function with given fields: ctx, documentID
+func (_m *MockQuerier) ListPendingExtractionRequestsByDocument(ctx context.Context, documentID uuid.UUID) ([]repository.ExtractionRequest, error) {
+	ret := _m.Called(ctx, documentID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListPendingExtractionRequestsByDocument")
+	}
+
+	var r0 []repository.ExtractionRequest
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]repository.ExtractionRequest, error)); ok {
+		return rf(ctx, documentID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) []repository.ExtractionRequest); ok {
+		r0 = rf(ctx, documentID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.ExtractionRequest)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = rf(ctx, documentID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListRootConstructionSites provides a mock function with given fields: ctx, organizationID
+func (_m *MockQuerier) ListRootConstructionSites(ctx context.Context, organizationID uuid.UUID) ([]repository.ConstructionSite, error) {
+	ret := _m.Called(ctx, organizationID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListRootConstructionSites")
+	}
+
+	var r0 []repository.ConstructionSite
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]repository.ConstructionSite, error)); ok {
+		return rf(ctx, organizationID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) []repository.ConstructionSite); ok {
+		r0 = rf(ctx, organizationID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.ConstructionSite)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = rf(ctx, organizationID)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -776,6 +1632,66 @@ func (_m *MockQuerier) ListRootDocumentsBySite(ctx context.Context, arg reposito
 	return r0, r1
 }
 
+// ListSiteAuditLogBySite provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) ListSiteAuditLogBySite(ctx context.Context, arg repository.ListSiteAuditLogBySiteParams) ([]repository.SiteAuditLog, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListSiteAuditLogBySite")
+	}
+
+	var r0 []repository.SiteAuditLog
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListSiteAuditLogBySiteParams) ([]repository.SiteAuditLog, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListSiteAuditLogBySiteParams) []repository.SiteAuditLog); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.SiteAuditLog)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.ListSiteAuditLogBySiteParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListSiteStatusesByOrg provides a mock function with given fields: ctx, organizationID
+func (_m *MockQuerier) ListSiteStatusesByOrg(ctx context.Context, organizationID uuid.UUID) ([]repository.VSiteStatus, error) {
+	ret := _m.Called(ctx, organizationID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListSiteStatusesByOrg")
+	}
+
+	var r0 []repository.VSiteStatus
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]repository.VSiteStatus, error)); ok {
+		return rf(ctx, organizationID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) []repository.VSiteStatus); ok {
+		r0 = rf(ctx, organizationID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.VSiteStatus)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = rf(ctx, organizationID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // ListStaleTasks provides a mock function with given fields: ctx, arg
 func (_m *MockQuerier) ListStaleTasks(ctx context.Context, arg repository.ListStaleTasksParams) ([]repository.ListStaleTasksRow, error) {
 	ret := _m.Called(ctx, arg)
@@ -829,6 +1745,66 @@ func (_m *MockQuerier) ListTasksByDocument(ctx context.Context, arg repository.L
 
 	if rf, ok := ret.Get(1).(func(context.Context, repository.ListTasksByDocumentParams) error); ok {
 		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListTasksByDocuments provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) ListTasksByDocuments(ctx context.Context, arg repository.ListTasksByDocumentsParams) ([]repository.DocumentTask, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListTasksByDocuments")
+	}
+
+	var r0 []repository.DocumentTask
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListTasksByDocumentsParams) ([]repository.DocumentTask, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListTasksByDocumentsParams) []repository.DocumentTask); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.DocumentTask)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.ListTasksByDocumentsParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListUserInvitationsByOrg provides a mock function with given fields: ctx, organizationID
+func (_m *MockQuerier) ListUserInvitationsByOrg(ctx context.Context, organizationID uuid.UUID) ([]repository.UserInvitation, error) {
+	ret := _m.Called(ctx, organizationID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListUserInvitationsByOrg")
+	}
+
+	var r0 []repository.UserInvitation
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]repository.UserInvitation, error)); ok {
+		return rf(ctx, organizationID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) []repository.UserInvitation); ok {
+		r0 = rf(ctx, organizationID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.UserInvitation)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = rf(ctx, organizationID)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -922,6 +1898,90 @@ func (_m *MockQuerier) MarkStaleTaskPending(ctx context.Context, arg repository.
 	return r0, r1
 }
 
+// RemoveDocumentFromComparisonSession provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) RemoveDocumentFromComparisonSession(ctx context.Context, arg repository.RemoveDocumentFromComparisonSessionParams) (int64, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RemoveDocumentFromComparisonSession")
+	}
+
+	var r0 int64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.RemoveDocumentFromComparisonSessionParams) (int64, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.RemoveDocumentFromComparisonSessionParams) int64); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.RemoveDocumentFromComparisonSessionParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// SetExtractionRequestResolvedSchema provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) SetExtractionRequestResolvedSchema(ctx context.Context, arg repository.SetExtractionRequestResolvedSchemaParams) (repository.ExtractionRequest, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetExtractionRequestResolvedSchema")
+	}
+
+	var r0 repository.ExtractionRequest
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.SetExtractionRequestResolvedSchemaParams) (repository.ExtractionRequest, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.SetExtractionRequestResolvedSchemaParams) repository.ExtractionRequest); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.ExtractionRequest)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.SetExtractionRequestResolvedSchemaParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// SetExtractionRequestStatus provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) SetExtractionRequestStatus(ctx context.Context, arg repository.SetExtractionRequestStatusParams) (repository.ExtractionRequest, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetExtractionRequestStatus")
+	}
+
+	var r0 repository.ExtractionRequest
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.SetExtractionRequestStatusParams) (repository.ExtractionRequest, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.SetExtractionRequestStatusParams) repository.ExtractionRequest); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.ExtractionRequest)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.SetExtractionRequestStatusParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // UpdateConstructionSite provides a mock function with given fields: ctx, arg
 func (_m *MockQuerier) UpdateConstructionSite(ctx context.Context, arg repository.UpdateConstructionSiteParams) (repository.ConstructionSite, error) {
 	ret := _m.Called(ctx, arg)
@@ -950,6 +2010,118 @@ func (_m *MockQuerier) UpdateConstructionSite(ctx context.Context, arg repositor
 	return r0, r1
 }
 
+// UpdateConstructionSiteCover provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) UpdateConstructionSiteCover(ctx context.Context, arg repository.UpdateConstructionSiteCoverParams) (repository.ConstructionSite, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateConstructionSiteCover")
+	}
+
+	var r0 repository.ConstructionSite
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpdateConstructionSiteCoverParams) (repository.ConstructionSite, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpdateConstructionSiteCoverParams) repository.ConstructionSite); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.ConstructionSite)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.UpdateConstructionSiteCoverParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// UpdateConstructionSiteType provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) UpdateConstructionSiteType(ctx context.Context, arg repository.UpdateConstructionSiteTypeParams) (repository.ConstructionSite, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateConstructionSiteType")
+	}
+
+	var r0 repository.ConstructionSite
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpdateConstructionSiteTypeParams) (repository.ConstructionSite, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpdateConstructionSiteTypeParams) repository.ConstructionSite); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.ConstructionSite)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.UpdateConstructionSiteTypeParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// UpdateContractKind provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) UpdateContractKind(ctx context.Context, arg repository.UpdateContractKindParams) (repository.DocumentContractKind, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateContractKind")
+	}
+
+	var r0 repository.DocumentContractKind
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpdateContractKindParams) (repository.DocumentContractKind, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpdateContractKindParams) repository.DocumentContractKind); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.DocumentContractKind)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.UpdateContractKindParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// UpdateDocumentMeta provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) UpdateDocumentMeta(ctx context.Context, arg repository.UpdateDocumentMetaParams) (repository.Document, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateDocumentMeta")
+	}
+
+	var r0 repository.Document
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpdateDocumentMetaParams) (repository.Document, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpdateDocumentMetaParams) repository.Document); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.Document)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.UpdateDocumentMetaParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // UpdateDocumentTaskStatus provides a mock function with given fields: ctx, arg
 func (_m *MockQuerier) UpdateDocumentTaskStatus(ctx context.Context, arg repository.UpdateDocumentTaskStatusParams) (repository.DocumentTask, error) {
 	ret := _m.Called(ctx, arg)
@@ -970,6 +2142,34 @@ func (_m *MockQuerier) UpdateDocumentTaskStatus(ctx context.Context, arg reposit
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, repository.UpdateDocumentTaskStatusParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// UpdateFileRole provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) UpdateFileRole(ctx context.Context, arg repository.UpdateFileRoleParams) (repository.DocumentFileRole, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateFileRole")
+	}
+
+	var r0 repository.DocumentFileRole
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpdateFileRoleParams) (repository.DocumentFileRole, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.UpdateFileRoleParams) repository.DocumentFileRole); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repository.DocumentFileRole)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.UpdateFileRoleParams) error); ok {
 		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)

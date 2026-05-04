@@ -33,6 +33,17 @@ ORDER BY created_at ASC;
 -- name: DeleteDocument :execrows
 DELETE FROM documents WHERE id = $1 AND organization_id = $2;
 
+-- name: UpdateDocumentMeta :one
+-- Updates document classification fields (contract_kind, file_role, bundle).
+-- Only applicable to root documents (parent_id IS NULL); artifacts are excluded by DB constraint.
+UPDATE documents
+SET contract_kind_id = $3,
+    file_role_id     = $4,
+    bundle_id        = $5,
+    updated_at       = now()
+WHERE id = $1 AND organization_id = $2
+RETURNING *;
+
 -- name: CreateArtifactDocument :one
 -- Idempotent artifact creation: on conflict (parent_id, artifact_kind) updates
 -- artifact metadata from the latest callback so that RETURNING yields the current row state.

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -18,12 +19,11 @@ import (
 	"go-kpi-tenders/internal/repository"
 	"go-kpi-tenders/internal/service"
 	storemock "go-kpi-tenders/internal/store/mock"
-	"go-kpi-tenders/pkg/errs"
 )
 
 // newServerWithMockExtractionService wires a server whose extractionService is
-// backed by the supplied MockQuerier with a nil python client (best-effort
-// trigger is skipped, task is still persisted).
+// backed by the supplied MockQuerier with a nil python client (Progress runs
+// but does not publish; the request is still persisted).
 func newServerWithMockExtractionService(t *testing.T, mq *storemock.MockQuerier) *Server {
 	t.Helper()
 	s := newTestServerWithJWT(t)
@@ -31,7 +31,6 @@ func newServerWithMockExtractionService(t *testing.T, mq *storemock.MockQuerier)
 	return s
 }
 
-// jsonBody serialises v to a *bytes.Buffer suitable for use as an HTTP request body.
 func jsonBody(t *testing.T, v any) *bytes.Buffer {
 	t.Helper()
 	b, err := json.Marshal(v)
@@ -39,12 +38,9 @@ func jsonBody(t *testing.T, v any) *bytes.Buffer {
 	return bytes.NewBuffer(b)
 }
 
-// initiateExtractionURL returns the URL for POST /api/v1/documents/:id/extract.
 func initiateExtractionURL(docID uuid.UUID) string {
 	return "/api/v1/documents/" + docID.String() + "/extract"
 }
-
-// ── POST /api/v1/documents/:id/extract ───────────────────────────────────────
 
 // 1. Missing auth cookie → 401.
 func TestInitiateExtraction_NoAuth_Returns401(t *testing.T) {
@@ -64,15 +60,13 @@ func TestInitiateExtraction_NoAuth_Returns401(t *testing.T) {
 	mq.AssertNotCalled(t, "GetDocument")
 }
 
-// 2. Malformed UUID in :id path param → 400.
+// 2. Malformed UUID in :id → 400.
 func TestInitiateExtraction_InvalidDocID_Returns400(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mq := new(storemock.MockQuerier)
 	s := newServerWithMockExtractionService(t, mq)
 
-	userID := uuid.New()
-	orgID := uuid.New()
-	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	access, _, err := s.authService.GenerateTokens(uuid.New(), uuid.New(), "admin")
 	require.NoError(t, err)
 
 	body := jsonBody(t, map[string]any{"questions": []string{"value?"}})
@@ -85,21 +79,17 @@ func TestInitiateExtraction_InvalidDocID_Returns400(t *testing.T) {
 	s.Router().ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	mq.AssertNotCalled(t, "GetDocument")
 }
 
-// 3. Missing questions field (binding:required,min=1 fails) → 400.
+// 3. Missing questions field → 400 from binding.
 func TestInitiateExtraction_MissingQuestions_Returns400(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mq := new(storemock.MockQuerier)
 	s := newServerWithMockExtractionService(t, mq)
 
-	userID := uuid.New()
-	orgID := uuid.New()
-	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	access, _, err := s.authService.GenerateTokens(uuid.New(), uuid.New(), "admin")
 	require.NoError(t, err)
 
-	// Empty body — questions field absent.
 	body := jsonBody(t, map[string]any{})
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost,
 		initiateExtractionURL(uuid.New()), body)
@@ -110,21 +100,17 @@ func TestInitiateExtraction_MissingQuestions_Returns400(t *testing.T) {
 	s.Router().ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	mq.AssertNotCalled(t, "GetDocument")
 }
 
-// 4. Empty questions slice (service validates len > 0) → 400.
+// 4. Empty questions slice → 400 from gin's `min=1` binding.
 func TestInitiateExtraction_EmptyQuestions_Returns400(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mq := new(storemock.MockQuerier)
 	s := newServerWithMockExtractionService(t, mq)
 
-	userID := uuid.New()
-	orgID := uuid.New()
-	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	access, _, err := s.authService.GenerateTokens(uuid.New(), uuid.New(), "admin")
 	require.NoError(t, err)
 
-	// Gin's `min=1` binding on a slice rejects empty arrays at the binding layer.
 	body := jsonBody(t, map[string]any{"questions": []string{}})
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost,
 		initiateExtractionURL(uuid.New()), body)
@@ -135,7 +121,6 @@ func TestInitiateExtraction_EmptyQuestions_Returns400(t *testing.T) {
 	s.Router().ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	mq.AssertNotCalled(t, "GetDocument")
 }
 
 // 5. Document not found → 404.
@@ -143,20 +128,18 @@ func TestInitiateExtraction_DocumentNotFound_Returns404(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	docID := uuid.New()
-	userID := uuid.New()
 	orgID := uuid.New()
 
 	mq := new(storemock.MockQuerier)
 	mq.On("GetDocument", mock.Anything, repository.GetDocumentParams{
-		ID:             docID,
-		OrganizationID: orgID,
+		ID: docID, OrganizationID: orgID,
 	}).Return(repository.Document{}, pgx.ErrNoRows)
 
 	s := newServerWithMockExtractionService(t, mq)
-	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	access, _, err := s.authService.GenerateTokens(uuid.New(), orgID, "admin")
 	require.NoError(t, err)
 
-	body := jsonBody(t, map[string]any{"questions": []string{"What is the price?"}})
+	body := jsonBody(t, map[string]any{"questions": []string{"price?"}})
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost,
 		initiateExtractionURL(docID), body)
 	req.Header.Set("Content-Type", "application/json")
@@ -169,67 +152,42 @@ func TestInitiateExtraction_DocumentNotFound_Returns404(t *testing.T) {
 	mq.AssertExpectations(t)
 }
 
-// 6. resolve_keys task already exists → 409 Conflict.
-func TestInitiateExtraction_AlreadyExists_Returns409(t *testing.T) {
+// 6. Happy path → 201 with extraction_request_id; default anonymize=true.
+// The DB sequence: GetDocument → CreateExtractionRequest → progress (best-effort).
+// Progress can fail (e.g. ListDocumentsByParent error) but Initiate still
+// returns the request, so the handler still emits 201.
+func TestInitiateExtraction_Success_Returns201(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	docID := uuid.New()
-	userID := uuid.New()
 	orgID := uuid.New()
+	requestID := uuid.New()
 	storagePath := "tenders/doc.pdf"
+
+	doc := repository.Document{ID: docID, OrganizationID: orgID, StoragePath: storagePath}
+	createdReq := repository.ExtractionRequest{
+		ID:             requestID,
+		DocumentID:     docID,
+		OrganizationID: orgID,
+		Anonymize:      true,
+		Status:         "pending",
+	}
 
 	mq := new(storemock.MockQuerier)
 	mq.On("GetDocument", mock.Anything, repository.GetDocumentParams{
-		ID:             docID,
-		OrganizationID: orgID,
-	}).Return(repository.Document{ID: docID, OrganizationID: orgID, StoragePath: storagePath}, nil)
-	mq.On("ListExtractionKeysByOrg", mock.Anything, orgID).Return([]repository.ExtractionKey{}, nil)
-	// ON CONFLICT DO NOTHING → pgx.ErrNoRows signals the task already exists.
-	mq.On("CreateDocumentTaskInternal", mock.Anything, mock.Anything).Return(repository.DocumentTask{}, pgx.ErrNoRows)
+		ID: docID, OrganizationID: orgID,
+	}).Return(doc, nil)
+	mq.On("CreateExtractionRequest", mock.Anything, mock.MatchedBy(func(p repository.CreateExtractionRequestParams) bool {
+		return p.DocumentID == docID && p.OrganizationID == orgID && p.Anonymize
+	})).Return(createdReq, nil)
+	// Progress runs but errors out (fail fast); 201 is still returned.
+	mq.On("GetDocumentByID", mock.Anything, docID).Return(doc, errors.New("transient"))
 
 	s := newServerWithMockExtractionService(t, mq)
-	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	access, _, err := s.authService.GenerateTokens(uuid.New(), orgID, "admin")
 	require.NoError(t, err)
 
-	body := jsonBody(t, map[string]any{"questions": []string{"price?"}})
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost,
-		initiateExtractionURL(docID), body)
-	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
-
-	w := httptest.NewRecorder()
-	s.Router().ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusConflict, w.Code)
-	mq.AssertExpectations(t)
-}
-
-// 7. Happy path → 201 with {"task_id": "<uuid>"}.
-func TestInitiateExtraction_Success_Returns201WithTaskID(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	docID := uuid.New()
-	userID := uuid.New()
-	orgID := uuid.New()
-	taskID := uuid.New()
-	storagePath := "tenders/doc.pdf"
-
-	mq := new(storemock.MockQuerier)
-	mq.On("GetDocument", mock.Anything, repository.GetDocumentParams{
-		ID:             docID,
-		OrganizationID: orgID,
-	}).Return(repository.Document{ID: docID, OrganizationID: orgID, StoragePath: storagePath}, nil)
-	mq.On("ListExtractionKeysByOrg", mock.Anything, orgID).
-		Return([]repository.ExtractionKey{}, nil)
-	mq.On("CreateDocumentTaskInternal", mock.Anything, mock.MatchedBy(func(p repository.CreateDocumentTaskInternalParams) bool {
-		return p.DocumentID == docID && p.ModuleName == "resolve_keys" && p.InputStoragePath == storagePath
-	})).Return(repository.DocumentTask{ID: taskID, DocumentID: docID, ModuleName: "resolve_keys"}, nil)
-
-	s := newServerWithMockExtractionService(t, mq)
-	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
-	require.NoError(t, err)
-
-	body := jsonBody(t, map[string]any{"questions": []string{"What is the contract value?"}})
+	body := jsonBody(t, map[string]any{"questions": []string{"What is the price?"}})
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost,
 		initiateExtractionURL(docID), body)
 	req.Header.Set("Content-Type", "application/json")
@@ -239,34 +197,28 @@ func TestInitiateExtraction_Success_Returns201WithTaskID(t *testing.T) {
 	s.Router().ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
-
 	var resp map[string]string
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
-	assert.Equal(t, taskID.String(), resp["task_id"])
-
+	assert.Equal(t, requestID.String(), resp["extraction_request_id"])
+	assert.Equal(t, "pending", resp["status"])
 	mq.AssertExpectations(t)
 }
 
-// 8. Internal DB error → 500.
+// 7. CreateExtractionRequest fails → 500.
 func TestInitiateExtraction_DBError_Returns500(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	docID := uuid.New()
-	userID := uuid.New()
 	orgID := uuid.New()
-	storagePath := "tenders/doc.pdf"
+	doc := repository.Document{ID: docID, OrganizationID: orgID, StoragePath: "x"}
 
 	mq := new(storemock.MockQuerier)
-	mq.On("GetDocument", mock.Anything, repository.GetDocumentParams{
-		ID:             docID,
-		OrganizationID: orgID,
-	}).Return(repository.Document{ID: docID, OrganizationID: orgID, StoragePath: storagePath}, nil)
-	mq.On("ListExtractionKeysByOrg", mock.Anything, orgID).Return([]repository.ExtractionKey{}, nil)
-	mq.On("CreateDocumentTaskInternal", mock.Anything, mock.Anything).
-		Return(repository.DocumentTask{}, errs.New(errs.CodeInternalError, "db error", nil))
+	mq.On("GetDocument", mock.Anything, mock.Anything).Return(doc, nil)
+	mq.On("CreateExtractionRequest", mock.Anything, mock.Anything).
+		Return(repository.ExtractionRequest{}, errors.New("db down"))
 
 	s := newServerWithMockExtractionService(t, mq)
-	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	access, _, err := s.authService.GenerateTokens(uuid.New(), orgID, "admin")
 	require.NoError(t, err)
 
 	body := jsonBody(t, map[string]any{"questions": []string{"price?"}})
@@ -279,5 +231,41 @@ func TestInitiateExtraction_DBError_Returns500(t *testing.T) {
 	s.Router().ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	mq.AssertExpectations(t)
+}
+
+// 8. Explicit anonymize=false propagates to CreateExtractionRequest.
+func TestInitiateExtraction_AnonymizeFalse_Propagates(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	docID := uuid.New()
+	orgID := uuid.New()
+	doc := repository.Document{ID: docID, OrganizationID: orgID, StoragePath: "x"}
+
+	mq := new(storemock.MockQuerier)
+	mq.On("GetDocument", mock.Anything, mock.Anything).Return(doc, nil)
+	mq.On("CreateExtractionRequest", mock.Anything, mock.MatchedBy(func(p repository.CreateExtractionRequestParams) bool {
+		return !p.Anonymize
+	})).Return(repository.ExtractionRequest{
+		ID: uuid.New(), DocumentID: docID, OrganizationID: orgID,
+		Anonymize: false, Status: "pending",
+	}, nil)
+	mq.On("GetDocumentByID", mock.Anything, docID).Return(doc, errors.New("stop progress"))
+
+	s := newServerWithMockExtractionService(t, mq)
+	access, _, err := s.authService.GenerateTokens(uuid.New(), orgID, "admin")
+	require.NoError(t, err)
+
+	flag := false
+	body := jsonBody(t, map[string]any{"questions": []string{"q"}, "anonymize": flag})
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost,
+		initiateExtractionURL(docID), body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
 	mq.AssertExpectations(t)
 }
