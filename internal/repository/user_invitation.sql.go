@@ -16,7 +16,7 @@ import (
 const acceptUserInvitation = `-- name: AcceptUserInvitation :one
 UPDATE user_invitations
 SET accepted_at = now()
-WHERE id = $1 AND accepted_at IS NULL
+WHERE id = $1 AND accepted_at IS NULL AND expires_at > now()
 RETURNING id, organization_id, email, role, invited_by, token_hash, expires_at, accepted_at, created_at
 `
 

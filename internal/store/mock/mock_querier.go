@@ -1362,9 +1362,9 @@ func (_m *MockQuerier) ListConstructionSitesByParent(ctx context.Context, arg re
 	return r0, r1
 }
 
-// ListContractKindsByOrg provides a mock function with given fields: ctx, dollar_1
-func (_m *MockQuerier) ListContractKindsByOrg(ctx context.Context, dollar_1 uuid.UUID) ([]repository.DocumentContractKind, error) {
-	ret := _m.Called(ctx, dollar_1)
+// ListContractKindsByOrg provides a mock function with given fields: ctx, organizationID
+func (_m *MockQuerier) ListContractKindsByOrg(ctx context.Context, organizationID pgtype.UUID) ([]repository.DocumentContractKind, error) {
+	ret := _m.Called(ctx, organizationID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListContractKindsByOrg")
@@ -1372,19 +1372,19 @@ func (_m *MockQuerier) ListContractKindsByOrg(ctx context.Context, dollar_1 uuid
 
 	var r0 []repository.DocumentContractKind
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]repository.DocumentContractKind, error)); ok {
-		return rf(ctx, dollar_1)
+	if rf, ok := ret.Get(0).(func(context.Context, pgtype.UUID) ([]repository.DocumentContractKind, error)); ok {
+		return rf(ctx, organizationID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) []repository.DocumentContractKind); ok {
-		r0 = rf(ctx, dollar_1)
+	if rf, ok := ret.Get(0).(func(context.Context, pgtype.UUID) []repository.DocumentContractKind); ok {
+		r0 = rf(ctx, organizationID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]repository.DocumentContractKind)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
-		r1 = rf(ctx, dollar_1)
+	if rf, ok := ret.Get(1).(func(context.Context, pgtype.UUID) error); ok {
+		r1 = rf(ctx, organizationID)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -1482,9 +1482,9 @@ func (_m *MockQuerier) ListExtractionKeysByOrg(ctx context.Context, dollar_1 uui
 	return r0, r1
 }
 
-// ListFileRolesByOrg provides a mock function with given fields: ctx, dollar_1
-func (_m *MockQuerier) ListFileRolesByOrg(ctx context.Context, dollar_1 uuid.UUID) ([]repository.DocumentFileRole, error) {
-	ret := _m.Called(ctx, dollar_1)
+// ListFileRolesByOrg provides a mock function with given fields: ctx, organizationID
+func (_m *MockQuerier) ListFileRolesByOrg(ctx context.Context, organizationID pgtype.UUID) ([]repository.DocumentFileRole, error) {
+	ret := _m.Called(ctx, organizationID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListFileRolesByOrg")
@@ -1492,19 +1492,19 @@ func (_m *MockQuerier) ListFileRolesByOrg(ctx context.Context, dollar_1 uuid.UUI
 
 	var r0 []repository.DocumentFileRole
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]repository.DocumentFileRole, error)); ok {
-		return rf(ctx, dollar_1)
+	if rf, ok := ret.Get(0).(func(context.Context, pgtype.UUID) ([]repository.DocumentFileRole, error)); ok {
+		return rf(ctx, organizationID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) []repository.DocumentFileRole); ok {
-		r0 = rf(ctx, dollar_1)
+	if rf, ok := ret.Get(0).(func(context.Context, pgtype.UUID) []repository.DocumentFileRole); ok {
+		r0 = rf(ctx, organizationID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]repository.DocumentFileRole)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
-		r1 = rf(ctx, dollar_1)
+	if rf, ok := ret.Get(1).(func(context.Context, pgtype.UUID) error); ok {
+		r1 = rf(ctx, organizationID)
 	} else {
 		r1 = ret.Error(1)
 	}

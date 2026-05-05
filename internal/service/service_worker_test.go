@@ -230,6 +230,9 @@ func TestWorkerService_HandleStatusUpdate_Failed_NoRequest(t *testing.T) {
 	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.MatchedBy(func(p repository.UpdateWorkerTaskStatusParams) bool {
 		return p.ID == taskID && p.Status == "failed" && p.ErrorMessage.Valid && p.ErrorMessage.String == errMsg
 	})).Return(returnedTask, nil)
+	// convert failure triggers failPendingRequests; no pending requests in this test.
+	ms.On("ListPendingExtractionRequestsByDocument", mock.Anything, docID).
+		Return([]repository.ExtractionRequest{}, nil)
 
 	svc := newTestWorkerService(ms, pc, pl)
 	task, err := svc.HandleStatusUpdate(ctx, taskID, WorkerStatusUpdate{

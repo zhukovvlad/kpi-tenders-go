@@ -163,6 +163,13 @@ func (s *WorkerService) HandleStatusUpdate(ctx context.Context, taskID uuid.UUID
 		s.pipeline.MarkRequestFailed(ctx, uuid.UUID(task.ExtractionRequestID.Bytes), msg)
 	}
 
+	// Failed convert / anonymize → all pending extraction_requests on this document
+	// can no longer progress; mark them all failed so they don't stay stuck in pending.
+	if task.Status == statusFailed &&
+		(task.ModuleName == moduleConvert || task.ModuleName == moduleAnonymize) {
+		s.failPendingRequests(ctx, task.DocumentID, task.ModuleName+" task failed")
+	}
+
 	return task, nil
 }
 
@@ -181,6 +188,21 @@ func (s *WorkerService) progressPendingRequests(ctx context.Context, documentID 
 			s.log.Error("worker: progress extraction_request",
 				"request_id", req.ID, "document_id", documentID, "err", err)
 		}
+	}
+}
+
+// failPendingRequests marks all pending/running extraction_requests on the given
+// document as failed. Called when a prerequisite task (convert/anonymize) fails
+// so requests don't stay stuck in pending indefinitely. Best-effort.
+func (s *WorkerService) failPendingRequests(ctx context.Context, documentID uuid.UUID, reason string) {
+	requests, err := s.repo.ListPendingExtractionRequestsByDocument(ctx, documentID)
+	if err != nil {
+		s.log.Error("worker: list pending requests for fail",
+			"document_id", documentID, "err", err)
+		return
+	}
+	for _, req := range requests {
+		s.pipeline.MarkRequestFailed(ctx, req.ID, reason)
 	}
 }
 
@@ -411,4 +433,3 @@ func runWithArtifactTimeout(
 	defer cancel()
 	return fn(artifactCtx, task)
 }
-

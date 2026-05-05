@@ -37,7 +37,7 @@ func (s *InvitationService) Create(ctx context.Context, orgID uuid.UUID, email, 
 		if pgutil.IsUniqueViolation(err, "uq_user_invitations_org_email_active") {
 			return repository.UserInvitation{}, errs.New(errs.CodeConflict, "active invitation for this email already exists", err)
 		}
-		s.log.Error("create invitation failed", "err", err, "org_id", orgID, "email", email)
+		s.log.Error("create invitation failed", "err", err, "org_id", orgID)
 		return repository.UserInvitation{}, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
 	return inv, nil

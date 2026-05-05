@@ -35,13 +35,15 @@ DELETE FROM documents WHERE id = $1 AND organization_id = $2;
 
 -- name: UpdateDocumentMeta :one
 -- Updates document classification fields (contract_kind, file_role, bundle).
--- Only applicable to root documents (parent_id IS NULL); artifacts are excluded by DB constraint.
+-- Uses COALESCE so omitted (NULL) fields preserve the existing value (PATCH semantics).
+-- Restricted to root documents (parent_id IS NULL); artifacts cannot be updated via this query.
 UPDATE documents
-SET contract_kind_id = $3,
-    file_role_id     = $4,
-    bundle_id        = $5,
+SET contract_kind_id = COALESCE($3, contract_kind_id),
+    file_role_id     = COALESCE($4, file_role_id),
+    bundle_id        = COALESCE($5, bundle_id),
     updated_at       = now()
 WHERE id = $1 AND organization_id = $2
+  AND parent_id IS NULL
 RETURNING *;
 
 -- name: CreateArtifactDocument :one

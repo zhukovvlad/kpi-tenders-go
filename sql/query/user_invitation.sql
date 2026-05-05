@@ -14,7 +14,7 @@ ORDER BY created_at DESC;
 -- name: AcceptUserInvitation :one
 UPDATE user_invitations
 SET accepted_at = now()
-WHERE id = $1 AND accepted_at IS NULL
+WHERE id = $1 AND accepted_at IS NULL AND expires_at > now()
 RETURNING *;
 
 -- name: DeleteUserInvitation :execrows

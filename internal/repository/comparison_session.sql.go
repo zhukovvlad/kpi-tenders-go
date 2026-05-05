@@ -184,16 +184,19 @@ func (q *Queries) ListComparisonSessionsByOrg(ctx context.Context, organizationI
 
 const removeDocumentFromComparisonSession = `-- name: RemoveDocumentFromComparisonSession :execrows
 DELETE FROM comparison_session_documents
-WHERE session_id = $1 AND document_id = $2
+WHERE session_id = $1
+  AND document_id = $2
+  AND organization_id = $3
 `
 
 type RemoveDocumentFromComparisonSessionParams struct {
-	SessionID  uuid.UUID `json:"session_id"`
-	DocumentID uuid.UUID `json:"document_id"`
+	SessionID      uuid.UUID `json:"session_id"`
+	DocumentID     uuid.UUID `json:"document_id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
 }
 
 func (q *Queries) RemoveDocumentFromComparisonSession(ctx context.Context, arg RemoveDocumentFromComparisonSessionParams) (int64, error) {
-	result, err := q.db.Exec(ctx, removeDocumentFromComparisonSession, arg.SessionID, arg.DocumentID)
+	result, err := q.db.Exec(ctx, removeDocumentFromComparisonSession, arg.SessionID, arg.DocumentID, arg.OrganizationID)
 	if err != nil {
 		return 0, err
 	}

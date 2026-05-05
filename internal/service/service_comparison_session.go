@@ -95,10 +95,11 @@ func (s *ComparisonSessionService) AddDocument(ctx context.Context, sessionID, d
 	return doc, nil
 }
 
-func (s *ComparisonSessionService) RemoveDocument(ctx context.Context, sessionID, documentID uuid.UUID) error {
+func (s *ComparisonSessionService) RemoveDocument(ctx context.Context, sessionID, documentID, orgID uuid.UUID) error {
 	rows, err := s.repo.RemoveDocumentFromComparisonSession(ctx, repository.RemoveDocumentFromComparisonSessionParams{
-		SessionID:  sessionID,
-		DocumentID: documentID,
+		SessionID:      sessionID,
+		DocumentID:     documentID,
+		OrganizationID: orgID,
 	})
 	if err != nil {
 		s.log.Error("remove document from comparison session failed", "err", err, "session_id", sessionID, "document_id", documentID)

@@ -187,7 +187,7 @@ func (s *Server) RemoveDocumentFromSession(c *gin.Context) {
 		return
 	}
 
-	if err := s.comparisonSessionService.RemoveDocument(c.Request.Context(), sessionID, documentID); err != nil {
+	if err := s.comparisonSessionService.RemoveDocument(c.Request.Context(), sessionID, documentID, orgID); err != nil {
 		s.respondWithError(c, err)
 		return
 	}

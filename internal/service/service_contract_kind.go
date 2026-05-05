@@ -24,7 +24,7 @@ func NewContractKindService(repo repository.Querier, log *slog.Logger) *Contract
 }
 
 func (s *ContractKindService) List(ctx context.Context, orgID uuid.UUID) ([]repository.DocumentContractKind, error) {
-	kinds, err := s.repo.ListContractKindsByOrg(ctx, orgID)
+	kinds, err := s.repo.ListContractKindsByOrg(ctx, pgtype.UUID{Bytes: orgID, Valid: true})
 	if err != nil {
 		s.log.Error("list contract kinds failed", "err", err, "org_id", orgID)
 		return nil, errs.New(errs.CodeInternalError, "internal server error", err)
@@ -34,8 +34,8 @@ func (s *ContractKindService) List(ctx context.Context, orgID uuid.UUID) ([]repo
 
 func (s *ContractKindService) Get(ctx context.Context, id, orgID uuid.UUID) (repository.DocumentContractKind, error) {
 	kind, err := s.repo.GetContractKind(ctx, repository.GetContractKindParams{
-		ID:      id,
-		Column2: orgID,
+		ID:             id,
+		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

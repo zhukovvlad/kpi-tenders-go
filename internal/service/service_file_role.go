@@ -24,7 +24,7 @@ func NewFileRoleService(repo repository.Querier, log *slog.Logger) *FileRoleServ
 }
 
 func (s *FileRoleService) List(ctx context.Context, orgID uuid.UUID) ([]repository.DocumentFileRole, error) {
-	roles, err := s.repo.ListFileRolesByOrg(ctx, orgID)
+	roles, err := s.repo.ListFileRolesByOrg(ctx, pgtype.UUID{Bytes: orgID, Valid: true})
 	if err != nil {
 		s.log.Error("list file roles failed", "err", err, "org_id", orgID)
 		return nil, errs.New(errs.CodeInternalError, "internal server error", err)
@@ -34,8 +34,8 @@ func (s *FileRoleService) List(ctx context.Context, orgID uuid.UUID) ([]reposito
 
 func (s *FileRoleService) Get(ctx context.Context, id, orgID uuid.UUID) (repository.DocumentFileRole, error) {
 	role, err := s.repo.GetFileRole(ctx, repository.GetFileRoleParams{
-		ID:      id,
-		Column2: orgID,
+		ID:             id,
+		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

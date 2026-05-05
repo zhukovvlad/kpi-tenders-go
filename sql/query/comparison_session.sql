@@ -25,7 +25,9 @@ RETURNING *;
 
 -- name: RemoveDocumentFromComparisonSession :execrows
 DELETE FROM comparison_session_documents
-WHERE session_id = $1 AND document_id = $2;
+WHERE session_id = sqlc.arg(session_id)
+  AND document_id = sqlc.arg(document_id)
+  AND organization_id = sqlc.arg(organization_id);
 
 -- name: ListComparisonSessionDocuments :many
 SELECT * FROM comparison_session_documents

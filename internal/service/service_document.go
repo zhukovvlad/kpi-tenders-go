@@ -143,6 +143,7 @@ func (s *DocumentService) GetPresignedURL(ctx context.Context, docID, orgID uuid
 
 	return presignedURL, nil
 }
+
 func (s *DocumentService) UpdateMeta(ctx context.Context, id, orgID uuid.UUID, contractKindID, fileRoleID, bundleID *uuid.UUID) (repository.Document, error) {
 	toUUID := func(u *uuid.UUID) pgtype.UUID {
 		if u == nil {

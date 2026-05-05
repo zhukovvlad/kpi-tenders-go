@@ -21,9 +21,9 @@ import (
 // 000001_init_schema.up.sql column comment on documents.artifact_kind and in
 // service_worker.go.
 const (
-	artifactKindConvertMD     = "convert_md"
-	artifactKindAnonymizeDoc  = "anonymize_doc"
-	artifactKindAnonymizeMap  = "anonymize_entities"
+	artifactKindConvertMD    = "convert_md"
+	artifactKindAnonymizeDoc = "anonymize_doc"
+	artifactKindAnonymizeMap = "anonymize_entities"
 )
 
 // extraction_request status values. Mirrors the CHECK constraint in 000003.
@@ -506,6 +506,7 @@ func (s *ExtractionService) enqueueResolveKeys(
 		},
 	}); err != nil {
 		s.markTaskFailed(ctx, task.ID, err.Error())
+		s.MarkRequestFailed(ctx, req.ID, "failed to publish resolve_keys task")
 		return fmt.Errorf("publish resolve_keys: %w", err)
 	}
 	return nil
@@ -545,6 +546,7 @@ func (s *ExtractionService) enqueueExtract(
 		},
 	}); err != nil {
 		s.markTaskFailed(ctx, task.ID, err.Error())
+		s.MarkRequestFailed(ctx, req.ID, "failed to publish extract task")
 		return fmt.Errorf("publish extract: %w", err)
 	}
 	return nil

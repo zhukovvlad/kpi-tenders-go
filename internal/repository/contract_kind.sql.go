@@ -66,16 +66,16 @@ func (q *Queries) DeleteContractKind(ctx context.Context, arg DeleteContractKind
 const getContractKind = `-- name: GetContractKind :one
 SELECT id, organization_id, display_name, sort_order, is_active, created_at, updated_at FROM document_contract_kinds
 WHERE id = $1
-  AND (organization_id = $2::uuid OR organization_id IS NULL)
+  AND (organization_id = $2 OR organization_id IS NULL)
 `
 
 type GetContractKindParams struct {
-	ID      uuid.UUID `json:"id"`
-	Column2 uuid.UUID `json:"column_2"`
+	ID             uuid.UUID   `json:"id"`
+	OrganizationID pgtype.UUID `json:"organization_id"`
 }
 
 func (q *Queries) GetContractKind(ctx context.Context, arg GetContractKindParams) (DocumentContractKind, error) {
-	row := q.db.QueryRow(ctx, getContractKind, arg.ID, arg.Column2)
+	row := q.db.QueryRow(ctx, getContractKind, arg.ID, arg.OrganizationID)
 	var i DocumentContractKind
 	err := row.Scan(
 		&i.ID,
@@ -91,13 +91,13 @@ func (q *Queries) GetContractKind(ctx context.Context, arg GetContractKindParams
 
 const listContractKindsByOrg = `-- name: ListContractKindsByOrg :many
 SELECT id, organization_id, display_name, sort_order, is_active, created_at, updated_at FROM document_contract_kinds
-WHERE organization_id = $1::uuid OR organization_id IS NULL
+WHERE organization_id = $1 OR organization_id IS NULL
 ORDER BY sort_order ASC, display_name ASC
 `
 
 // Returns all contract kinds visible to the given tenant: org-specific AND system kinds (organization_id IS NULL).
-func (q *Queries) ListContractKindsByOrg(ctx context.Context, dollar_1 uuid.UUID) ([]DocumentContractKind, error) {
-	rows, err := q.db.Query(ctx, listContractKindsByOrg, dollar_1)
+func (q *Queries) ListContractKindsByOrg(ctx context.Context, organizationID pgtype.UUID) ([]DocumentContractKind, error) {
+	rows, err := q.db.Query(ctx, listContractKindsByOrg, organizationID)
 	if err != nil {
 		return nil, err
 	}

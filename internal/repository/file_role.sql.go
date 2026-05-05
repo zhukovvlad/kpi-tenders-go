@@ -66,16 +66,16 @@ func (q *Queries) DeleteFileRole(ctx context.Context, arg DeleteFileRoleParams) 
 const getFileRole = `-- name: GetFileRole :one
 SELECT id, organization_id, display_name, sort_order, is_active, created_at, updated_at FROM document_file_roles
 WHERE id = $1
-  AND (organization_id = $2::uuid OR organization_id IS NULL)
+  AND (organization_id = $2 OR organization_id IS NULL)
 `
 
 type GetFileRoleParams struct {
-	ID      uuid.UUID `json:"id"`
-	Column2 uuid.UUID `json:"column_2"`
+	ID             uuid.UUID   `json:"id"`
+	OrganizationID pgtype.UUID `json:"organization_id"`
 }
 
 func (q *Queries) GetFileRole(ctx context.Context, arg GetFileRoleParams) (DocumentFileRole, error) {
-	row := q.db.QueryRow(ctx, getFileRole, arg.ID, arg.Column2)
+	row := q.db.QueryRow(ctx, getFileRole, arg.ID, arg.OrganizationID)
 	var i DocumentFileRole
 	err := row.Scan(
 		&i.ID,
@@ -91,13 +91,13 @@ func (q *Queries) GetFileRole(ctx context.Context, arg GetFileRoleParams) (Docum
 
 const listFileRolesByOrg = `-- name: ListFileRolesByOrg :many
 SELECT id, organization_id, display_name, sort_order, is_active, created_at, updated_at FROM document_file_roles
-WHERE organization_id = $1::uuid OR organization_id IS NULL
+WHERE organization_id = $1 OR organization_id IS NULL
 ORDER BY sort_order ASC, display_name ASC
 `
 
 // Returns all file roles visible to the given tenant: org-specific AND system roles (organization_id IS NULL).
-func (q *Queries) ListFileRolesByOrg(ctx context.Context, dollar_1 uuid.UUID) ([]DocumentFileRole, error) {
-	rows, err := q.db.Query(ctx, listFileRolesByOrg, dollar_1)
+func (q *Queries) ListFileRolesByOrg(ctx context.Context, organizationID pgtype.UUID) ([]DocumentFileRole, error) {
+	rows, err := q.db.Query(ctx, listFileRolesByOrg, organizationID)
 	if err != nil {
 		return nil, err
 	}

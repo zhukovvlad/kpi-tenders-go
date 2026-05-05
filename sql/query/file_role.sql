@@ -1,13 +1,13 @@
 -- name: ListFileRolesByOrg :many
 -- Returns all file roles visible to the given tenant: org-specific AND system roles (organization_id IS NULL).
 SELECT * FROM document_file_roles
-WHERE organization_id = $1::uuid OR organization_id IS NULL
+WHERE organization_id = sqlc.arg(organization_id) OR organization_id IS NULL
 ORDER BY sort_order ASC, display_name ASC;
 
 -- name: GetFileRole :one
 SELECT * FROM document_file_roles
 WHERE id = $1
-  AND (organization_id = $2::uuid OR organization_id IS NULL);
+  AND (organization_id = sqlc.arg(organization_id) OR organization_id IS NULL);
 
 -- name: CreateFileRole :one
 INSERT INTO document_file_roles (organization_id, display_name, sort_order, is_active)

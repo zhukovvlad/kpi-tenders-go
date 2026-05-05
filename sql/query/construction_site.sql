@@ -23,7 +23,7 @@ RETURNING *;
 -- name: UpdateConstructionSiteCover :one
 UPDATE construction_sites
 SET cover_image_path        = $3,
-    cover_image_uploaded_at = now(),
+    cover_image_uploaded_at = CASE WHEN $3 IS NOT NULL THEN now() ELSE cover_image_uploaded_at END,
     updated_at              = now()
 WHERE id = $1 AND organization_id = $2
 RETURNING *;

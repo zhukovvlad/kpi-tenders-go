@@ -265,7 +265,7 @@ func (q *Queries) UpdateConstructionSite(ctx context.Context, arg UpdateConstruc
 const updateConstructionSiteCover = `-- name: UpdateConstructionSiteCover :one
 UPDATE construction_sites
 SET cover_image_path        = $3,
-    cover_image_uploaded_at = now(),
+    cover_image_uploaded_at = CASE WHEN $3 IS NOT NULL THEN now() ELSE cover_image_uploaded_at END,
     updated_at              = now()
 WHERE id = $1 AND organization_id = $2
 RETURNING id, organization_id, parent_id, name, status, created_by, created_at, updated_at, cover_image_path, cover_image_uploaded_at, site_type, last_activity_at

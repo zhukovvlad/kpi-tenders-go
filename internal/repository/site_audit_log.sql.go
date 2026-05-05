@@ -51,7 +51,7 @@ func (q *Queries) CreateSiteAuditEvent(ctx context.Context, arg CreateSiteAuditE
 const listSiteAuditLogBySite = `-- name: ListSiteAuditLogBySite :many
 SELECT id, organization_id, site_id, actor_user_id, event_type, payload, created_at FROM site_audit_log
 WHERE site_id = $1 AND organization_id = $2
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 LIMIT $3 OFFSET $4
 `
 

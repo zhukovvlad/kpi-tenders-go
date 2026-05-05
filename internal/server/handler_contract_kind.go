@@ -98,16 +98,16 @@ func (s *Server) UpdateContractKind(c *gin.Context) {
 		return
 	}
 
-	sortOrder := int16(0)
-	if req.SortOrder != nil {
-		sortOrder = *req.SortOrder
+	if req.SortOrder == nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "sort_order is required", nil))
+		return
 	}
-	isActive := true
-	if req.IsActive != nil {
-		isActive = *req.IsActive
+	if req.IsActive == nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "is_active is required", nil))
+		return
 	}
 
-	kind, err := s.contractKindService.Update(c.Request.Context(), id, orgID, req.DisplayName, sortOrder, isActive)
+	kind, err := s.contractKindService.Update(c.Request.Context(), id, orgID, req.DisplayName, *req.SortOrder, *req.IsActive)
 	if err != nil {
 		s.respondWithError(c, err)
 		return

@@ -76,7 +76,8 @@ func (s *Server) CreateInvitation(c *gin.Context) {
 		return
 	}
 
-	// Return both the invitation record and the raw token (sent to email in a real system).
+	// TODO: in production, send rawToken via email instead of returning it.
+	// Returning the raw token in the response body is for local development only.
 	c.JSON(http.StatusCreated, gin.H{
 		"invitation": inv,
 		"token":      rawToken,

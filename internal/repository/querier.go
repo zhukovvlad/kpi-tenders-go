@@ -106,7 +106,7 @@ type Querier interface {
 	ListConstructionSitesByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ConstructionSite, error)
 	ListConstructionSitesByParent(ctx context.Context, arg ListConstructionSitesByParentParams) ([]ConstructionSite, error)
 	// Returns all contract kinds visible to the given tenant: org-specific AND system kinds (organization_id IS NULL).
-	ListContractKindsByOrg(ctx context.Context, dollar_1 uuid.UUID) ([]DocumentContractKind, error)
+	ListContractKindsByOrg(ctx context.Context, organizationID pgtype.UUID) ([]DocumentContractKind, error)
 	// Все артефакты, порождённые данным документом; scoped by organization_id for tenant isolation.
 	ListDocumentsByParent(ctx context.Context, arg ListDocumentsByParentParams) ([]Document, error)
 	// Returns extracted values for a document filtered to the given extraction
@@ -119,7 +119,7 @@ type Querier interface {
 	// keys (organization_id IS NULL) shared across all tenants.
 	ListExtractionKeysByOrg(ctx context.Context, dollar_1 uuid.UUID) ([]ExtractionKey, error)
 	// Returns all file roles visible to the given tenant: org-specific AND system roles (organization_id IS NULL).
-	ListFileRolesByOrg(ctx context.Context, dollar_1 uuid.UUID) ([]DocumentFileRole, error)
+	ListFileRolesByOrg(ctx context.Context, organizationID pgtype.UUID) ([]DocumentFileRole, error)
 	// Returns extraction requests for a document that are still in flight
 	// (status pending or running). Used by WorkerService after prerequisite
 	// tasks (convert/anonymize) complete to progress all dependent requests.
@@ -166,7 +166,8 @@ type Querier interface {
 	UpdateConstructionSiteType(ctx context.Context, arg UpdateConstructionSiteTypeParams) (ConstructionSite, error)
 	UpdateContractKind(ctx context.Context, arg UpdateContractKindParams) (DocumentContractKind, error)
 	// Updates document classification fields (contract_kind, file_role, bundle).
-	// Only applicable to root documents (parent_id IS NULL); artifacts are excluded by DB constraint.
+	// Uses COALESCE so omitted (NULL) fields preserve the existing value (PATCH semantics).
+	// Restricted to root documents (parent_id IS NULL); artifacts cannot be updated via this query.
 	UpdateDocumentMeta(ctx context.Context, arg UpdateDocumentMetaParams) (Document, error)
 	UpdateDocumentTaskStatus(ctx context.Context, arg UpdateDocumentTaskStatusParams) (DocumentTask, error)
 	UpdateFileRole(ctx context.Context, arg UpdateFileRoleParams) (DocumentFileRole, error)

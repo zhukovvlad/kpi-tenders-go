@@ -344,11 +344,12 @@ func (q *Queries) ListRootDocumentsBySite(ctx context.Context, arg ListRootDocum
 
 const updateDocumentMeta = `-- name: UpdateDocumentMeta :one
 UPDATE documents
-SET contract_kind_id = $3,
-    file_role_id     = $4,
-    bundle_id        = $5,
+SET contract_kind_id = COALESCE($3, contract_kind_id),
+    file_role_id     = COALESCE($4, file_role_id),
+    bundle_id        = COALESCE($5, bundle_id),
     updated_at       = now()
 WHERE id = $1 AND organization_id = $2
+  AND parent_id IS NULL
 RETURNING id, organization_id, site_id, uploaded_by, parent_id, file_name, storage_path, mime_type, file_size_bytes, artifact_kind, created_at, updated_at, contract_kind_id, file_role_id, bundle_id
 `
 
@@ -361,7 +362,8 @@ type UpdateDocumentMetaParams struct {
 }
 
 // Updates document classification fields (contract_kind, file_role, bundle).
-// Only applicable to root documents (parent_id IS NULL); artifacts are excluded by DB constraint.
+// Uses COALESCE so omitted (NULL) fields preserve the existing value (PATCH semantics).
+// Restricted to root documents (parent_id IS NULL); artifacts cannot be updated via this query.
 func (q *Queries) UpdateDocumentMeta(ctx context.Context, arg UpdateDocumentMetaParams) (Document, error) {
 	row := q.db.QueryRow(ctx, updateDocumentMeta,
 		arg.ID,

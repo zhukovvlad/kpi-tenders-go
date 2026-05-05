@@ -58,10 +58,11 @@ type Server struct {
 - `DocumentTaskService` принимает `repository.Querier` и тот же consumer-side interface `workerPythonClient`; `nil`-safe — при отсутствии Python-клиента триггер пропускается. После INSERT берёт `input_storage_path` из `document_tasks` (заполняется subquery в SQL), передаёт в `pythonClient.Process` (best-effort: ошибки логируются, наружу не пробрасываются).
 - `WorkerService` принимает `repository.Querier`, `workerPythonClient` (`Process`) и `extractionPipeline` (`Progress`, `OnResolveKeysCompleted`, `OnExtractCompleted`, `MarkRequestFailed`). Pipeline обязателен; реализован `*service.ExtractionService`. Redis обязателен — `pythonworker.New` вызывается в `NewServer()`, при ошибке `NewServer()` возвращает `error`; завершение процесса происходит в `cmd/api/main.go`.
 - `ExtractionService` владеет жизненным циклом `extraction_requests`: `Initiate(ctx, docID, orgID, questions, anonymize)` валидирует документ → создаёт `extraction_requests` row → вызывает `Progress(ctx, req)`. `Progress` смотрит существующие артефакты документа (`ListDocumentsByParent`) и решает что запустить:
-  - есть нужный артефакт (`anonymize_doc` для `anonymize=true`, `convert_md` для `false`) → `enqueueResolveKeys` (создаёт per-request `resolve_keys`-таску через `CreateDocumentTaskForRequest`, переводит запрос в `running`).
+  - есть нужный артефакт (`anonymize_doc` для `anonymize=true`, `convert_md` для `false`) → `enqueueResolveKeys` (создаёт per-request `resolve_keys`-таску через `CreateDocumentTaskForRequest`, переводит запрос в `running`). При ошибке публикации в Redis вызывает `MarkRequestFailed` (extraction_request не зависает в `running`).
   - есть MD, но нет anonymize-артефакта при `anonymize=true` → `ensureAnonymizeTask` (singleton).
   - нет MD → `ensureConvertTask` (singleton). convert→anonymize цепочка в `WorkerService` подхватит дальше.
-- `WorkerService.HandleStatusUpdate` после `convert/anonymize completed` вызывает `progressPendingRequests`, который перебирает `ListPendingExtractionRequestsByDocument` и для каждого зовёт `pipeline.Progress` — это позволяет нескольким параллельным запросам на один документ продвигаться по мере появления артефактов.
+  - `enqueueExtract` аналогично вызывает `MarkRequestFailed` при ошибке публикации.
+- `WorkerService.HandleStatusUpdate` после `convert/anonymize completed` вызывает `progressPendingRequests`, который перебирает `ListPendingExtractionRequestsByDocument` и для каждого зовёт `pipeline.Progress` — это позволяет нескольким параллельным запросам на один документ продвигаться по мере появления артефактов. При `convert/anonymize failed` вызывается `failPendingRequests` — все pending `extraction_requests` для этого документа переводятся в `failed` через `pipeline.MarkRequestFailed` (best-effort: ошибки логируются, цикл продолжается).
 - На `resolve_keys completed` Worker делегирует в `pipeline.OnResolveKeysCompleted`: парсит `{new_keys, resolved_schema}` (без `md_document_id`), upsert ключей, сохраняет `resolved_schema` на запросе, ищет артефакт по `parent_id+artifact_kind` и создаёт `extract`-таску через `CreateDocumentTaskForRequest`. На `extract completed` — `pipeline.OnExtractCompleted`: batch upsert `document_extracted_data` (параллельные массивы `key_ids`/`extracted_values` через `unnest`), затем `extraction_requests.status = 'completed'`. На `failed` resolve_keys/extract с непустым `extraction_request_id` — `pipeline.MarkRequestFailed`.
 - В `NewServer()` экземпляр `*pythonworker.Publisher` создаётся **один раз** через `cfg.RedisURL` и передаётся в `DocumentTaskService`, `ExtractionService` и `WorkerService`. Порядок инициализации важен: `ExtractionService` строится **до** `WorkerService` и подаётся в него как pipeline. `srv.Close()` освобождает пул Redis-соединений при graceful shutdown.
 - Watchdog запускается горутиной из `cmd/api/main.go`; завершение ожидается через `sync.WaitGroup` (`watchdogDone.Wait()`) после `watchdogCancel()` и до `srv.Close()` — иначе in-flight `LPUSH` может попасть на закрытый пул.
@@ -84,6 +85,20 @@ type Server struct {
 
 Хендлеры вызывают `s.respondWithError(c, err)` — ручной маппинг запрещён.  
 Детали БД (`pgconn`) наружу не пробрасываются.
+
+### sqlc naming quirk
+
+`$N::type` cast генерирует поле `ColumnN` в структуре параметров — sqlc не выводит имя из выражения. Вместо этого используй `sqlc.arg(name)` — тогда поле называется `Name` и тип выводится из схемы (`pgtype.UUID` для `uuid`, etc.):
+
+```sql
+-- Плохо: генерирует Column2 uuid.UUID
+WHERE organization_id = $2::uuid
+
+-- Хорошо: генерирует OrganizationID pgtype.UUID
+WHERE organization_id = sqlc.arg(organization_id)
+```
+
+При этом сервис должен оборачивать `uuid.UUID` в `pgtype.UUID{Bytes: id, Valid: true}` при передаче в сгенерированную функцию.
 
 ### Авторизация
 
