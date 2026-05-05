@@ -29,7 +29,7 @@ func (s *InvitationService) Create(ctx context.Context, orgID uuid.UUID, email, 
 		OrganizationID: orgID,
 		Email:          email,
 		Role:           role,
-		InvitedBy:      pgtype.UUID{Bytes: invitedBy, Valid: true},
+		InvitedBy:      pgtype.UUID{Bytes: invitedBy, Valid: invitedBy != uuid.Nil},
 		TokenHash:      tokenHash,
 		ExpiresAt:      expiresAt,
 	})
@@ -64,8 +64,11 @@ func (s *InvitationService) ListByOrg(ctx context.Context, orgID uuid.UUID) ([]r
 	return invitations, nil
 }
 
-func (s *InvitationService) Accept(ctx context.Context, id uuid.UUID) (repository.UserInvitation, error) {
-	inv, err := s.repo.AcceptUserInvitation(ctx, id)
+func (s *InvitationService) Accept(ctx context.Context, id, orgID uuid.UUID) (repository.UserInvitation, error) {
+	inv, err := s.repo.AcceptUserInvitation(ctx, repository.AcceptUserInvitationParams{
+		ID:             id,
+		OrganizationID: orgID,
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return repository.UserInvitation{}, errs.New(errs.CodeNotFound, "invitation not found or already accepted", err)

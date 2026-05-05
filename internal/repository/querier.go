@@ -12,7 +12,10 @@ import (
 )
 
 type Querier interface {
-	AcceptUserInvitation(ctx context.Context, id uuid.UUID) (UserInvitation, error)
+	// organization_id is included for defense-in-depth: the caller already holds
+	// the full invitation row (from GetUserInvitationByTokenHash) so passing it
+	// costs nothing and prevents any theoretical IDOR via a known invitation UUID.
+	AcceptUserInvitation(ctx context.Context, arg AcceptUserInvitationParams) (UserInvitation, error)
 	AddDocumentToComparisonSession(ctx context.Context, arg AddDocumentToComparisonSessionParams) (ComparisonSessionDocument, error)
 	// Batch idempotent upsert: inserts all extracted key-value pairs for a document
 	// in a single statement. Two unnest() calls in the SELECT list are expanded
@@ -101,6 +104,9 @@ type Querier interface {
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	GetUserByIDAndOrg(ctx context.Context, arg GetUserByIDAndOrgParams) (GetUserByIDAndOrgRow, error)
+	// token_hash is covered by a unique index (idx_user_invitations_token_hash) so at
+	// most one row can ever match. organization_id is intentionally omitted: at the
+	// token-redemption step the caller has no org context and must look up by token alone.
 	GetUserInvitationByTokenHash(ctx context.Context, tokenHash string) (UserInvitation, error)
 	ListComparisonSessionDocuments(ctx context.Context, sessionID uuid.UUID) ([]ComparisonSessionDocument, error)
 	ListComparisonSessionsByOrg(ctx context.Context, organizationID uuid.UUID) ([]ComparisonSession, error)
@@ -157,7 +163,8 @@ type Querier interface {
 	// Stores resolved_schema returned by resolve_keys so the GET endpoint can
 	// enumerate which keys' answers belong to this request. Does not change status.
 	SetExtractionRequestResolvedSchema(ctx context.Context, arg SetExtractionRequestResolvedSchemaParams) (ExtractionRequest, error)
-	// Updates status (and optionally error_message) for a request.
+	// Updates status and error_message for a request. Pass NULL for error_message
+	// to explicitly clear it (e.g. when transitioning to running or completed).
 	// Used to transition pending → running on resolve_keys enqueue,
 	// running → completed when extract finishes,
 	// and pending|running → failed when a prerequisite task fails fatally.

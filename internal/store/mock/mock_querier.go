@@ -18,9 +18,9 @@ type MockQuerier struct {
 	mock.Mock
 }
 
-// AcceptUserInvitation provides a mock function with given fields: ctx, id
-func (_m *MockQuerier) AcceptUserInvitation(ctx context.Context, id uuid.UUID) (repository.UserInvitation, error) {
-	ret := _m.Called(ctx, id)
+// AcceptUserInvitation provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) AcceptUserInvitation(ctx context.Context, arg repository.AcceptUserInvitationParams) (repository.UserInvitation, error) {
+	ret := _m.Called(ctx, arg)
 
 	if len(ret) == 0 {
 		panic("no return value specified for AcceptUserInvitation")
@@ -28,17 +28,17 @@ func (_m *MockQuerier) AcceptUserInvitation(ctx context.Context, id uuid.UUID) (
 
 	var r0 repository.UserInvitation
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) (repository.UserInvitation, error)); ok {
-		return rf(ctx, id)
+	if rf, ok := ret.Get(0).(func(context.Context, repository.AcceptUserInvitationParams) (repository.UserInvitation, error)); ok {
+		return rf(ctx, arg)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) repository.UserInvitation); ok {
-		r0 = rf(ctx, id)
+	if rf, ok := ret.Get(0).(func(context.Context, repository.AcceptUserInvitationParams) repository.UserInvitation); ok {
+		r0 = rf(ctx, arg)
 	} else {
 		r0 = ret.Get(0).(repository.UserInvitation)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
-		r1 = rf(ctx, id)
+	if rf, ok := ret.Get(1).(func(context.Context, repository.AcceptUserInvitationParams) error); ok {
+		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)
 	}

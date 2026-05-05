@@ -55,7 +55,11 @@ func (m *mockPipeline) MarkRequestFailed(ctx context.Context, requestID uuid.UUI
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 func newTestWorkerService(ms *storemock.MockStore, pc *mockPythonClient, pl *mockPipeline) *WorkerService {
-	return NewWorkerService(ms, pc, pl, newTestLogger())
+	svc, err := NewWorkerService(ms, pc, pl, newTestLogger())
+	if err != nil {
+		panic(err)
+	}
+	return svc
 }
 
 func makeDocumentTask(id, docID uuid.UUID, module, status string, payload json.RawMessage) repository.DocumentTask {

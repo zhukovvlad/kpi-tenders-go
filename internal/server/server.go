@@ -107,7 +107,11 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) (*Serve
 	// from worker callbacks. Order matters: build extraction first, then pass
 	// it to the worker.
 	srv.extractionService = service.NewExtractionService(db, pythonClient, log)
-	srv.workerService = service.NewWorkerService(db, pythonClient, srv.extractionService, log)
+	workerSvc, err := service.NewWorkerService(db, pythonClient, srv.extractionService, log)
+	if err != nil {
+		return nil, fmt.Errorf("NewServer: %w", err)
+	}
+	srv.workerService = workerSvc
 	if sc != nil {
 		// storageClient is set after struct creation to avoid storing a
 		// (*storage.Client)(nil) as a non-nil interface value.

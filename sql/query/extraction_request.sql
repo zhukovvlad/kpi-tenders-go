@@ -28,13 +28,14 @@ WHERE document_id = $1
 ORDER BY created_at ASC;
 
 -- name: SetExtractionRequestStatus :one
--- Updates status (and optionally error_message) for a request.
+-- Updates status and error_message for a request. Pass NULL for error_message
+-- to explicitly clear it (e.g. when transitioning to running or completed).
 -- Used to transition pending → running on resolve_keys enqueue,
 -- running → completed when extract finishes,
 -- and pending|running → failed when a prerequisite task fails fatally.
 UPDATE extraction_requests
 SET status        = $2,
-    error_message = COALESCE($3, error_message),
+    error_message = $3,
     updated_at    = now()
 WHERE id = $1
 RETURNING *;

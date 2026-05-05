@@ -60,20 +60,20 @@ type WorkerService struct {
 }
 
 // NewWorkerService creates a new WorkerService. pythonClient and pipeline are
-// both required dependencies.
+// both required dependencies; missing either returns an error.
 func NewWorkerService(
 	repo repository.Querier,
 	pythonClient workerPythonClient,
 	pipeline extractionPipeline,
 	log *slog.Logger,
-) *WorkerService {
+) (*WorkerService, error) {
 	if pythonClient == nil {
-		panic("WorkerService: pythonClient is required")
+		return nil, fmt.Errorf("WorkerService: pythonClient is required")
 	}
 	if pipeline == nil {
-		panic("WorkerService: pipeline is required")
+		return nil, fmt.Errorf("WorkerService: pipeline is required")
 	}
-	return &WorkerService{repo: repo, pythonClient: pythonClient, pipeline: pipeline, log: log}
+	return &WorkerService{repo: repo, pythonClient: pythonClient, pipeline: pipeline, log: log}, nil
 }
 
 // WorkerStatusUpdate is the request body from the Python worker when it
@@ -143,6 +143,11 @@ func (s *WorkerService) HandleStatusUpdate(ctx context.Context, taskID uuid.UUID
 	if task.ModuleName == moduleResolveKeys && task.Status == statusCompleted {
 		if err := s.pipeline.OnResolveKeysCompleted(ctx, task); err != nil {
 			s.log.Error("worker: pipeline OnResolveKeysCompleted failed", "task_id", task.ID, "err", err)
+			if task.ExtractionRequestID.Valid {
+				detached, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+				s.pipeline.MarkRequestFailed(detached, uuid.UUID(task.ExtractionRequestID.Bytes), "pipeline error after resolve_keys")
+				cancel()
+			}
 		}
 	}
 
@@ -150,17 +155,26 @@ func (s *WorkerService) HandleStatusUpdate(ctx context.Context, taskID uuid.UUID
 	if task.ModuleName == moduleExtract && task.Status == statusCompleted {
 		if err := s.pipeline.OnExtractCompleted(ctx, task); err != nil {
 			s.log.Error("worker: pipeline OnExtractCompleted failed", "task_id", task.ID, "err", err)
+			if task.ExtractionRequestID.Valid {
+				detached, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+				s.pipeline.MarkRequestFailed(detached, uuid.UUID(task.ExtractionRequestID.Bytes), "pipeline error after extract")
+				cancel()
+			}
 		}
 	}
 
 	// Failed resolve_keys / extract → mark the owning extraction_request failed.
+	// Use a detached context so the DB update is not cancelled when the worker
+	// HTTP request lifecycle ends (disconnect, client timeout, etc.).
 	if task.Status == statusFailed && task.ExtractionRequestID.Valid &&
 		(task.ModuleName == moduleResolveKeys || task.ModuleName == moduleExtract) {
 		msg := "task failed"
 		if task.ErrorMessage.Valid {
 			msg = task.ErrorMessage.String
 		}
-		s.pipeline.MarkRequestFailed(ctx, uuid.UUID(task.ExtractionRequestID.Bytes), msg)
+		detached, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		s.pipeline.MarkRequestFailed(detached, uuid.UUID(task.ExtractionRequestID.Bytes), msg)
+		cancel()
 	}
 
 	// Failed convert / anonymize → all pending extraction_requests on this document

@@ -16,12 +16,20 @@ import (
 const acceptUserInvitation = `-- name: AcceptUserInvitation :one
 UPDATE user_invitations
 SET accepted_at = now()
-WHERE id = $1 AND accepted_at IS NULL AND expires_at > now()
+WHERE id = $1 AND organization_id = $2 AND accepted_at IS NULL AND expires_at > now()
 RETURNING id, organization_id, email, role, invited_by, token_hash, expires_at, accepted_at, created_at
 `
 
-func (q *Queries) AcceptUserInvitation(ctx context.Context, id uuid.UUID) (UserInvitation, error) {
-	row := q.db.QueryRow(ctx, acceptUserInvitation, id)
+type AcceptUserInvitationParams struct {
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+}
+
+// organization_id is included for defense-in-depth: the caller already holds
+// the full invitation row (from GetUserInvitationByTokenHash) so passing it
+// costs nothing and prevents any theoretical IDOR via a known invitation UUID.
+func (q *Queries) AcceptUserInvitation(ctx context.Context, arg AcceptUserInvitationParams) (UserInvitation, error) {
+	row := q.db.QueryRow(ctx, acceptUserInvitation, arg.ID, arg.OrganizationID)
 	var i UserInvitation
 	err := row.Scan(
 		&i.ID,
@@ -95,9 +103,12 @@ func (q *Queries) DeleteUserInvitation(ctx context.Context, arg DeleteUserInvita
 }
 
 const getUserInvitationByTokenHash = `-- name: GetUserInvitationByTokenHash :one
-SELECT id, organization_id, email, role, invited_by, token_hash, expires_at, accepted_at, created_at FROM user_invitations WHERE token_hash = $1 LIMIT 1
+SELECT id, organization_id, email, role, invited_by, token_hash, expires_at, accepted_at, created_at FROM user_invitations WHERE token_hash = $1
 `
 
+// token_hash is covered by a unique index (idx_user_invitations_token_hash) so at
+// most one row can ever match. organization_id is intentionally omitted: at the
+// token-redemption step the caller has no org context and must look up by token alone.
 func (q *Queries) GetUserInvitationByTokenHash(ctx context.Context, tokenHash string) (UserInvitation, error) {
 	row := q.db.QueryRow(ctx, getUserInvitationByTokenHash, tokenHash)
 	var i UserInvitation
