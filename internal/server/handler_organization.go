@@ -102,8 +102,7 @@ func (s *Server) UpdateOrganization(c *gin.Context) {
 		return
 	}
 
-	if role, _ := c.Get("role"); role != "admin" && role != "owner" {
-		s.respondWithError(c, errs.New(errs.CodeForbidden, "admin or owner role required", nil))
+	if !s.requireAdminOrOwner(c) {
 		return
 	}
 
@@ -142,8 +141,7 @@ func (s *Server) DeleteOrganization(c *gin.Context) {
 		return
 	}
 
-	if role, _ := c.Get("role"); role != "admin" && role != "owner" {
-		s.respondWithError(c, errs.New(errs.CodeForbidden, "admin or owner role required", nil))
+	if !s.requireAdminOrOwner(c) {
 		return
 	}
 
@@ -187,6 +185,17 @@ func (s *Server) orgIDFromContext(c *gin.Context) (uuid.UUID, bool) {
 func isOwner(c *gin.Context) bool {
 	role, _ := c.Get("role")
 	return role == "owner"
+}
+
+// requireAdminOrOwner checks whether the authenticated user has admin or owner
+// role. On failure it writes a 403 response and returns false.
+func (s *Server) requireAdminOrOwner(c *gin.Context) bool {
+	role, _ := c.Get("role")
+	if role == "admin" || role == "owner" {
+		return true
+	}
+	s.respondWithError(c, errs.New(errs.CodeForbidden, "admin or owner role required", nil))
+	return false
 }
 
 // userIDFromContext extracts the userID set by AuthMiddleware, responding with

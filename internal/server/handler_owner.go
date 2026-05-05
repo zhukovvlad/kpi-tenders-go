@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 
 	"go-kpi-tenders/internal/service"
 	"go-kpi-tenders/pkg/errs"
@@ -13,7 +12,7 @@ import (
 // OwnerListOrganizationUsers handles GET /api/v1/organizations/:id/users.
 // Owner-only: returns all users belonging to the specified organization.
 func (s *Server) OwnerListOrganizationUsers(c *gin.Context) {
-	orgID, err := uuid.Parse(c.Param("id"))
+	orgID, err := parseUUID(c.Param("id"))
 	if err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid organization id", err))
 		return
@@ -36,13 +35,13 @@ type ownerUpdateUserRequest struct {
 // OwnerUpdateOrganizationUser handles PATCH /api/v1/organizations/:id/users/:user_id.
 // Owner-only: updates role or active status of any user in the specified org.
 func (s *Server) OwnerUpdateOrganizationUser(c *gin.Context) {
-	orgID, err := uuid.Parse(c.Param("id"))
+	orgID, err := parseUUID(c.Param("id"))
 	if err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid organization id", err))
 		return
 	}
 
-	userID, err := uuid.Parse(c.Param("user_id"))
+	userID, err := parseUUID(c.Param("user_id"))
 	if err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid user id", err))
 		return
@@ -76,13 +75,13 @@ func (s *Server) OwnerUpdateOrganizationUser(c *gin.Context) {
 // OwnerDeactivateOrganizationUser handles DELETE /api/v1/organizations/:id/users/:user_id.
 // Owner-only: deactivates (soft-deletes) any user in the specified organization.
 func (s *Server) OwnerDeactivateOrganizationUser(c *gin.Context) {
-	orgID, err := uuid.Parse(c.Param("id"))
+	orgID, err := parseUUID(c.Param("id"))
 	if err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid organization id", err))
 		return
 	}
 
-	userID, err := uuid.Parse(c.Param("user_id"))
+	userID, err := parseUUID(c.Param("user_id"))
 	if err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid user id", err))
 		return
