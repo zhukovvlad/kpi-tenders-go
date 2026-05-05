@@ -103,7 +103,7 @@ func (s *Server) UpdateOrganization(c *gin.Context) {
 	}
 
 	if role, _ := c.Get("role"); role != "admin" && role != "owner" {
-		s.respondWithError(c, errs.New(errs.CodeForbidden, "admin role required", nil))
+		s.respondWithError(c, errs.New(errs.CodeForbidden, "admin or owner role required", nil))
 		return
 	}
 
@@ -143,7 +143,7 @@ func (s *Server) DeleteOrganization(c *gin.Context) {
 	}
 
 	if role, _ := c.Get("role"); role != "admin" && role != "owner" {
-		s.respondWithError(c, errs.New(errs.CodeForbidden, "admin role required", nil))
+		s.respondWithError(c, errs.New(errs.CodeForbidden, "admin or owner role required", nil))
 		return
 	}
 
