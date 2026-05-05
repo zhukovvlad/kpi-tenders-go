@@ -33,7 +33,7 @@ FROM document_tasks AS dt
 JOIN documents AS d ON d.id = dt.document_id
 WHERE dt.document_id = ANY(sqlc.arg(document_ids)::uuid[])
   AND d.organization_id = sqlc.arg(organization_id)
-ORDER BY dt.document_id, dt.created_at DESC;
+ORDER BY dt.document_id, dt.created_at DESC, dt.id DESC;
 
 -- name: UpdateDocumentTaskStatus :one
 UPDATE document_tasks
