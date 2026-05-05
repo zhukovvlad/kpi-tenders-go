@@ -17,16 +17,16 @@ import (
 // Answers is empty until the extract task completes; resolved_schema is empty
 // until resolve_keys completes.
 type extractionRequestResponse struct {
-	ID              uuid.UUID                  `json:"id"`
-	DocumentID      uuid.UUID                  `json:"document_id"`
-	Status          string                     `json:"status"`
-	Anonymize       bool                       `json:"anonymize"`
-	Questions       []string                   `json:"questions"`
-	ResolvedSchema  []resolvedSchemaItem       `json:"resolved_schema,omitempty"`
-	Answers         []service.ExtractionAnswer `json:"answers,omitempty"`
-	ErrorMessage    *string                    `json:"error_message,omitempty"`
-	CreatedAt       time.Time                  `json:"created_at"`
-	UpdatedAt       time.Time                  `json:"updated_at"`
+	ID             uuid.UUID                  `json:"id"`
+	DocumentID     uuid.UUID                  `json:"document_id"`
+	Status         string                     `json:"status"`
+	Anonymize      bool                       `json:"anonymize"`
+	Questions      []string                   `json:"questions"`
+	ResolvedSchema []resolvedSchemaItem       `json:"resolved_schema,omitempty"`
+	Answers        []service.ExtractionAnswer `json:"answers,omitempty"`
+	ErrorMessage   *string                    `json:"error_message,omitempty"`
+	CreatedAt      time.Time                  `json:"created_at"`
+	UpdatedAt      time.Time                  `json:"updated_at"`
 }
 
 type resolvedSchemaItem struct {
