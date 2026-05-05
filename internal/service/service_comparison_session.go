@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"go-kpi-tenders/internal/pgutil"
 	"go-kpi-tenders/internal/repository"
 	"go-kpi-tenders/pkg/errs"
 )
@@ -89,6 +90,11 @@ func (s *ComparisonSessionService) AddDocument(ctx context.Context, sessionID, d
 		Position:       position,
 	})
 	if err != nil {
+		// FK violation: session or document not found, or document belongs to
+		// another organization (composite FK fk_csd_doc_org enforces tenant scope).
+		if pgutil.IsForeignKeyViolation(err, "") {
+			return repository.ComparisonSessionDocument{}, errs.New(errs.CodeNotFound, "session or document not found", err)
+		}
 		s.log.Error("add document to comparison session failed", "err", err, "session_id", sessionID, "document_id", documentID)
 		return repository.ComparisonSessionDocument{}, errs.New(errs.CodeInternalError, "internal server error", err)
 	}

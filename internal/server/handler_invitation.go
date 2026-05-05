@@ -76,11 +76,19 @@ func (s *Server) CreateInvitation(c *gin.Context) {
 		return
 	}
 
-	// TODO: in production, send rawToken via email instead of returning it.
-	// Returning the raw token in the response body is for local development only.
+	// In local development the raw token is returned in the response body so
+	// that the API can be exercised without an email provider. In all other
+	// environments the token must be delivered out-of-band (e.g. via email) and
+	// is never included in the API response.
+	if s.cfg.AppEnv == "local" {
+		c.JSON(http.StatusCreated, gin.H{
+			"invitation": inv,
+			"token":      rawToken,
+		})
+		return
+	}
 	c.JSON(http.StatusCreated, gin.H{
 		"invitation": inv,
-		"token":      rawToken,
 	})
 }
 

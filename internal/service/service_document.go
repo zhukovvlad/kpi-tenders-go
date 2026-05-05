@@ -145,6 +145,33 @@ func (s *DocumentService) GetPresignedURL(ctx context.Context, docID, orgID uuid
 }
 
 func (s *DocumentService) UpdateMeta(ctx context.Context, id, orgID uuid.UUID, contractKindID, fileRoleID, bundleID *uuid.UUID) (repository.Document, error) {
+	// Validate contractKindID belongs to this org (or is a system record).
+	// GetContractKind checks (organization_id = orgID OR organization_id IS NULL).
+	if contractKindID != nil {
+		if _, err := s.repo.GetContractKind(ctx, repository.GetContractKindParams{
+			ID:             *contractKindID,
+			OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
+		}); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return repository.Document{}, errs.New(errs.CodeValidationFailed, "contract kind not found or does not belong to your organization", err)
+			}
+			return repository.Document{}, errs.New(errs.CodeInternalError, "internal server error", err)
+		}
+	}
+
+	// Validate fileRoleID belongs to this org (or is a system record).
+	if fileRoleID != nil {
+		if _, err := s.repo.GetFileRole(ctx, repository.GetFileRoleParams{
+			ID:             *fileRoleID,
+			OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
+		}); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return repository.Document{}, errs.New(errs.CodeValidationFailed, "file role not found or does not belong to your organization", err)
+			}
+			return repository.Document{}, errs.New(errs.CodeInternalError, "internal server error", err)
+		}
+	}
+
 	// Validate bundle tenant isolation: the bundle document must belong to the
 	// same organization. A DB-level FK only checks document existence, not org
 	// membership, so we enforce it explicitly here.
