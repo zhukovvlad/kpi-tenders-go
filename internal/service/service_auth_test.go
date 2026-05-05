@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
@@ -35,7 +36,7 @@ func TestAuthService_Login_Success(t *testing.T) {
 	orgID := uuid.New()
 	expectedUser := repository.User{
 		ID:             uuid.New(),
-		OrganizationID: orgID,
+		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
 		Email:          "user@example.com",
 		PasswordHash:   string(hash),
 		Role:           "admin",
@@ -47,7 +48,6 @@ func TestAuthService_Login_Success(t *testing.T) {
 	}
 	ms.On("GetUserByEmail", ctx, "user@example.com").Return(expectedUser, nil)
 	ms.On("GetOrganizationByID", ctx, orgID).Return(expectedOrg, nil)
-
 	svc := newTestAuthService(ms)
 	access, refresh, err := svc.Login(ctx, "user@example.com", "password123")
 
@@ -157,6 +157,40 @@ func TestAuthService_ValidateAccessToken_RoundTrip(t *testing.T) {
 	assert.Equal(t, userID, claims.UserID)
 	assert.Equal(t, orgID, claims.OrgID)
 	assert.Equal(t, "admin", claims.Role)
+}
+
+func TestAuthService_Login_OwnerSkipsOrgValidation(t *testing.T) {
+	ctx := context.Background()
+	ms := new(mock.MockStore)
+
+	hash, err := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.MinCost)
+	require.NoError(t, err)
+
+	ownerUser := repository.User{
+		ID:             uuid.New(),
+		OrganizationID: pgtype.UUID{Valid: false}, // owner has no org
+		Email:          "owner@system.local",
+		PasswordHash:   string(hash),
+		Role:           "owner",
+		IsActive:       true,
+	}
+	ms.On("GetUserByEmail", ctx, "owner@system.local").Return(ownerUser, nil)
+	// GetOrganizationByID must NOT be called for an owner
+
+	svc := newTestAuthService(ms)
+	access, refresh, loginErr := svc.Login(ctx, "owner@system.local", "password123")
+
+	require.NoError(t, loginErr)
+	assert.NotEmpty(t, access)
+	assert.NotEmpty(t, refresh)
+
+	claims, err := svc.ValidateAccessToken(access)
+	require.NoError(t, err)
+	assert.Equal(t, ownerUser.ID, claims.UserID)
+	assert.Equal(t, uuid.Nil, claims.OrgID)
+	assert.Equal(t, "owner", claims.Role)
+
+	ms.AssertExpectations(t) // verifies GetOrganizationByID was never called
 }
 
 func TestAuthService_ValidateAccessToken_InvalidSignature(t *testing.T) {

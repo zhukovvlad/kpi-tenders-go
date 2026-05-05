@@ -151,7 +151,7 @@ type Querier interface {
 	ListTasksByDocument(ctx context.Context, arg ListTasksByDocumentParams) ([]DocumentTask, error)
 	ListTasksByDocuments(ctx context.Context, arg ListTasksByDocumentsParams) ([]DocumentTask, error)
 	ListUserInvitationsByOrg(ctx context.Context, organizationID uuid.UUID) ([]UserInvitation, error)
-	ListUsersByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ListUsersByOrganizationRow, error)
+	ListUsersByOrganization(ctx context.Context, organizationID pgtype.UUID) ([]ListUsersByOrganizationRow, error)
 	// Watchdog: permanently fails a task that has exhausted all retry attempts.
 	// updated_at < cutoff prevents failing a task that was refreshed after ListStaleTasks.
 	MarkStaleTaskFailed(ctx context.Context, arg MarkStaleTaskFailedParams) (int64, error)

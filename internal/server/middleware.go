@@ -35,13 +35,45 @@ func (s *Server) AuthMiddleware() gin.HandlerFunc {
 	}
 }
 
-// AdminOnly allows only users with role "admin" to proceed.
+// AdminOnly allows only tenant admins to proceed. Owner is explicitly excluded
+// because owner tokens carry OrgID=uuid.Nil and must use dedicated OwnerOnly
+// routes that accept org ID from the request path instead of JWT context.
 // Must be used after AuthMiddleware, which sets "role" in the context.
 func (s *Server) AdminOnly() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		role, _ := c.Get("role")
 		if role != "admin" {
 			c.AbortWithStatusJSON(http.StatusForbidden, errorResponse{Error: errorBody{Code: errs.CodeForbidden, Message: "admin rights required"}})
+			return
+		}
+		c.Next()
+	}
+}
+
+// OwnerOnly allows only the super-user with role "owner" to proceed.
+// Must be used after AuthMiddleware, which sets "role" in the context.
+func (s *Server) OwnerOnly() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, _ := c.Get("role")
+		if role != "owner" {
+			c.AbortWithStatusJSON(http.StatusForbidden, errorResponse{Error: errorBody{Code: errs.CodeForbidden, Message: "owner rights required"}})
+			return
+		}
+		c.Next()
+	}
+}
+
+// TenantScopedOnly rejects owner tokens from tenant-scoped routes.
+// Owner tokens carry OrgID=uuid.Nil and must use dedicated OwnerOnly routes
+// that accept an explicit org ID from the request path instead of JWT context.
+// Without this guard an owner hitting a tenant-scoped handler would receive
+// DB errors (FK violation / empty result) instead of a clear 403.
+// Must be used after AuthMiddleware, which sets "role" in the context.
+func (s *Server) TenantScopedOnly() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, _ := c.Get("role")
+		if role == "owner" {
+			c.AbortWithStatusJSON(http.StatusForbidden, errorResponse{Error: errorBody{Code: errs.CodeForbidden, Message: "owner token cannot access tenant-scoped route"}})
 			return
 		}
 		c.Next()

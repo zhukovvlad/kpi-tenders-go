@@ -20,11 +20,11 @@ RETURNING id, organization_id, email, password_hash, full_name, role, is_active,
 `
 
 type CreateUserParams struct {
-	OrganizationID uuid.UUID `json:"organization_id"`
-	Email          string    `json:"email"`
-	PasswordHash   string    `json:"password_hash"`
-	FullName       string    `json:"full_name"`
-	Role           string    `json:"role"`
+	OrganizationID pgtype.UUID `json:"organization_id"`
+	Email          string      `json:"email"`
+	PasswordHash   string      `json:"password_hash"`
+	FullName       string      `json:"full_name"`
+	Role           string      `json:"role"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
@@ -102,19 +102,19 @@ WHERE id = $1 AND organization_id = $2
 `
 
 type GetUserByIDAndOrgParams struct {
-	ID             uuid.UUID `json:"id"`
-	OrganizationID uuid.UUID `json:"organization_id"`
+	ID             uuid.UUID   `json:"id"`
+	OrganizationID pgtype.UUID `json:"organization_id"`
 }
 
 type GetUserByIDAndOrgRow struct {
-	ID             uuid.UUID `json:"id"`
-	OrganizationID uuid.UUID `json:"organization_id"`
-	Email          string    `json:"email"`
-	FullName       string    `json:"full_name"`
-	Role           string    `json:"role"`
-	IsActive       bool      `json:"is_active"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID             uuid.UUID   `json:"id"`
+	OrganizationID pgtype.UUID `json:"organization_id"`
+	Email          string      `json:"email"`
+	FullName       string      `json:"full_name"`
+	Role           string      `json:"role"`
+	IsActive       bool        `json:"is_active"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
 }
 
 func (q *Queries) GetUserByIDAndOrg(ctx context.Context, arg GetUserByIDAndOrgParams) (GetUserByIDAndOrgRow, error) {
@@ -141,17 +141,17 @@ ORDER BY created_at ASC
 `
 
 type ListUsersByOrganizationRow struct {
-	ID             uuid.UUID `json:"id"`
-	OrganizationID uuid.UUID `json:"organization_id"`
-	Email          string    `json:"email"`
-	FullName       string    `json:"full_name"`
-	Role           string    `json:"role"`
-	IsActive       bool      `json:"is_active"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID             uuid.UUID   `json:"id"`
+	OrganizationID pgtype.UUID `json:"organization_id"`
+	Email          string      `json:"email"`
+	FullName       string      `json:"full_name"`
+	Role           string      `json:"role"`
+	IsActive       bool        `json:"is_active"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
 }
 
-func (q *Queries) ListUsersByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ListUsersByOrganizationRow, error) {
+func (q *Queries) ListUsersByOrganization(ctx context.Context, organizationID pgtype.UUID) ([]ListUsersByOrganizationRow, error) {
 	rows, err := q.db.Query(ctx, listUsersByOrganization, organizationID)
 	if err != nil {
 		return nil, err
@@ -192,20 +192,20 @@ RETURNING id, organization_id, email, full_name, role, is_active, created_at, up
 
 type UpdateUserParams struct {
 	ID             uuid.UUID   `json:"id"`
-	OrganizationID uuid.UUID   `json:"organization_id"`
+	OrganizationID pgtype.UUID `json:"organization_id"`
 	Role           pgtype.Text `json:"role"`
 	IsActive       pgtype.Bool `json:"is_active"`
 }
 
 type UpdateUserRow struct {
-	ID             uuid.UUID `json:"id"`
-	OrganizationID uuid.UUID `json:"organization_id"`
-	Email          string    `json:"email"`
-	FullName       string    `json:"full_name"`
-	Role           string    `json:"role"`
-	IsActive       bool      `json:"is_active"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID             uuid.UUID   `json:"id"`
+	OrganizationID pgtype.UUID `json:"organization_id"`
+	Email          string      `json:"email"`
+	FullName       string      `json:"full_name"`
+	Role           string      `json:"role"`
+	IsActive       bool        `json:"is_active"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
 }
 
 func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (UpdateUserRow, error) {

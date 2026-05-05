@@ -188,9 +188,16 @@ func (s *Server) setupRouter() {
 				organizations.GET("/:id", s.GetOrganization)
 				organizations.PATCH("/:id", s.UpdateOrganization)
 				organizations.DELETE("/:id", s.DeleteOrganization)
+
+				// Owner-only: cross-tenant user management.
+				// Org ID is taken from the path, not from the JWT context.
+				organizations.GET("/:id/users", s.OwnerOnly(), s.OwnerListOrganizationUsers)
+				organizations.PATCH("/:id/users/:user_id", s.OwnerOnly(), s.OwnerUpdateOrganizationUser)
+				organizations.DELETE("/:id/users/:user_id", s.OwnerOnly(), s.OwnerDeactivateOrganizationUser)
 			}
 
 			sites := protected.Group("/sites")
+			sites.Use(s.TenantScopedOnly())
 			{
 				sites.POST("", s.CreateConstructionSite)
 				sites.GET("", s.ListConstructionSites)
@@ -205,6 +212,7 @@ func (s *Server) setupRouter() {
 			}
 
 			documents := protected.Group("/documents")
+			documents.Use(s.TenantScopedOnly())
 			{
 				documents.POST("", s.CreateDocument)
 				documents.POST("/upload", s.UploadDocument)
@@ -217,6 +225,7 @@ func (s *Server) setupRouter() {
 			}
 
 			tasks := protected.Group("/tasks")
+			tasks.Use(s.TenantScopedOnly())
 			{
 				tasks.POST("", s.CreateDocumentTask)
 				tasks.GET("", s.ListDocumentTasks)
@@ -226,11 +235,13 @@ func (s *Server) setupRouter() {
 			}
 
 			extractionRequests := protected.Group("/extraction-requests")
+			extractionRequests.Use(s.TenantScopedOnly())
 			{
 				extractionRequests.GET("/:id", s.GetExtractionRequest)
 			}
 
 			contractKinds := protected.Group("/contract-kinds")
+			contractKinds.Use(s.TenantScopedOnly())
 			{
 				contractKinds.GET("", s.ListContractKinds)
 				contractKinds.POST("", s.CreateContractKind)
@@ -240,6 +251,7 @@ func (s *Server) setupRouter() {
 			}
 
 			fileRoles := protected.Group("/file-roles")
+			fileRoles.Use(s.TenantScopedOnly())
 			{
 				fileRoles.GET("", s.ListFileRoles)
 				fileRoles.POST("", s.CreateFileRole)
@@ -257,6 +269,7 @@ func (s *Server) setupRouter() {
 			}
 
 			comparisons := protected.Group("/comparison-sessions")
+			comparisons.Use(s.TenantScopedOnly())
 			{
 				comparisons.GET("", s.ListComparisonSessions)
 				comparisons.POST("", s.CreateComparisonSession)

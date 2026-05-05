@@ -40,7 +40,7 @@ func createTestUser(t *testing.T, ctx context.Context, orgID uuid.UUID) reposito
 	hash, err := bcrypt.GenerateFromPassword([]byte("test"), bcrypt.MinCost)
 	require.NoError(t, err)
 	user, err := q.CreateUser(ctx, repository.CreateUserParams{
-		OrganizationID: orgID,
+		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
 		Email:          fmt.Sprintf("user-%s@test.com", uuid.New()),
 		PasswordHash:   string(hash),
 		FullName:       "Test User",
@@ -139,7 +139,7 @@ func TestRepository_CreateUser_DuplicateEmail(t *testing.T) {
 
 	email := fmt.Sprintf("dup-%s@test.com", uuid.New())
 	params := repository.CreateUserParams{
-		OrganizationID: org.ID, Email: email,
+		OrganizationID: pgtype.UUID{Bytes: org.ID, Valid: true}, Email: email,
 		PasswordHash: string(hash), FullName: "User", Role: "member",
 	}
 

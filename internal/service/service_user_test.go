@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -40,10 +41,10 @@ func TestUserService_Create_Success(t *testing.T) {
 
 	orgID := uuid.New()
 	userID := uuid.New()
-	expected := repository.User{ID: userID, OrganizationID: orgID, Email: "member@acme.com", Role: "member"}
+	expected := repository.User{ID: userID, OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true}, Email: "member@acme.com", Role: "member"}
 
 	mq.On("CreateUser", mock.Anything, mock.MatchedBy(func(p repository.CreateUserParams) bool {
-		return p.Email == "member@acme.com" && p.Role == "member" && p.OrganizationID == orgID
+		return p.Email == "member@acme.com" && p.Role == "member" && p.OrganizationID == (pgtype.UUID{Bytes: orgID, Valid: true})
 	})).Return(expected, nil)
 
 	svc := newTestUserService(mq)
@@ -60,7 +61,7 @@ func TestUserService_Create_AdminRole_Success(t *testing.T) {
 	mq := new(storemock.MockQuerier)
 
 	orgID := uuid.New()
-	expected := repository.User{OrganizationID: orgID, Email: "admin2@acme.com", Role: "admin"}
+	expected := repository.User{OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true}, Email: "admin2@acme.com", Role: "admin"}
 
 	mq.On("CreateUser", mock.Anything, mock.MatchedBy(func(p repository.CreateUserParams) bool {
 		return p.Role == "admin"
@@ -138,11 +139,11 @@ func TestUserService_List_Success(t *testing.T) {
 
 	orgID := uuid.New()
 	rows := []repository.ListUsersByOrganizationRow{
-		{ID: uuid.New(), OrganizationID: orgID, Email: "a@acme.com"},
-		{ID: uuid.New(), OrganizationID: orgID, Email: "b@acme.com"},
+		{ID: uuid.New(), OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true}, Email: "a@acme.com"},
+		{ID: uuid.New(), OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true}, Email: "b@acme.com"},
 	}
 
-	mq.On("ListUsersByOrganization", mock.Anything, orgID).Return(rows, nil)
+	mq.On("ListUsersByOrganization", mock.Anything, pgtype.UUID{Bytes: orgID, Valid: true}).Return(rows, nil)
 
 	svc := newTestUserService(mq)
 	users, err := svc.List(ctx, orgID)
@@ -161,10 +162,10 @@ func TestUserService_Update_Role_Success(t *testing.T) {
 	orgID := uuid.New()
 	userID := uuid.New()
 	newRole := "admin"
-	expected := repository.UpdateUserRow{ID: userID, OrganizationID: orgID, Role: "admin"}
+	expected := repository.UpdateUserRow{ID: userID, OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true}, Role: "admin"}
 
 	mq.On("UpdateUser", mock.Anything, mock.MatchedBy(func(p repository.UpdateUserParams) bool {
-		return p.ID == userID && p.OrganizationID == orgID && p.Role.String == "admin"
+		return p.ID == userID && p.OrganizationID == (pgtype.UUID{Bytes: orgID, Valid: true}) && p.Role.String == "admin"
 	})).Return(expected, nil)
 
 	svc := newTestUserService(mq)
@@ -232,7 +233,7 @@ func TestUserService_Deactivate_Success(t *testing.T) {
 	expected := repository.UpdateUserRow{ID: userID, IsActive: false}
 
 	mq.On("UpdateUser", mock.Anything, mock.MatchedBy(func(p repository.UpdateUserParams) bool {
-		return p.ID == userID && p.OrganizationID == orgID && p.IsActive.Valid && !p.IsActive.Bool
+		return p.ID == userID && p.OrganizationID == (pgtype.UUID{Bytes: orgID, Valid: true}) && p.IsActive.Valid && !p.IsActive.Bool
 	})).Return(expected, nil)
 
 	svc := newTestUserService(mq)
@@ -269,7 +270,7 @@ func TestUserService_GetProfile_Success(t *testing.T) {
 	orgID := uuid.New()
 	expected := repository.GetUserByIDAndOrgRow{
 		ID:             userID,
-		OrganizationID: orgID,
+		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
 		Email:          "user@acme.com",
 		FullName:       "John Doe",
 		Role:           "member",
@@ -278,7 +279,7 @@ func TestUserService_GetProfile_Success(t *testing.T) {
 
 	mq.On("GetUserByIDAndOrg", mock.Anything, repository.GetUserByIDAndOrgParams{
 		ID:             userID,
-		OrganizationID: orgID,
+		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
 	}).Return(expected, nil)
 
 	svc := newTestUserService(mq)
@@ -286,7 +287,7 @@ func TestUserService_GetProfile_Success(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, userID, user.ID)
-	assert.Equal(t, orgID, user.OrganizationID)
+	assert.Equal(t, pgtype.UUID{Bytes: orgID, Valid: true}, user.OrganizationID)
 	assert.Equal(t, "user@acme.com", user.Email)
 	assert.Equal(t, "member", user.Role)
 	assert.True(t, user.IsActive)
@@ -346,5 +347,52 @@ func TestUserService_GetProfile_DBError_ReturnsInternalError(t *testing.T) {
 	var appErr *errs.Error
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, errs.CodeInternalError, appErr.Code)
+	mq.AssertExpectations(t)
+}
+
+func TestUserService_GetProfile_OwnerPath_Success(t *testing.T) {
+	ctx := context.Background()
+	mq := new(storemock.MockQuerier)
+
+	userID := uuid.New()
+	ownerUser := repository.User{
+		ID:             userID,
+		OrganizationID: pgtype.UUID{Valid: false},
+		Email:          "owner@system.local",
+		FullName:       "Super Owner",
+		Role:           "owner",
+		IsActive:       true,
+	}
+	mq.On("GetUserByID", mock.Anything, userID).Return(ownerUser, nil)
+	// GetUserByIDAndOrg must NOT be called
+
+	svc := newTestUserService(mq)
+	profile, err := svc.GetProfile(ctx, userID, uuid.Nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, userID, profile.ID)
+	assert.Equal(t, "owner", profile.Role)
+	assert.Equal(t, "owner@system.local", profile.Email)
+	assert.True(t, profile.IsActive)
+	mq.AssertExpectations(t)
+}
+
+func TestUserService_GetProfile_OwnerPath_InactiveOwner_ReturnsUnauthorized(t *testing.T) {
+	ctx := context.Background()
+	mq := new(storemock.MockQuerier)
+
+	userID := uuid.New()
+	mq.On("GetUserByID", mock.Anything, userID).Return(
+		repository.User{ID: userID, Role: "owner", IsActive: false}, nil,
+	)
+
+	svc := newTestUserService(mq)
+	_, err := svc.GetProfile(ctx, userID, uuid.Nil)
+
+	require.Error(t, err)
+	var appErr *errs.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, errs.CodeUnauthorized, appErr.Code)
+	assert.Equal(t, "account is unavailable", appErr.Message)
 	mq.AssertExpectations(t)
 }

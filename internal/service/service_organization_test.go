@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -39,7 +40,7 @@ func TestOrganizationService_Register_Success(t *testing.T) {
 	orgID := uuid.New()
 	userID := uuid.New()
 	expectedOrg := repository.Organization{ID: orgID, Name: "Acme Corp"}
-	expectedUser := repository.User{ID: userID, OrganizationID: orgID, Email: "admin@acme.com", Role: "admin"}
+	expectedUser := repository.User{ID: userID, OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true}, Email: "admin@acme.com", Role: "admin"}
 
 	ms.On("ExecTx", mock.Anything, mock.Anything).Return(nil)
 	ms.On("CreateOrganization", mock.Anything, mock.Anything).Return(expectedOrg, nil)
@@ -51,7 +52,7 @@ func TestOrganizationService_Register_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Acme Corp", org.Name)
 	assert.Equal(t, "admin", user.Role)
-	assert.Equal(t, orgID, user.OrganizationID)
+	assert.Equal(t, pgtype.UUID{Bytes: orgID, Valid: true}, user.OrganizationID)
 	ms.AssertExpectations(t)
 }
 
