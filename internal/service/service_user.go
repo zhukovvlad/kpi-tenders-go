@@ -119,6 +119,30 @@ func (s *UserService) Deactivate(ctx context.Context, userID, orgID uuid.UUID) (
 }
 
 func (s *UserService) GetProfile(ctx context.Context, userID, orgID uuid.UUID) (repository.GetUserByIDAndOrgRow, error) {
+	// owner tokens carry OrgID = uuid.Nil; query by user ID only, without org filter.
+	if orgID == uuid.Nil {
+		user, err := s.repo.GetUserByID(ctx, userID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return repository.GetUserByIDAndOrgRow{}, errs.New(errs.CodeNotFound, "user not found", err)
+			}
+			return repository.GetUserByIDAndOrgRow{}, errs.New(errs.CodeInternalError, "internal server error", err)
+		}
+		if !user.IsActive {
+			return repository.GetUserByIDAndOrgRow{}, errs.New(errs.CodeUnauthorized, "account is unavailable", nil)
+		}
+		return repository.GetUserByIDAndOrgRow{
+			ID:             user.ID,
+			OrganizationID: user.OrganizationID,
+			Email:          user.Email,
+			FullName:       user.FullName,
+			Role:           user.Role,
+			IsActive:       user.IsActive,
+			CreatedAt:      user.CreatedAt,
+			UpdatedAt:      user.UpdatedAt,
+		}, nil
+	}
+
 	user, err := s.repo.GetUserByIDAndOrg(ctx, repository.GetUserByIDAndOrgParams{
 		ID:             userID,
 		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},

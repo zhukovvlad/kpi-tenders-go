@@ -35,12 +35,14 @@ func (s *Server) AuthMiddleware() gin.HandlerFunc {
 	}
 }
 
-// AdminOnly allows users with role "admin" or "owner" to proceed.
+// AdminOnly allows only tenant admins to proceed. Owner is explicitly excluded
+// because owner tokens carry OrgID=uuid.Nil and must use dedicated OwnerOnly
+// routes that accept org ID from the request path instead of JWT context.
 // Must be used after AuthMiddleware, which sets "role" in the context.
 func (s *Server) AdminOnly() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		role, _ := c.Get("role")
-		if role != "admin" && role != "owner" {
+		if role != "admin" {
 			c.AbortWithStatusJSON(http.StatusForbidden, errorResponse{Error: errorBody{Code: errs.CodeForbidden, Message: "admin rights required"}})
 			return
 		}

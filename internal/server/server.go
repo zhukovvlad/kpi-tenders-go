@@ -188,6 +188,12 @@ func (s *Server) setupRouter() {
 				organizations.GET("/:id", s.GetOrganization)
 				organizations.PATCH("/:id", s.UpdateOrganization)
 				organizations.DELETE("/:id", s.DeleteOrganization)
+
+				// Owner-only: cross-tenant user management.
+				// Org ID is taken from the path, not from the JWT context.
+				organizations.GET("/:id/users", s.OwnerOnly(), s.OwnerListOrganizationUsers)
+				organizations.PATCH("/:id/users/:user_id", s.OwnerOnly(), s.OwnerUpdateOrganizationUser)
+				organizations.DELETE("/:id/users/:user_id", s.OwnerOnly(), s.OwnerDeactivateOrganizationUser)
 			}
 
 			sites := protected.Group("/sites")

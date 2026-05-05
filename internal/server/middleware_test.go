@@ -226,10 +226,19 @@ func newTestServerWithAdminRoute(t *testing.T) *Server {
 	return s
 }
 
-// adminToken generates a valid access token with the given role.
+// adminToken generates a valid access token with the given role and a random orgID.
 func adminToken(t *testing.T, s *Server, role string) string {
 	t.Helper()
 	access, _, err := s.authService.GenerateTokens(uuid.New(), uuid.New(), role)
+	require.NoError(t, err)
+	return access
+}
+
+// ownerToken generates a valid access token for the owner role.
+// Owner tokens always carry OrgID = uuid.Nil (no tenant binding).
+func ownerToken(t *testing.T, s *Server) string {
+	t.Helper()
+	access, _, err := s.authService.GenerateTokens(uuid.New(), uuid.Nil, "owner")
 	require.NoError(t, err)
 	return access
 }
@@ -276,18 +285,18 @@ func TestAdminOnly_EmptyRole_Returns403(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, w.Code)
 }
 
-func TestAdminOnly_OwnerRole_PassesThrough(t *testing.T) {
+func TestAdminOnly_OwnerRole_Returns403(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	s := newTestServerWithAdminRoute(t)
 
-	tok := adminToken(t, s, "owner")
+	tok := ownerToken(t, s)
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test/admin-ping", nil)
 	req.AddCookie(&http.Cookie{Name: "access_token", Value: tok})
 
 	w := httptest.NewRecorder()
 	s.Router().ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, http.StatusForbidden, w.Code)
 }
 
 // ── OwnerOnly ─────────────────────────────────────────────────────────────────
@@ -304,7 +313,7 @@ func TestOwnerOnly_OwnerRole_PassesThrough(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	s := newTestServerWithOwnerRoute(t)
 
-	tok := adminToken(t, s, "owner")
+	tok := ownerToken(t, s)
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test/owner-ping", nil)
 	req.AddCookie(&http.Cookie{Name: "access_token", Value: tok})
 

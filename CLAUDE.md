@@ -107,10 +107,11 @@ WHERE organization_id = sqlc.arg(organization_id)
 - Timing-attack защита: `dummyHash` + `subtle.ConstantTimeCompare`.
 - **Роли:** `member`, `admin`, `owner`.
   - `owner` — суперпользователь без привязки к тенанту; JWT содержит `OrgID = uuid.Nil`.
-  - `AdminOnly()` пропускает `admin` и `owner`.
+  - `AdminOnly()` пропускает только `admin` (owner исключён — его OrgID = uuid.Nil сломает tenant-scoped запросы).
   - `OwnerOnly()` пропускает только `owner`.
   - `isOwner(c)` — package-level хелпер в `handler_organization.go` для bypass tenant-scoping в хендлерах.
   - Хендлеры `GetOrganization`, `UpdateOrganization`, `DeleteOrganization` не проверяют `id == orgID` для owner.
+  - `service_user.go::GetProfile`: если `orgID == uuid.Nil` — вызывает `GetUserByID` без org-фильтра (для `/api/v1/auth/me` owner).
 
 ## Текущее состояние API
 
@@ -124,6 +125,9 @@ POST   /api/v1/auth/logout
 GET    /api/v1/auth/me
 
 GET/PATCH/DELETE /api/v1/organizations/:id
+GET              /api/v1/organizations/:id/users              (OwnerOnly; список пользователей любой org)
+PATCH            /api/v1/organizations/:id/users/:user_id     (OwnerOnly; изменить роль / активность)
+DELETE           /api/v1/organizations/:id/users/:user_id     (OwnerOnly; деактивировать пользователя)
 
 POST             /api/v1/documents           (JSON, storage_path задаётся вручную)
 POST             /api/v1/documents/upload    (multipart/form-data → S3 → БД)
@@ -200,7 +204,7 @@ internal/service/service_worker_test.go             — WorkerService: status pe
 internal/service/service_extraction_test.go         — ExtractionService: валидация, 404 на документ, прогрессия в трёх ветках (нет MD → convert; MD есть, anonymize=false → resolve_keys; MD есть, anonymize=true, нет anon → anonymize; есть anon → resolve_keys на anon-пути), best-effort progress, OnResolveKeysCompleted full flow + missing extraction_request_id, OnExtractCompleted с null-значениями + статус=completed, Progress no-op на терминальном статусе, GetRequest 404 (11 кейсов)
 internal/server/errors_test.go                      — respondWithError маппинг
 internal/server/health_test.go                      — health endpoint
-internal/server/middleware_test.go                  — AuthMiddleware, ServiceBearerAuth, AdminOnly (owner passes), OwnerOnly (admin/member blocked)
+internal/server/middleware_test.go                  — AuthMiddleware, ServiceBearerAuth, AdminOnly (owner=403), OwnerOnly (admin/member blocked)
 internal/server/handler_user_test.go                — GET /api/v1/auth/me
 internal/server/handler_document_test.go            — POST /api/v1/documents/upload; GET ?parent_id=; GET /:id; DELETE /:id; GET /:id/url (16 кейсов)
 internal/server/handler_extraction_test.go          — POST /api/v1/documents/:id/extract: no auth, invalid id, missing/empty questions, not found, success (extraction_request_id), db error, anonymize=false propagation (8 кейсов)
