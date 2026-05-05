@@ -349,3 +349,50 @@ func TestUserService_GetProfile_DBError_ReturnsInternalError(t *testing.T) {
 	assert.Equal(t, errs.CodeInternalError, appErr.Code)
 	mq.AssertExpectations(t)
 }
+
+func TestUserService_GetProfile_OwnerPath_Success(t *testing.T) {
+	ctx := context.Background()
+	mq := new(storemock.MockQuerier)
+
+	userID := uuid.New()
+	ownerUser := repository.User{
+		ID:             userID,
+		OrganizationID: pgtype.UUID{Valid: false},
+		Email:          "owner@system.local",
+		FullName:       "Super Owner",
+		Role:           "owner",
+		IsActive:       true,
+	}
+	mq.On("GetUserByID", mock.Anything, userID).Return(ownerUser, nil)
+	// GetUserByIDAndOrg must NOT be called
+
+	svc := newTestUserService(mq)
+	profile, err := svc.GetProfile(ctx, userID, uuid.Nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, userID, profile.ID)
+	assert.Equal(t, "owner", profile.Role)
+	assert.Equal(t, "owner@system.local", profile.Email)
+	assert.True(t, profile.IsActive)
+	mq.AssertExpectations(t)
+}
+
+func TestUserService_GetProfile_OwnerPath_InactiveOwner_ReturnsUnauthorized(t *testing.T) {
+	ctx := context.Background()
+	mq := new(storemock.MockQuerier)
+
+	userID := uuid.New()
+	mq.On("GetUserByID", mock.Anything, userID).Return(
+		repository.User{ID: userID, Role: "owner", IsActive: false}, nil,
+	)
+
+	svc := newTestUserService(mq)
+	_, err := svc.GetProfile(ctx, userID, uuid.Nil)
+
+	require.Error(t, err)
+	var appErr *errs.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, errs.CodeUnauthorized, appErr.Code)
+	assert.Equal(t, "account is unavailable", appErr.Message)
+	mq.AssertExpectations(t)
+}
