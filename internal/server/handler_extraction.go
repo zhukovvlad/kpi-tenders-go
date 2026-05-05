@@ -9,13 +9,18 @@ import (
 	"go-kpi-tenders/pkg/errs"
 )
 
+// initiateExtractionRequest is the JSON body of POST /api/v1/documents/:id/extract.
+// Anonymize is a pointer so the omitted-field default (true) can be distinguished
+// from an explicit `false` in the request body.
 type initiateExtractionRequest struct {
 	Questions []string `json:"questions" binding:"required,min=1"`
+	Anonymize *bool    `json:"anonymize,omitempty"`
 }
 
 // InitiateExtraction handles POST /api/v1/documents/:id/extract.
-// It starts the resolve_keys → extract pipeline for the given document and
-// returns the task_id so the client can poll for progress.
+// It creates an extraction_request and starts the appropriate pipeline
+// (convert → anonymize → resolve_keys → extract, skipping anonymize when the
+// caller opts out). Returns the extraction_request id so the client can poll.
 func (s *Server) InitiateExtraction(c *gin.Context) {
 	orgID, ok := s.orgIDFromContext(c)
 	if !ok {
@@ -34,11 +39,19 @@ func (s *Server) InitiateExtraction(c *gin.Context) {
 		return
 	}
 
-	task, err := s.extractionService.Initiate(c.Request.Context(), docID, orgID, req.Questions)
+	anonymize := true
+	if req.Anonymize != nil {
+		anonymize = *req.Anonymize
+	}
+
+	created, err := s.extractionService.Initiate(c.Request.Context(), docID, orgID, req.Questions, anonymize)
 	if err != nil {
 		s.respondWithError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"task_id": task.ID})
+	c.JSON(http.StatusCreated, gin.H{
+		"extraction_request_id": created.ID,
+		"status":                created.Status,
+	})
 }

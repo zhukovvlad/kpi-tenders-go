@@ -46,7 +46,7 @@ func (q *Queries) BatchUpsertExtractedData(ctx context.Context, arg BatchUpsertE
 }
 
 const getExtractionKeysByNames = `-- name: GetExtractionKeysByNames :many
-SELECT DISTINCT ON (key_name) id, organization_id, key_name, source_query, data_type, created_at FROM extraction_keys
+SELECT DISTINCT ON (key_name) id, organization_id, key_name, source_query, data_type, created_at, display_name, is_active, category FROM extraction_keys
 WHERE key_name = ANY($1::text[])
   AND (organization_id = $2::uuid OR organization_id IS NULL)
 ORDER BY key_name, (organization_id IS NULL) ASC
@@ -78,6 +78,9 @@ func (q *Queries) GetExtractionKeysByNames(ctx context.Context, arg GetExtractio
 			&i.SourceQuery,
 			&i.DataType,
 			&i.CreatedAt,
+			&i.DisplayName,
+			&i.IsActive,
+			&i.Category,
 		); err != nil {
 			return nil, err
 		}
@@ -89,8 +92,57 @@ func (q *Queries) GetExtractionKeysByNames(ctx context.Context, arg GetExtractio
 	return items, nil
 }
 
+const listExtractedDataForKeys = `-- name: ListExtractedDataForKeys :many
+SELECT k.key_name,
+       k.data_type,
+       d.extracted_value
+FROM document_extracted_data d
+JOIN extraction_keys k ON k.id = d.key_id
+WHERE d.document_id     = $1::uuid
+  AND d.organization_id = $2::uuid
+  AND k.key_name        = ANY($3::text[])
+ORDER BY k.key_name
+`
+
+type ListExtractedDataForKeysParams struct {
+	DocumentID     uuid.UUID `json:"document_id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+	KeyNames       []string  `json:"key_names"`
+}
+
+type ListExtractedDataForKeysRow struct {
+	KeyName        string      `json:"key_name"`
+	DataType       string      `json:"data_type"`
+	ExtractedValue pgtype.Text `json:"extracted_value"`
+}
+
+// Returns extracted values for a document filtered to the given extraction
+// keys, joined with key metadata. Tenant-scoped: only data and keys visible
+// to the given organization (org-specific keys + system keys) are returned.
+// Used by GET /extraction-requests/:id to assemble the answers map for a
+// specific request's resolved_schema.
+func (q *Queries) ListExtractedDataForKeys(ctx context.Context, arg ListExtractedDataForKeysParams) ([]ListExtractedDataForKeysRow, error) {
+	rows, err := q.db.Query(ctx, listExtractedDataForKeys, arg.DocumentID, arg.OrganizationID, arg.KeyNames)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListExtractedDataForKeysRow{}
+	for rows.Next() {
+		var i ListExtractedDataForKeysRow
+		if err := rows.Scan(&i.KeyName, &i.DataType, &i.ExtractedValue); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listExtractionKeysByOrg = `-- name: ListExtractionKeysByOrg :many
-SELECT id, organization_id, key_name, source_query, data_type, created_at FROM extraction_keys
+SELECT id, organization_id, key_name, source_query, data_type, created_at, display_name, is_active, category FROM extraction_keys
 WHERE organization_id = $1::uuid OR organization_id IS NULL
 ORDER BY organization_id NULLS LAST, key_name
 `
@@ -113,6 +165,9 @@ func (q *Queries) ListExtractionKeysByOrg(ctx context.Context, dollar_1 uuid.UUI
 			&i.SourceQuery,
 			&i.DataType,
 			&i.CreatedAt,
+			&i.DisplayName,
+			&i.IsActive,
+			&i.Category,
 		); err != nil {
 			return nil, err
 		}
@@ -157,7 +212,7 @@ VALUES ($1::uuid, $2, $3, $4)
 ON CONFLICT ON CONSTRAINT uq_extraction_keys_org_name DO UPDATE
     SET source_query = EXCLUDED.source_query,
         data_type    = EXCLUDED.data_type
-RETURNING id, organization_id, key_name, source_query, data_type, created_at
+RETURNING id, organization_id, key_name, source_query, data_type, created_at, display_name, is_active, category
 `
 
 type UpsertExtractionKeyParams struct {
@@ -184,6 +239,9 @@ func (q *Queries) UpsertExtractionKey(ctx context.Context, arg UpsertExtractionK
 		&i.SourceQuery,
 		&i.DataType,
 		&i.CreatedAt,
+		&i.DisplayName,
+		&i.IsActive,
+		&i.Category,
 	)
 	return i, err
 }

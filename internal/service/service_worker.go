@@ -25,6 +25,16 @@ type workerPythonClient interface {
 	Process(ctx context.Context, req pythonworker.ProcessRequest) error
 }
 
+// extractionPipeline is the consumer-side interface for the chunk of
+// extraction-request orchestration that lives in ExtractionService. Keeping
+// it narrow lets WorkerService stay testable and avoids circular dependencies.
+type extractionPipeline interface {
+	Progress(ctx context.Context, req repository.ExtractionRequest) error
+	OnResolveKeysCompleted(ctx context.Context, task repository.DocumentTask) error
+	OnExtractCompleted(ctx context.Context, task repository.DocumentTask) error
+	MarkRequestFailed(ctx context.Context, requestID uuid.UUID, msg string)
+}
+
 // Module names used in task chaining.
 const (
 	moduleConvert     = "convert"
@@ -40,20 +50,30 @@ const (
 )
 
 // WorkerService handles callbacks from the Python worker and implements task
-// chaining (e.g. convert → anonymize).
+// chaining (convert → anonymize) plus delegation to ExtractionService for
+// extraction_request progression.
 type WorkerService struct {
 	repo         repository.Querier
 	pythonClient workerPythonClient
+	pipeline     extractionPipeline
 	log          *slog.Logger
 }
 
-// NewWorkerService creates a new WorkerService.
-// Panics if pythonClient is nil — it is a required dependency.
-func NewWorkerService(repo repository.Querier, pythonClient workerPythonClient, log *slog.Logger) *WorkerService {
+// NewWorkerService creates a new WorkerService. pythonClient and pipeline are
+// both required dependencies; missing either returns an error.
+func NewWorkerService(
+	repo repository.Querier,
+	pythonClient workerPythonClient,
+	pipeline extractionPipeline,
+	log *slog.Logger,
+) (*WorkerService, error) {
 	if pythonClient == nil {
-		panic("WorkerService: pythonClient is required")
+		return nil, fmt.Errorf("WorkerService: pythonClient is required")
 	}
-	return &WorkerService{repo: repo, pythonClient: pythonClient, log: log}
+	if pipeline == nil {
+		return nil, fmt.Errorf("WorkerService: pipeline is required")
+	}
+	return &WorkerService{repo: repo, pythonClient: pythonClient, pipeline: pipeline, log: log}, nil
 }
 
 // WorkerStatusUpdate is the request body from the Python worker when it
@@ -92,46 +112,128 @@ func (s *WorkerService) HandleStatusUpdate(ctx context.Context, taskID uuid.UUID
 		return repository.DocumentTask{}, errs.New(errs.CodeInternalError, "failed to update task", err)
 	}
 
-	// Chain: convert completed → trigger anonymize, then register artifact.
-	// triggerAnonymize must run first: it reads md_storage_path from the original
-	// result_payload, which registerConvertArtifacts will overwrite in the DB.
-	// If triggering anonymize fails, skip artifact registration so that
-	// md_storage_path remains in result_payload and the chain can be retried.
+	// Chain: convert completed → register artifact, trigger anonymize, and
+	// progress any pending extraction_requests on the document (anonymize=false
+	// requests can fire resolve_keys as soon as MD is ready).
+	//
+	// Artifact registration happens FIRST, unconditionally, so that the
+	// convert_md Document always exists in the DB. ExtractionService.Progress
+	// discovers artifacts via ListDocumentsByParent — if the artifact is absent
+	// (because we skipped registration while waiting for anonymize), any
+	// anonymize=false extraction_request is permanently blocked.
+	//
+	// Both steps are best-effort: failures are logged but never surface to the
+	// caller (the status callback has already been persisted).
 	if task.ModuleName == moduleConvert && task.Status == statusCompleted {
-		if err := s.triggerAnonymize(ctx, task); err != nil {
-			// Log but do not fail — the callback has already been persisted.
-			// Intentionally skip artifact registration here to preserve the
-			// original result_payload (md_storage_path) for a future retry.
-			s.log.Error("worker: failed to trigger anonymize", "task_id", task.ID, "err", err)
-		} else {
-			if err := runWithArtifactTimeout(ctx, task, s.registerConvertArtifacts); err != nil {
-				s.log.Error("worker: failed to register convert artifacts", "task_id", task.ID, "err", err)
-			}
+		if err := runWithArtifactTimeout(ctx, task, s.registerConvertArtifacts); err != nil {
+			s.log.Error("worker: failed to register convert artifacts", "task_id", task.ID, "err", err)
 		}
+		// triggerAnonymize reads md_storage_path from the in-memory task
+		// (still holds the original convert payload — registerConvertArtifacts
+		// only rewrites the DB row, not the local struct).
+		if err := s.triggerAnonymize(ctx, task); err != nil {
+			s.log.Error("worker: failed to trigger anonymize", "task_id", task.ID, "err", err)
+		}
+		s.progressPendingRequests(ctx, task.DocumentID)
 	}
 
-	// Register anonymize artifacts.
+	// Register anonymize artifacts and progress pending requests that wanted
+	// the anonymized version.
 	if task.ModuleName == moduleAnonymize && task.Status == statusCompleted {
 		if err := runWithArtifactTimeout(ctx, task, s.registerAnonymizeArtifacts); err != nil {
 			s.log.Error("worker: failed to register anonymize artifacts", "task_id", task.ID, "err", err)
 		}
+		s.progressPendingRequests(ctx, task.DocumentID)
 	}
 
-	// Chain: resolve_keys completed → insert new keys + trigger extract.
+	// Chain: resolve_keys completed → upsert keys, persist resolved_schema,
+	// enqueue extract. Delegated to ExtractionService for orchestration.
 	if task.ModuleName == moduleResolveKeys && task.Status == statusCompleted {
-		if err := s.triggerExtract(ctx, task); err != nil {
-			s.log.Error("worker: failed to trigger extract from resolve_keys", "task_id", task.ID, "err", err)
+		if err := s.pipeline.OnResolveKeysCompleted(ctx, task); err != nil {
+			s.log.Error("worker: pipeline OnResolveKeysCompleted failed", "task_id", task.ID, "err", err)
+			if task.ExtractionRequestID.Valid {
+				detached, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+				s.pipeline.MarkRequestFailed(detached, uuid.UUID(task.ExtractionRequestID.Bytes), "pipeline error after resolve_keys")
+				cancel()
+			}
 		}
 	}
 
-	// Persist extracted data when extract completes.
+	// Persist extracted data and mark request completed.
 	if task.ModuleName == moduleExtract && task.Status == statusCompleted {
-		if err := runWithArtifactTimeout(ctx, task, s.handleExtractCompleted); err != nil {
-			s.log.Error("worker: failed to persist extracted data", "task_id", task.ID, "err", err)
+		if err := s.pipeline.OnExtractCompleted(ctx, task); err != nil {
+			s.log.Error("worker: pipeline OnExtractCompleted failed", "task_id", task.ID, "err", err)
+			if task.ExtractionRequestID.Valid {
+				detached, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+				s.pipeline.MarkRequestFailed(detached, uuid.UUID(task.ExtractionRequestID.Bytes), "pipeline error after extract")
+				cancel()
+			}
 		}
+	}
+
+	// Failed resolve_keys / extract → mark the owning extraction_request failed.
+	// Use a detached context so the DB update is not cancelled when the worker
+	// HTTP request lifecycle ends (disconnect, client timeout, etc.).
+	if task.Status == statusFailed && task.ExtractionRequestID.Valid &&
+		(task.ModuleName == moduleResolveKeys || task.ModuleName == moduleExtract) {
+		msg := "task failed"
+		if task.ErrorMessage.Valid {
+			msg = task.ErrorMessage.String
+		}
+		detached, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		s.pipeline.MarkRequestFailed(detached, uuid.UUID(task.ExtractionRequestID.Bytes), msg)
+		cancel()
+	}
+
+	// Failed convert / anonymize → all pending extraction_requests on this document
+	// can no longer progress; mark them all failed so they don't stay stuck in pending.
+	if task.Status == statusFailed &&
+		(task.ModuleName == moduleConvert || task.ModuleName == moduleAnonymize) {
+		s.failPendingRequests(ctx, task.DocumentID, task.ModuleName+" task failed")
 	}
 
 	return task, nil
+}
+
+// progressPendingRequests advances every pending/running extraction_request on
+// the given document. Best-effort: errors per request are logged and the loop
+// continues so one failing request does not stall the others.
+// The HTTP request context is detached to prevent a client disconnect from
+// cancelling in-flight pipeline.Progress calls. A hard timeout bounds the work.
+func (s *WorkerService) progressPendingRequests(ctx context.Context, documentID uuid.UUID) {
+	detached, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+
+	requests, err := s.repo.ListPendingExtractionRequestsByDocument(detached, documentID)
+	if err != nil {
+		s.log.Error("worker: list pending extraction_requests",
+			"document_id", documentID, "err", err)
+		return
+	}
+	for _, req := range requests {
+		if err := s.pipeline.Progress(detached, req); err != nil {
+			s.log.Error("worker: progress extraction_request",
+				"request_id", req.ID, "document_id", documentID, "err", err)
+		}
+	}
+}
+
+// failPendingRequests marks all pending/running extraction_requests on the given
+// document as failed. Called when a prerequisite task (convert/anonymize) fails
+// so requests don't stay stuck in pending indefinitely. Best-effort.
+func (s *WorkerService) failPendingRequests(ctx context.Context, documentID uuid.UUID, reason string) {
+	detached, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+
+	requests, err := s.repo.ListPendingExtractionRequestsByDocument(detached, documentID)
+	if err != nil {
+		s.log.Error("worker: list pending requests for fail",
+			"document_id", documentID, "err", err)
+		return
+	}
+	for _, req := range requests {
+		s.pipeline.MarkRequestFailed(detached, req.ID, reason)
+	}
 }
 
 type convertPayload struct {
@@ -172,9 +274,9 @@ func (s *WorkerService) triggerAnonymize(ctx context.Context, convertTask reposi
 	chainCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
 
-	// Create the anonymize task. ON CONFLICT (document_id, module_name) DO NOTHING
+	// Create the anonymize task. ON CONFLICT on the singleton partial index
 	// makes this atomic: if the task already exists pgx returns ErrNoRows.
-	anonTask, err := s.repo.CreateDocumentTaskInternal(chainCtx, repository.CreateDocumentTaskInternalParams{
+	anonTask, err := s.repo.CreateDocumentTaskSingleton(chainCtx, repository.CreateDocumentTaskSingletonParams{
 		DocumentID:       convertTask.DocumentID,
 		ModuleName:       moduleAnonymize,
 		InputStoragePath: payload.MDStoragePath,
@@ -360,194 +462,4 @@ func runWithArtifactTimeout(
 	artifactCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
 	return fn(artifactCtx, task)
-}
-
-// ── resolve_keys → extract chain ─────────────────────────────────────────────
-
-// resolveKeysPayload is the result_payload structure returned by the Python
-// resolve_keys worker after matching user questions to extraction keys.
-type resolveKeysPayload struct {
-	// NewKeys are keys the LLM identified as new (not in existing_keys).
-	// Go must INSERT them into extraction_keys before chaining.
-	NewKeys []resolveKeysNewKey `json:"new_keys"`
-	// ResolvedSchema is the full list of keys to extract, covering both new
-	// and existing keys that matched the user's questions.
-	ResolvedSchema []extractionSchemaEntry `json:"resolved_schema"`
-	// MDDocumentID is the UUID of the markdown artifact document in the DB.
-	// The extract worker reads this file from MinIO.
-	MDDocumentID string `json:"md_document_id"`
-}
-
-type resolveKeysNewKey struct {
-	KeyName     string `json:"key_name"`
-	SourceQuery string `json:"source_query"`
-	DataType    string `json:"data_type"`
-}
-
-type extractionSchemaEntry struct {
-	KeyName  string `json:"key_name"`
-	DataType string `json:"data_type"`
-}
-
-// triggerExtract processes a completed resolve_keys task:
-//  1. Inserts new extraction keys returned by Python.
-//  2. Looks up the MD artifact document to get its storage_path.
-//  3. Creates an extract task (idempotent via ON CONFLICT DO NOTHING).
-//  4. Enqueues the extract Celery task with extraction_schema and md_document_id.
-func (s *WorkerService) triggerExtract(ctx context.Context, resolveTask repository.DocumentTask) error {
-	var payload resolveKeysPayload
-	if err := json.Unmarshal(resolveTask.ResultPayload, &payload); err != nil {
-		return fmt.Errorf("parse resolve_keys payload: %w", err)
-	}
-	if payload.MDDocumentID == "" {
-		return fmt.Errorf("md_document_id is empty in resolve_keys result_payload")
-	}
-	if len(payload.ResolvedSchema) == 0 {
-		return fmt.Errorf("resolved_schema is empty in resolve_keys result_payload")
-	}
-
-	// Detach from the request context so chaining survives worker disconnect.
-	chainCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-	defer cancel()
-
-	// Fetch the document to get the tenant's organization_id.
-	doc, err := s.repo.GetDocumentByID(chainCtx, resolveTask.DocumentID)
-	if err != nil {
-		return fmt.Errorf("get document for resolve_keys chain: %w", err)
-	}
-	orgUUID := pgtype.UUID{Bytes: doc.OrganizationID, Valid: true}
-
-	// Insert new keys returned by Python. Best-effort per key: a single
-	// failure does not abort the whole chain.
-	for _, k := range payload.NewKeys {
-		if _, err := s.repo.UpsertExtractionKey(chainCtx, repository.UpsertExtractionKeyParams{
-			OrganizationID: orgUUID,
-			KeyName:        k.KeyName,
-			SourceQuery:    k.SourceQuery,
-			DataType:       k.DataType,
-		}); err != nil {
-			s.log.Error("worker: failed to upsert extraction key",
-				"key_name", k.KeyName, "document_id", resolveTask.DocumentID, "err", err)
-		}
-	}
-
-	// Get the MD document's storage_path for the extract task's input_storage_path.
-	mdDocID, err := uuid.Parse(payload.MDDocumentID)
-	if err != nil {
-		return fmt.Errorf("parse md_document_id %q: %w", payload.MDDocumentID, err)
-	}
-	mdDoc, err := s.repo.GetDocumentByID(chainCtx, mdDocID)
-	if err != nil {
-		return fmt.Errorf("get md document %s: %w", payload.MDDocumentID, err)
-	}
-	if mdDoc.OrganizationID != doc.OrganizationID {
-		return fmt.Errorf("md document %s does not belong to the organization of document %s",
-			payload.MDDocumentID, resolveTask.DocumentID)
-	}
-
-	// Create the extract task. ON CONFLICT DO NOTHING → pgx.ErrNoRows means
-	// the task already exists (idempotent retry of the resolve_keys callback).
-	extractTask, err := s.repo.CreateDocumentTaskInternal(chainCtx, repository.CreateDocumentTaskInternalParams{
-		DocumentID:       resolveTask.DocumentID,
-		ModuleName:       moduleExtract,
-		InputStoragePath: mdDoc.StoragePath,
-	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		s.log.Info("worker: extract task already exists, skipping",
-			"document_id", resolveTask.DocumentID)
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("create extract task: %w", err)
-	}
-
-	if err := s.pythonClient.Process(chainCtx, pythonworker.ProcessRequest{
-		TaskID:      extractTask.ID.String(),
-		DocumentID:  extractTask.DocumentID.String(),
-		ModuleName:  moduleExtract,
-		StoragePath: mdDoc.StoragePath,
-		Kwargs: map[string]any{
-			"extraction_schema": payload.ResolvedSchema,
-			"md_document_id":    payload.MDDocumentID,
-		},
-	}); err != nil {
-		if markErr := s.markTaskFailed(chainCtx, extractTask.ID, err.Error()); markErr != nil {
-			s.log.Error("worker: failed to mark orphaned extract task as failed",
-				"task_id", extractTask.ID, "err", markErr)
-		}
-		return fmt.Errorf("trigger extract: %w", err)
-	}
-	return nil
-}
-
-// ── extract callback handler ──────────────────────────────────────────────────
-
-// handleExtractCompleted persists the data extracted by the Python extract
-// worker into document_extracted_data. The result_payload is expected to be a
-// flat JSON object mapping key_name → extracted_value (string or null).
-// Null values are skipped — they indicate the worker could not extract that key.
-func (s *WorkerService) handleExtractCompleted(ctx context.Context, task repository.DocumentTask) error {
-	// Parse extract result_payload: {"key_name": "value", ...}
-	// Use *string so JSON null values are handled explicitly (nil = skip).
-	var extractedData map[string]*string
-	if err := json.Unmarshal(task.ResultPayload, &extractedData); err != nil {
-		return fmt.Errorf("parse extract payload: %w", err)
-	}
-	if len(extractedData) == 0 {
-		return nil // nothing to persist
-	}
-
-	// Get the document to determine organization_id for tenant scoping.
-	doc, err := s.repo.GetDocumentByID(ctx, task.DocumentID)
-	if err != nil {
-		return fmt.Errorf("get document for extract: %w", err)
-	}
-
-	// Collect the key names present in the payload.
-	keyNames := make([]string, 0, len(extractedData))
-	for name := range extractedData {
-		keyNames = append(keyNames, name)
-	}
-
-	// Look up extraction keys by name for this tenant (includes system keys).
-	keys, err := s.repo.GetExtractionKeysByNames(ctx, repository.GetExtractionKeysByNamesParams{
-		KeyNames:       keyNames,
-		OrganizationID: doc.OrganizationID,
-	})
-	if err != nil {
-		return fmt.Errorf("get extraction keys by names: %w", err)
-	}
-
-	// Build name → ID index for fast lookup.
-	keyIDByName := make(map[string]uuid.UUID, len(keys))
-	for _, k := range keys {
-		keyIDByName[k.KeyName] = k.ID
-	}
-
-	// Build parallel slices for batch upsert, skipping unknown keys and null values.
-	keyIDs := make([]uuid.UUID, 0, len(keyIDByName))
-	extractedValues := make([]string, 0, len(keyIDByName))
-	for keyName, value := range extractedData {
-		if value == nil {
-			// Python worker could not extract this key — skip.
-			continue
-		}
-		keyID, ok := keyIDByName[keyName]
-		if !ok {
-			s.log.Warn("worker: extract returned unknown key name, skipping",
-				"key_name", keyName, "document_id", task.DocumentID)
-			continue
-		}
-		keyIDs = append(keyIDs, keyID)
-		extractedValues = append(extractedValues, *value)
-	}
-	if len(keyIDs) == 0 {
-		return nil
-	}
-	return s.repo.BatchUpsertExtractedData(ctx, repository.BatchUpsertExtractedDataParams{
-		OrganizationID:  doc.OrganizationID,
-		DocumentID:      task.DocumentID,
-		KeyIds:          keyIDs,
-		ExtractedValues: extractedValues,
-	})
 }

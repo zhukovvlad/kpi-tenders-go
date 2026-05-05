@@ -143,3 +143,77 @@ func (s *DocumentService) GetPresignedURL(ctx context.Context, docID, orgID uuid
 
 	return presignedURL, nil
 }
+
+func (s *DocumentService) UpdateMeta(ctx context.Context, id, orgID uuid.UUID, contractKindID, fileRoleID, bundleID *uuid.UUID) (repository.Document, error) {
+	// Validate contractKindID belongs to this org (or is a system record).
+	// GetContractKind checks (organization_id = orgID OR organization_id IS NULL).
+	if contractKindID != nil {
+		if _, err := s.repo.GetContractKind(ctx, repository.GetContractKindParams{
+			ID:             *contractKindID,
+			OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
+		}); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return repository.Document{}, errs.New(errs.CodeValidationFailed, "contract kind not found or does not belong to your organization", err)
+			}
+			return repository.Document{}, errs.New(errs.CodeInternalError, "internal server error", err)
+		}
+	}
+
+	// Validate fileRoleID belongs to this org (or is a system record).
+	if fileRoleID != nil {
+		if _, err := s.repo.GetFileRole(ctx, repository.GetFileRoleParams{
+			ID:             *fileRoleID,
+			OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
+		}); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return repository.Document{}, errs.New(errs.CodeValidationFailed, "file role not found or does not belong to your organization", err)
+			}
+			return repository.Document{}, errs.New(errs.CodeInternalError, "internal server error", err)
+		}
+	}
+
+	// Validate bundle tenant isolation: the bundle document must belong to the
+	// same organization. A DB-level FK only checks document existence, not org
+	// membership, so we enforce it explicitly here.
+	if bundleID != nil {
+		bundleDoc, err := s.repo.GetDocumentByID(ctx, *bundleID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return repository.Document{}, errs.New(errs.CodeNotFound, "bundle document not found", err)
+			}
+			return repository.Document{}, errs.New(errs.CodeInternalError, "internal server error", err)
+		}
+		// Intentionally return 404 on org mismatch to avoid leaking cross-tenant
+		// document existence (same pattern used in GetPresignedURL and elsewhere).
+		if bundleDoc.OrganizationID != orgID {
+			return repository.Document{}, errs.New(errs.CodeNotFound, "bundle document not found", nil)
+		}
+		// A bundle must be a root document (parent_id IS NULL). Pointing to an
+		// artifact breaks UI assumptions and the schema comment.
+		if bundleDoc.ParentID.Valid {
+			return repository.Document{}, errs.New(errs.CodeValidationFailed, "bundle_id must reference a root document", nil)
+		}
+	}
+
+	toUUID := func(u *uuid.UUID) pgtype.UUID {
+		if u == nil {
+			return pgtype.UUID{}
+		}
+		return pgtype.UUID{Bytes: *u, Valid: true}
+	}
+	doc, err := s.repo.UpdateDocumentMeta(ctx, repository.UpdateDocumentMetaParams{
+		ID:             id,
+		OrganizationID: orgID,
+		ContractKindID: toUUID(contractKindID),
+		FileRoleID:     toUUID(fileRoleID),
+		BundleID:       toUUID(bundleID),
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return repository.Document{}, errs.New(errs.CodeNotFound, "document not found", err)
+		}
+		s.log.Error("update document meta failed", "err", err, "id", id, "org_id", orgID)
+		return repository.Document{}, errs.New(errs.CodeInternalError, "internal server error", err)
+	}
+	return doc, nil
+}

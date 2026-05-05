@@ -46,7 +46,7 @@ func (s *DocumentTaskService) Create(ctx context.Context, params repository.Crea
 		if errors.Is(err, pgx.ErrNoRows) {
 			return repository.DocumentTask{}, errs.New(errs.CodeNotFound, "document not found", err)
 		}
-		if pgutil.IsUniqueViolation(err, "uq_document_tasks_document_module") {
+		if pgutil.IsUniqueViolation(err, "uq_document_tasks_doc_singleton") {
 			return repository.DocumentTask{}, errs.New(errs.CodeConflict, "task for this module already exists", err)
 		}
 		return repository.DocumentTask{}, errs.New(errs.CodeInternalError, "internal server error", err)
@@ -93,6 +93,17 @@ func (s *DocumentTaskService) Get(ctx context.Context, id, orgID uuid.UUID) (rep
 func (s *DocumentTaskService) ListByDocument(ctx context.Context, documentID, orgID uuid.UUID) ([]repository.DocumentTask, error) {
 	tasks, err := s.repo.ListTasksByDocument(ctx, repository.ListTasksByDocumentParams{
 		DocumentID:     documentID,
+		OrganizationID: orgID,
+	})
+	if err != nil {
+		return nil, errs.New(errs.CodeInternalError, "internal server error", err)
+	}
+	return tasks, nil
+}
+
+func (s *DocumentTaskService) ListByDocuments(ctx context.Context, documentIDs []uuid.UUID, orgID uuid.UUID) ([]repository.DocumentTask, error) {
+	tasks, err := s.repo.ListTasksByDocuments(ctx, repository.ListTasksByDocumentsParams{
+		DocumentIds:    documentIDs,
 		OrganizationID: orgID,
 	})
 	if err != nil {

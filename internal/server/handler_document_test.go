@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -926,4 +927,212 @@ func TestGetDocumentPresignedURL_InvalidDownloadParam_Returns400(t *testing.T) {
 	s.Router().ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// ── PATCH /api/v1/documents/:id/meta ─────────────────────────────────────────
+
+func TestUpdateDocumentMeta_NoAuth_Returns401(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	docID := uuid.New()
+	s := newServerWithMockDocumentService(t, new(storemock.MockQuerier))
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch,
+		"/api/v1/documents/"+docID.String()+"/meta", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestUpdateDocumentMeta_InvalidID_Returns400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	userID, orgID := uuid.New(), uuid.New()
+	s := newServerWithMockDocumentService(t, new(storemock.MockQuerier))
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch,
+		"/api/v1/documents/not-a-uuid/meta", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdateDocumentMeta_InvalidContractKindID_Returns400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	userID, orgID := uuid.New(), uuid.New()
+	docID := uuid.New()
+	s := newServerWithMockDocumentService(t, new(storemock.MockQuerier))
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	body := `{"contract_kind_id":"not-a-uuid"}`
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch,
+		"/api/v1/documents/"+docID.String()+"/meta", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdateDocumentMeta_ContractKindNotFound_Returns400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	userID, orgID := uuid.New(), uuid.New()
+	docID := uuid.New()
+	contractKindID := uuid.New()
+
+	mq := new(storemock.MockQuerier)
+	mq.On("GetContractKind", mock.Anything, mock.MatchedBy(func(p repository.GetContractKindParams) bool {
+		return p.ID == contractKindID
+	})).Return(repository.DocumentContractKind{}, pgx.ErrNoRows)
+
+	s := newServerWithMockDocumentService(t, mq)
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	body := `{"contract_kind_id":"` + contractKindID.String() + `"}`
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch,
+		"/api/v1/documents/"+docID.String()+"/meta", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	mq.AssertExpectations(t)
+}
+
+func TestUpdateDocumentMeta_BundleCrossTenant_Returns404(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	userID, orgID := uuid.New(), uuid.New()
+	docID := uuid.New()
+	bundleID := uuid.New()
+	otherOrgID := uuid.New()
+
+	mq := new(storemock.MockQuerier)
+	// Bundle doc belongs to a different org.
+	mq.On("GetDocumentByID", mock.Anything, bundleID).
+		Return(sampleDocument(bundleID, otherOrgID), nil)
+
+	s := newServerWithMockDocumentService(t, mq)
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	body := `{"bundle_id":"` + bundleID.String() + `"}`
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch,
+		"/api/v1/documents/"+docID.String()+"/meta", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	mq.AssertExpectations(t)
+}
+
+func TestUpdateDocumentMeta_BundleIsArtifact_Returns400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	userID, orgID := uuid.New(), uuid.New()
+	docID := uuid.New()
+	bundleID := uuid.New()
+	parentID := uuid.New()
+
+	bundleDoc := sampleDocument(bundleID, orgID)
+	bundleDoc.ParentID = pgtype.UUID{Bytes: parentID, Valid: true} // not a root doc
+
+	mq := new(storemock.MockQuerier)
+	mq.On("GetDocumentByID", mock.Anything, bundleID).Return(bundleDoc, nil)
+
+	s := newServerWithMockDocumentService(t, mq)
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	body := `{"bundle_id":"` + bundleID.String() + `"}`
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch,
+		"/api/v1/documents/"+docID.String()+"/meta", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	mq.AssertExpectations(t)
+}
+
+func TestUpdateDocumentMeta_DocumentNotFound_Returns404(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	userID, orgID := uuid.New(), uuid.New()
+	docID := uuid.New()
+
+	mq := new(storemock.MockQuerier)
+	// All meta fields are nil → UpdateDocumentMeta called directly.
+	mq.On("UpdateDocumentMeta", mock.Anything, mock.Anything).
+		Return(repository.Document{}, pgx.ErrNoRows)
+
+	s := newServerWithMockDocumentService(t, mq)
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch,
+		"/api/v1/documents/"+docID.String()+"/meta", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	mq.AssertExpectations(t)
+}
+
+func TestUpdateDocumentMeta_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	userID, orgID := uuid.New(), uuid.New()
+	docID := uuid.New()
+
+	updated := sampleDocument(docID, orgID)
+
+	mq := new(storemock.MockQuerier)
+	mq.On("UpdateDocumentMeta", mock.Anything, mock.MatchedBy(func(p repository.UpdateDocumentMetaParams) bool {
+		return p.ID == docID && p.OrganizationID == orgID &&
+			!p.ContractKindID.Valid && !p.FileRoleID.Valid && !p.BundleID.Valid
+	})).Return(updated, nil)
+
+	s := newServerWithMockDocumentService(t, mq)
+	access, _, err := s.authService.GenerateTokens(userID, orgID, "admin")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch,
+		"/api/v1/documents/"+docID.String()+"/meta", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	assert.Equal(t, docID.String(), got["id"])
+	mq.AssertExpectations(t)
 }

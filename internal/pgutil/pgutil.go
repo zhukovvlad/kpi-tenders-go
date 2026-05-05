@@ -17,3 +17,13 @@ func IsUniqueViolation(err error, constraint string) bool {
 	}
 	return false
 }
+
+// IsForeignKeyViolation reports whether err is a PostgreSQL foreign-key
+// violation (SQLSTATE 23503). Pass constraint == "" to match any FK violation.
+func IsForeignKeyViolation(err error, constraint string) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "23503" && (constraint == "" || pgErr.ConstraintName == constraint)
+	}
+	return false
+}

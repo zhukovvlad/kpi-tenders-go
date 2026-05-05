@@ -1,6 +1,8 @@
 package server
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -172,4 +174,130 @@ func (s *Server) DeleteConstructionSite(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+type updateSiteCoverRequest struct {
+	CoverImagePath *string `json:"cover_image_path"`
+}
+
+func (s *Server) UpdateConstructionSiteCover(c *gin.Context) {
+	orgID, ok := s.orgIDFromContext(c)
+	if !ok {
+		return
+	}
+
+	id, err := parseUUID(c.Param("id"))
+	if err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid id", err))
+		return
+	}
+
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
+		return
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
+		return
+	}
+	if _, ok := raw["cover_image_path"]; !ok {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "cover_image_path field is required", nil))
+		return
+	}
+	var req updateSiteCoverRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
+		return
+	}
+
+	site, err := s.constructionSiteService.UpdateCover(c.Request.Context(), id, orgID, req.CoverImagePath)
+	if err != nil {
+		s.respondWithError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, site)
+}
+
+type updateSiteTypeRequest struct {
+	SiteType *string `json:"site_type"`
+}
+
+func (s *Server) UpdateConstructionSiteType(c *gin.Context) {
+	orgID, ok := s.orgIDFromContext(c)
+	if !ok {
+		return
+	}
+
+	id, err := parseUUID(c.Param("id"))
+	if err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid id", err))
+		return
+	}
+
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
+		return
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
+		return
+	}
+	if _, ok := raw["site_type"]; !ok {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "site_type field is required", nil))
+		return
+	}
+	var req updateSiteTypeRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
+		return
+	}
+
+	site, err := s.constructionSiteService.UpdateType(c.Request.Context(), id, orgID, req.SiteType)
+	if err != nil {
+		s.respondWithError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, site)
+}
+
+func (s *Server) ListRootConstructionSites(c *gin.Context) {
+	orgID, ok := s.orgIDFromContext(c)
+	if !ok {
+		return
+	}
+
+	sites, err := s.constructionSiteService.ListRoot(c.Request.Context(), orgID)
+	if err != nil {
+		s.respondWithError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, sites)
+}
+
+func (s *Server) ListConstructionSitesByParent(c *gin.Context) {
+	orgID, ok := s.orgIDFromContext(c)
+	if !ok {
+		return
+	}
+
+	parentID, err := parseUUID(c.Param("id"))
+	if err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid id", err))
+		return
+	}
+
+	sites, err := s.constructionSiteService.ListByParent(c.Request.Context(), orgID, parentID)
+	if err != nil {
+		s.respondWithError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, sites)
 }

@@ -364,3 +364,63 @@ func (s *Server) UploadDocument(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, doc)
 }
+
+type updateDocumentMetaRequest struct {
+	ContractKindID *string `json:"contract_kind_id"`
+	FileRoleID     *string `json:"file_role_id"`
+	BundleID       *string `json:"bundle_id"`
+}
+
+func (s *Server) UpdateDocumentMeta(c *gin.Context) {
+	orgID, ok := s.orgIDFromContext(c)
+	if !ok {
+		return
+	}
+
+	id, err := parseUUID(c.Param("id"))
+	if err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid id", err))
+		return
+	}
+
+	var req updateDocumentMetaRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
+		return
+	}
+
+	parseOptionalUUID := func(raw *string) (*uuid.UUID, error) {
+		if raw == nil {
+			return nil, nil
+		}
+		u, err := uuid.Parse(*raw)
+		if err != nil {
+			return nil, err
+		}
+		return &u, nil
+	}
+
+	contractKindID, err := parseOptionalUUID(req.ContractKindID)
+	if err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid contract_kind_id", err))
+		return
+	}
+	fileRoleID, err := parseOptionalUUID(req.FileRoleID)
+	if err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid file_role_id", err))
+		return
+	}
+	bundleID, err := parseOptionalUUID(req.BundleID)
+	if err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid bundle_id", err))
+		return
+	}
+
+	doc, err := s.documentService.UpdateMeta(c.Request.Context(), id, orgID, contractKindID, fileRoleID, bundleID)
+	if err != nil {
+		s.respondWithError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, doc)
+}
