@@ -275,3 +275,69 @@ func TestAdminOnly_EmptyRole_Returns403(t *testing.T) {
 
 	assert.Equal(t, http.StatusForbidden, w.Code)
 }
+
+func TestAdminOnly_OwnerRole_PassesThrough(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s := newTestServerWithAdminRoute(t)
+
+	tok := adminToken(t, s, "owner")
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test/admin-ping", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: tok})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+// ── OwnerOnly ─────────────────────────────────────────────────────────────────
+
+func newTestServerWithOwnerRoute(t *testing.T) *Server {
+	s := newTestServerWithJWT(t)
+	s.Router().GET("/test/owner-ping", s.AuthMiddleware(), s.OwnerOnly(), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+	return s
+}
+
+func TestOwnerOnly_OwnerRole_PassesThrough(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s := newTestServerWithOwnerRoute(t)
+
+	tok := adminToken(t, s, "owner")
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test/owner-ping", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: tok})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestOwnerOnly_AdminRole_Returns403(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s := newTestServerWithOwnerRoute(t)
+
+	tok := adminToken(t, s, "admin")
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test/owner-ping", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: tok})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestOwnerOnly_MemberRole_Returns403(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s := newTestServerWithOwnerRoute(t)
+
+	tok := adminToken(t, s, "member")
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test/owner-ping", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: tok})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}

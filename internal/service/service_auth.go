@@ -92,10 +92,15 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (access
 		return "", "", errs.New(errs.CodeUnauthorized, "account is unavailable", nil)
 	}
 
-	org, repoErr := s.repo.GetOrganizationByID(ctx, user.OrganizationID)
+	// owner is not bound to any organization — skip org validation.
+	if user.Role == "owner" {
+		return s.GenerateTokens(user.ID, uuid.Nil, user.Role)
+	}
+
+	org, repoErr := s.repo.GetOrganizationByID(ctx, user.OrganizationID.Bytes)
 	if repoErr != nil {
 		if errors.Is(repoErr, pgx.ErrNoRows) {
-			s.log.Warn("login: organization missing", slog.String("org_id", user.OrganizationID.String()))
+			s.log.Warn("login: organization missing", slog.String("org_id", uuid.UUID(user.OrganizationID.Bytes).String()))
 			return "", "", errs.New(errs.CodeUnauthorized, "organization is unavailable", nil)
 		}
 		s.log.Error("login: failed to fetch organization", slog.String("err", repoErr.Error()))
@@ -106,7 +111,7 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (access
 		return "", "", errs.New(errs.CodeUnauthorized, "organization is unavailable", nil)
 	}
 
-	return s.GenerateTokens(user.ID, user.OrganizationID, user.Role)
+	return s.GenerateTokens(user.ID, user.OrganizationID.Bytes, user.Role)
 }
 
 // GenerateTokens creates a new access/refresh token pair for the given user.

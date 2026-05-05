@@ -46,7 +46,7 @@ func (s *UserService) Create(ctx context.Context, p CreateUserParams) (repositor
 	}
 
 	user, err := s.repo.CreateUser(ctx, repository.CreateUserParams{
-		OrganizationID: p.OrgID,
+		OrganizationID: pgtype.UUID{Bytes: p.OrgID, Valid: true},
 		Email:          p.Email,
 		PasswordHash:   string(hash),
 		FullName:       p.FullName,
@@ -62,7 +62,7 @@ func (s *UserService) Create(ctx context.Context, p CreateUserParams) (repositor
 }
 
 func (s *UserService) List(ctx context.Context, orgID uuid.UUID) ([]repository.ListUsersByOrganizationRow, error) {
-	users, err := s.repo.ListUsersByOrganization(ctx, orgID)
+	users, err := s.repo.ListUsersByOrganization(ctx, pgtype.UUID{Bytes: orgID, Valid: true})
 	if err != nil {
 		return nil, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
@@ -96,7 +96,7 @@ func (s *UserService) Update(ctx context.Context, p UpdateUserParams) (repositor
 
 	user, err := s.repo.UpdateUser(ctx, repository.UpdateUserParams{
 		ID:             p.UserID,
-		OrganizationID: p.OrgID,
+		OrganizationID: pgtype.UUID{Bytes: p.OrgID, Valid: true},
 		Role:           roleParam,
 		IsActive:       activeParam,
 	})
@@ -121,7 +121,7 @@ func (s *UserService) Deactivate(ctx context.Context, userID, orgID uuid.UUID) (
 func (s *UserService) GetProfile(ctx context.Context, userID, orgID uuid.UUID) (repository.GetUserByIDAndOrgRow, error) {
 	user, err := s.repo.GetUserByIDAndOrg(ctx, repository.GetUserByIDAndOrgParams{
 		ID:             userID,
-		OrganizationID: orgID,
+		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

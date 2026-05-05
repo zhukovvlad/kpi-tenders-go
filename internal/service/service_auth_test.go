@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
@@ -35,7 +36,7 @@ func TestAuthService_Login_Success(t *testing.T) {
 	orgID := uuid.New()
 	expectedUser := repository.User{
 		ID:             uuid.New(),
-		OrganizationID: orgID,
+		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
 		Email:          "user@example.com",
 		PasswordHash:   string(hash),
 		Role:           "admin",
@@ -47,7 +48,6 @@ func TestAuthService_Login_Success(t *testing.T) {
 	}
 	ms.On("GetUserByEmail", ctx, "user@example.com").Return(expectedUser, nil)
 	ms.On("GetOrganizationByID", ctx, orgID).Return(expectedOrg, nil)
-
 	svc := newTestAuthService(ms)
 	access, refresh, err := svc.Login(ctx, "user@example.com", "password123")
 

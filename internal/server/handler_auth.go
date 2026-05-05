@@ -65,7 +65,7 @@ func (s *Server) RefreshTokens(c *gin.Context) {
 		return
 	}
 
-	newAccess, newRefresh, err := s.authService.GenerateTokens(user.ID, user.OrganizationID, user.Role)
+	newAccess, newRefresh, err := s.authService.GenerateTokens(user.ID, user.OrganizationID.Bytes, user.Role)
 	if err != nil {
 		s.respondWithError(c, err)
 		return

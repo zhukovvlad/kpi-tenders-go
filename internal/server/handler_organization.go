@@ -62,7 +62,7 @@ func (s *Server) RegisterOrganization(c *gin.Context) {
 }
 
 // GetOrganization handles GET /api/v1/organizations/:id.
-// Users can only fetch their own organization.
+// Users can only fetch their own organization; owner can fetch any.
 func (s *Server) GetOrganization(c *gin.Context) {
 	orgID, ok := s.orgIDFromContext(c)
 	if !ok {
@@ -75,7 +75,7 @@ func (s *Server) GetOrganization(c *gin.Context) {
 		return
 	}
 
-	if id != orgID {
+	if !isOwner(c) && id != orgID {
 		s.respondWithError(c, errs.New(errs.CodeForbidden, "forbidden", nil))
 		return
 	}
@@ -95,14 +95,14 @@ type updateOrganizationRequest struct {
 }
 
 // UpdateOrganization handles PATCH /api/v1/organizations/:id.
-// Only admin users can update their own organization.
+// Admin users can update their own organization; owner can update any.
 func (s *Server) UpdateOrganization(c *gin.Context) {
 	orgID, ok := s.orgIDFromContext(c)
 	if !ok {
 		return
 	}
 
-	if role, _ := c.Get("role"); role != "admin" {
+	if role, _ := c.Get("role"); role != "admin" && role != "owner" {
 		s.respondWithError(c, errs.New(errs.CodeForbidden, "admin role required", nil))
 		return
 	}
@@ -113,7 +113,7 @@ func (s *Server) UpdateOrganization(c *gin.Context) {
 		return
 	}
 
-	if id != orgID {
+	if !isOwner(c) && id != orgID {
 		s.respondWithError(c, errs.New(errs.CodeForbidden, "forbidden", nil))
 		return
 	}
@@ -135,14 +135,14 @@ func (s *Server) UpdateOrganization(c *gin.Context) {
 }
 
 // DeleteOrganization handles DELETE /api/v1/organizations/:id.
-// Only admin users can delete their own organization (cascades to all data).
+// Admin users can delete their own organization; owner can delete any.
 func (s *Server) DeleteOrganization(c *gin.Context) {
 	orgID, ok := s.orgIDFromContext(c)
 	if !ok {
 		return
 	}
 
-	if role, _ := c.Get("role"); role != "admin" {
+	if role, _ := c.Get("role"); role != "admin" && role != "owner" {
 		s.respondWithError(c, errs.New(errs.CodeForbidden, "admin role required", nil))
 		return
 	}
@@ -153,7 +153,7 @@ func (s *Server) DeleteOrganization(c *gin.Context) {
 		return
 	}
 
-	if id != orgID {
+	if !isOwner(c) && id != orgID {
 		s.respondWithError(c, errs.New(errs.CodeForbidden, "forbidden", nil))
 		return
 	}
@@ -181,6 +181,12 @@ func (s *Server) orgIDFromContext(c *gin.Context) (uuid.UUID, bool) {
 		return uuid.UUID{}, false
 	}
 	return id, true
+}
+
+// isOwner returns true when the authenticated user has the "owner" role.
+func isOwner(c *gin.Context) bool {
+	role, _ := c.Get("role")
+	return role == "owner"
 }
 
 // userIDFromContext extracts the userID set by AuthMiddleware, responding with

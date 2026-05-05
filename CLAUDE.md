@@ -105,6 +105,12 @@ WHERE organization_id = sqlc.arg(organization_id)
 - **Web-клиент:** JWT в HttpOnly Cookies (`access_token` + `refresh_token`).
 - **Python-воркер:** статический Bearer Token через `ServiceBearerAuth()` middleware.
 - Timing-attack защита: `dummyHash` + `subtle.ConstantTimeCompare`.
+- **Роли:** `member`, `admin`, `owner`.
+  - `owner` — суперпользователь без привязки к тенанту; JWT содержит `OrgID = uuid.Nil`.
+  - `AdminOnly()` пропускает `admin` и `owner`.
+  - `OwnerOnly()` пропускает только `owner`.
+  - `isOwner(c)` — package-level хелпер в `handler_organization.go` для bypass tenant-scoping в хендлерах.
+  - Хендлеры `GetOrganization`, `UpdateOrganization`, `DeleteOrganization` не проверяют `id == orgID` для owner.
 
 ## Текущее состояние API
 
@@ -178,8 +184,9 @@ _Нет активных заглушек._
 | 000002 | `extraction_keys` (org_id nullable, key_name, source_query, data_type; UNIQUE NULLS NOT DISTINCT org+name) + `document_extracted_data` (org_id, document_id, key_id, extracted_value; composite FK doc+org → documents; `uq_extracted_data_doc_key` UNIQUE (org_id, document_id, key_id); trigger `trg_check_extracted_data_key_org` блокирует cross-tenant key_id; триггеры `trg_immut_org_*` через `prevent_organization_id_change()` из 000001 запрещают изменение org_id после вставки; `idx_extracted_data_key_org`) + composite UNIQUE constraint `uq_documents_id_org` на таблице documents |
 | 000003 | `extraction_requests` (id, document_id, organization_id, questions jsonb, anonymize bool default true, status, resolved_schema jsonb, error_message; composite FK doc+org → documents; CHECK questions = непустой jsonb-массив; immut org_id триггер; `idx_extraction_requests_doc_pending`). В `document_tasks` добавлена колонка `extraction_request_id` (FK CASCADE на extraction_requests). Старый `UNIQUE(document_id, module_name)` снесён; заменён двумя partial-индексами: `uq_document_tasks_doc_singleton (document_id, module_name) WHERE module_name IN ('convert','anonymize')` и `uq_document_tasks_request_module (extraction_request_id, module_name) WHERE module_name IN ('resolve_keys','extract')`. CHECK `document_tasks_module_request_chk` форсирует инвариант: convert/anonymize ⇔ extraction_request_id IS NULL; resolve_keys/extract ⇔ NOT NULL. |
 | 000004 | `document_contract_kinds` + `document_file_roles` (org-specific + системные с nullable org_id); `user_invitations` (хранит sha256-hash токена); `site_audit_log` (INSERT-only); `comparison_sessions` + `comparison_session_documents`. Новые поля: `construction_sites.{cover_image_path,site_type,last_activity_at}`, `documents.{contract_kind_id,file_role_id,bundle_id}`, `extraction_keys.{display_name,is_active,category}`, `users.{last_login_at}` + role CHECK. Вью `v_site_status`, триггеры `propagate_site_activity`, `check_document_kind_role_org`. |
+| 000005 | `users.organization_id` → nullable (owner не привязан к org). CHECK `users_role_chk` расширен: `role IN ('admin', 'member', 'owner')`. Новый CHECK `users_owner_org_chk`: `owner ⟺ organization_id IS NULL`. |
 
-> **Примечание:** следующая миграция — `catalog_positions` (pgvector RAG), будет `000005`.
+> **Примечание:** следующая миграция — `catalog_positions` (pgvector RAG), будет `000006`.
 
 ## Стратегия тестирования
 
@@ -193,7 +200,7 @@ internal/service/service_worker_test.go             — WorkerService: status pe
 internal/service/service_extraction_test.go         — ExtractionService: валидация, 404 на документ, прогрессия в трёх ветках (нет MD → convert; MD есть, anonymize=false → resolve_keys; MD есть, anonymize=true, нет anon → anonymize; есть anon → resolve_keys на anon-пути), best-effort progress, OnResolveKeysCompleted full flow + missing extraction_request_id, OnExtractCompleted с null-значениями + статус=completed, Progress no-op на терминальном статусе, GetRequest 404 (11 кейсов)
 internal/server/errors_test.go                      — respondWithError маппинг
 internal/server/health_test.go                      — health endpoint
-internal/server/middleware_test.go                  — AuthMiddleware, ServiceBearerAuth
+internal/server/middleware_test.go                  — AuthMiddleware, ServiceBearerAuth, AdminOnly (owner passes), OwnerOnly (admin/member blocked)
 internal/server/handler_user_test.go                — GET /api/v1/auth/me
 internal/server/handler_document_test.go            — POST /api/v1/documents/upload; GET ?parent_id=; GET /:id; DELETE /:id; GET /:id/url (16 кейсов)
 internal/server/handler_extraction_test.go          — POST /api/v1/documents/:id/extract: no auth, invalid id, missing/empty questions, not found, success (extraction_request_id), db error, anonymize=false propagation (8 кейсов)

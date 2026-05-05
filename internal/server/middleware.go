@@ -35,13 +35,26 @@ func (s *Server) AuthMiddleware() gin.HandlerFunc {
 	}
 }
 
-// AdminOnly allows only users with role "admin" to proceed.
+// AdminOnly allows users with role "admin" or "owner" to proceed.
 // Must be used after AuthMiddleware, which sets "role" in the context.
 func (s *Server) AdminOnly() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		role, _ := c.Get("role")
-		if role != "admin" {
+		if role != "admin" && role != "owner" {
 			c.AbortWithStatusJSON(http.StatusForbidden, errorResponse{Error: errorBody{Code: errs.CodeForbidden, Message: "admin rights required"}})
+			return
+		}
+		c.Next()
+	}
+}
+
+// OwnerOnly allows only the super-user with role "owner" to proceed.
+// Must be used after AuthMiddleware, which sets "role" in the context.
+func (s *Server) OwnerOnly() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, _ := c.Get("role")
+		if role != "owner" {
+			c.AbortWithStatusJSON(http.StatusForbidden, errorResponse{Error: errorBody{Code: errs.CodeForbidden, Message: "owner rights required"}})
 			return
 		}
 		c.Next()

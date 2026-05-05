@@ -1813,7 +1813,7 @@ func (_m *MockQuerier) ListUserInvitationsByOrg(ctx context.Context, organizatio
 }
 
 // ListUsersByOrganization provides a mock function with given fields: ctx, organizationID
-func (_m *MockQuerier) ListUsersByOrganization(ctx context.Context, organizationID uuid.UUID) ([]repository.ListUsersByOrganizationRow, error) {
+func (_m *MockQuerier) ListUsersByOrganization(ctx context.Context, organizationID pgtype.UUID) ([]repository.ListUsersByOrganizationRow, error) {
 	ret := _m.Called(ctx, organizationID)
 
 	if len(ret) == 0 {
@@ -1822,10 +1822,10 @@ func (_m *MockQuerier) ListUsersByOrganization(ctx context.Context, organization
 
 	var r0 []repository.ListUsersByOrganizationRow
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]repository.ListUsersByOrganizationRow, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, pgtype.UUID) ([]repository.ListUsersByOrganizationRow, error)); ok {
 		return rf(ctx, organizationID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) []repository.ListUsersByOrganizationRow); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, pgtype.UUID) []repository.ListUsersByOrganizationRow); ok {
 		r0 = rf(ctx, organizationID)
 	} else {
 		if ret.Get(0) != nil {
@@ -1833,7 +1833,7 @@ func (_m *MockQuerier) ListUsersByOrganization(ctx context.Context, organization
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, pgtype.UUID) error); ok {
 		r1 = rf(ctx, organizationID)
 	} else {
 		r1 = ret.Error(1)

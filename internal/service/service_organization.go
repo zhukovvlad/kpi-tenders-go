@@ -82,7 +82,7 @@ func (s *OrganizationService) Register(ctx context.Context, p RegisterParams) (r
 		}
 
 		user, txErr = q.CreateUser(ctx, repository.CreateUserParams{
-			OrganizationID: org.ID,
+			OrganizationID: pgtype.UUID{Bytes: org.ID, Valid: true},
 			Email:          p.Email,
 			PasswordHash:   string(hash),
 			FullName:       p.FullName,

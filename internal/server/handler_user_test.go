@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -43,10 +44,10 @@ func TestGetMe_Success(t *testing.T) {
 	mq := new(storemock.MockQuerier)
 	mq.On("GetUserByIDAndOrg", mock.Anything, repository.GetUserByIDAndOrgParams{
 		ID:             userID,
-		OrganizationID: orgID,
+		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
 	}).Return(repository.GetUserByIDAndOrgRow{
 		ID:             userID,
-		OrganizationID: orgID,
+		OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
 		Email:          "user@acme.com",
 		FullName:       "John Doe",
 		Role:           "member",

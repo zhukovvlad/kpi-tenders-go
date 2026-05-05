@@ -221,12 +221,12 @@ type SiteAuditLog struct {
 
 // Пользователи, привязанные к организации
 type User struct {
-	ID             uuid.UUID `json:"id"`
-	OrganizationID uuid.UUID `json:"organization_id"`
-	Email          string    `json:"email"`
-	PasswordHash   string    `json:"password_hash"`
-	FullName       string    `json:"full_name"`
-	// Роль пользователя: admin — полный доступ к тенанту, member — работа с документами
+	ID             uuid.UUID   `json:"id"`
+	OrganizationID pgtype.UUID `json:"organization_id"`
+	Email          string      `json:"email"`
+	PasswordHash   string      `json:"password_hash"`
+	FullName       string      `json:"full_name"`
+	// Роль: admin — полный доступ к тенанту, member — работа с документами, owner — суперпользователь с кросс-тенантным доступом
 	Role string `json:"role"`
 	// false — пользователь деактивирован, вход заблокирован
 	IsActive  bool      `json:"is_active"`
