@@ -54,7 +54,9 @@ func (s *Server) ListDocumentTasks(c *gin.Context) {
 	}
 
 	docIDStr, docIDPresent := c.GetQuery("document_id")
+	docIDStr = strings.TrimSpace(docIDStr)
 	docIDsStr, docIDsPresent := c.GetQuery("document_ids")
+	docIDsStr = strings.TrimSpace(docIDsStr)
 
 	if docIDPresent && docIDsPresent {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "use document_id or document_ids, not both", nil))
@@ -66,14 +68,25 @@ func (s *Server) ListDocumentTasks(c *gin.Context) {
 			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "document_ids cannot be empty", nil))
 			return
 		}
-		parts := strings.Split(docIDsStr, ",")
+		// Filter out empty segments that may appear after trimming whitespace-only parts.
+		rawParts := strings.Split(docIDsStr, ",")
+		parts := make([]string, 0, len(rawParts))
+		for _, rp := range rawParts {
+			if t := strings.TrimSpace(rp); t != "" {
+				parts = append(parts, t)
+			}
+		}
+		if len(parts) == 0 {
+			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "document_ids cannot be empty", nil))
+			return
+		}
 		if len(parts) > 100 {
 			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "too many document_ids (max 100)", nil))
 			return
 		}
 		ids := make([]uuid.UUID, 0, len(parts))
 		for _, p := range parts {
-			id, err := uuid.Parse(strings.TrimSpace(p))
+			id, err := uuid.Parse(p)
 			if err != nil {
 				s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid document_id in document_ids", err))
 				return
