@@ -350,3 +350,55 @@ func TestOwnerOnly_MemberRole_Returns403(t *testing.T) {
 
 	assert.Equal(t, http.StatusForbidden, w.Code)
 }
+
+// ── TenantScopedOnly ─────────────────────────────────────────────────────────
+
+func newTestServerWithTenantRoute(t *testing.T) *Server {
+	s := newTestServerWithJWT(t)
+	s.Router().GET("/test/tenant-ping", s.AuthMiddleware(), s.TenantScopedOnly(), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+	return s
+}
+
+func TestTenantScopedOnly_AdminRole_PassesThrough(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s := newTestServerWithTenantRoute(t)
+
+	tok := adminToken(t, s, "admin")
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test/tenant-ping", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: tok})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestTenantScopedOnly_MemberRole_PassesThrough(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s := newTestServerWithTenantRoute(t)
+
+	tok := adminToken(t, s, "member")
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test/tenant-ping", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: tok})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestTenantScopedOnly_OwnerRole_Returns403(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s := newTestServerWithTenantRoute(t)
+
+	tok := ownerToken(t, s)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test/tenant-ping", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: tok})
+
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}

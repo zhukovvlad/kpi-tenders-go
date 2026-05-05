@@ -109,6 +109,7 @@ WHERE organization_id = sqlc.arg(organization_id)
   - `owner` — суперпользователь без привязки к тенанту; JWT содержит `OrgID = uuid.Nil`.
   - `AdminOnly()` пропускает только `admin` (owner исключён — его OrgID = uuid.Nil сломает tenant-scoped запросы).
   - `OwnerOnly()` пропускает только `owner`.
+  - `TenantScopedOnly()` — отклоняет owner-токены на tenant-scoped маршрутах (sites, documents, tasks, extraction-requests, contract-kinds, file-roles, comparison-sessions) с 403; без этого owner получит DB-ошибку (FK/empty result) вместо чёткого отказа.
   - `isOwner(c)` — package-level хелпер в `handler_organization.go` для bypass tenant-scoping в хендлерах.
   - Хендлеры `GetOrganization`, `UpdateOrganization`, `DeleteOrganization` не проверяют `id == orgID` для owner.
   - `service_user.go::GetProfile`: если `orgID == uuid.Nil` — вызывает `GetUserByID` без org-фильтра (для `/api/v1/auth/me` owner).
@@ -204,7 +205,7 @@ internal/service/service_worker_test.go             — WorkerService: status pe
 internal/service/service_extraction_test.go         — ExtractionService: валидация, 404 на документ, прогрессия в трёх ветках (нет MD → convert; MD есть, anonymize=false → resolve_keys; MD есть, anonymize=true, нет anon → anonymize; есть anon → resolve_keys на anon-пути), best-effort progress, OnResolveKeysCompleted full flow + missing extraction_request_id, OnExtractCompleted с null-значениями + статус=completed, Progress no-op на терминальном статусе, GetRequest 404 (11 кейсов)
 internal/server/errors_test.go                      — respondWithError маппинг
 internal/server/health_test.go                      — health endpoint
-internal/server/middleware_test.go                  — AuthMiddleware, ServiceBearerAuth, AdminOnly (owner=403), OwnerOnly (admin/member blocked)
+internal/server/middleware_test.go                  — AuthMiddleware, ServiceBearerAuth, AdminOnly (owner=403), OwnerOnly (admin/member blocked), TenantScopedOnly (owner=403, admin/member pass)
 internal/server/handler_user_test.go                — GET /api/v1/auth/me
 internal/server/handler_document_test.go            — POST /api/v1/documents/upload; GET ?parent_id=; GET /:id; DELETE /:id; GET /:id/url (16 кейсов)
 internal/server/handler_extraction_test.go          — POST /api/v1/documents/:id/extract: no auth, invalid id, missing/empty questions, not found, success (extraction_request_id), db error, anonymize=false propagation (8 кейсов)
