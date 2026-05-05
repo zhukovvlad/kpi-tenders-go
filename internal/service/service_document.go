@@ -186,6 +186,11 @@ func (s *DocumentService) UpdateMeta(ctx context.Context, id, orgID uuid.UUID, c
 		if bundleDoc.OrganizationID != orgID {
 			return repository.Document{}, errs.New(errs.CodeValidationFailed, "bundle document belongs to a different organization", nil)
 		}
+		// A bundle must be a root document (parent_id IS NULL). Pointing to an
+		// artifact breaks UI assumptions and the schema comment.
+		if bundleDoc.ParentID.Valid {
+			return repository.Document{}, errs.New(errs.CodeValidationFailed, "bundle_id must reference a root document", nil)
+		}
 	}
 
 	toUUID := func(u *uuid.UUID) pgtype.UUID {

@@ -8,9 +8,39 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 
+	"go-kpi-tenders/internal/repository"
 	"go-kpi-tenders/pkg/errs"
 )
+
+// invitationResponse is the API representation of a user invitation.
+// token_hash is intentionally omitted — it is an internal implementation detail
+// and must never be exposed over the API.
+type invitationResponse struct {
+	ID             uuid.UUID          `json:"id"`
+	OrganizationID uuid.UUID          `json:"organization_id"`
+	Email          string             `json:"email"`
+	Role           string             `json:"role"`
+	InvitedBy      pgtype.UUID        `json:"invited_by"`
+	ExpiresAt      time.Time          `json:"expires_at"`
+	AcceptedAt     pgtype.Timestamptz `json:"accepted_at"`
+	CreatedAt      time.Time          `json:"created_at"`
+}
+
+func toInvitationResponse(inv repository.UserInvitation) invitationResponse {
+	return invitationResponse{
+		ID:             inv.ID,
+		OrganizationID: inv.OrganizationID,
+		Email:          inv.Email,
+		Role:           inv.Role,
+		InvitedBy:      inv.InvitedBy,
+		ExpiresAt:      inv.ExpiresAt,
+		AcceptedAt:     inv.AcceptedAt,
+		CreatedAt:      inv.CreatedAt,
+	}
+}
 
 type createInvitationRequest struct {
 	Email string `json:"email" binding:"required,email"`
@@ -29,7 +59,11 @@ func (s *Server) ListInvitations(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, invitations)
+	dtos := make([]invitationResponse, len(invitations))
+	for i, inv := range invitations {
+		dtos[i] = toInvitationResponse(inv)
+	}
+	c.JSON(http.StatusOK, dtos)
 }
 
 func (s *Server) CreateInvitation(c *gin.Context) {
@@ -82,13 +116,13 @@ func (s *Server) CreateInvitation(c *gin.Context) {
 	// is never included in the API response.
 	if s.cfg.AppEnv == "local" {
 		c.JSON(http.StatusCreated, gin.H{
-			"invitation": inv,
+			"invitation": toInvitationResponse(inv),
 			"token":      rawToken,
 		})
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{
-		"invitation": inv,
+		"invitation": toInvitationResponse(inv),
 	})
 }
 
