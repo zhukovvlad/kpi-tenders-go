@@ -195,10 +195,6 @@ func (s *Server) UpdateConstructionSiteCover(c *gin.Context) {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
 		return
 	}
-	if req.CoverImagePath == nil {
-		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "cover_image_path is required", nil))
-		return
-	}
 
 	site, err := s.constructionSiteService.UpdateCover(c.Request.Context(), id, orgID, req.CoverImagePath)
 	if err != nil {
@@ -228,10 +224,6 @@ func (s *Server) UpdateConstructionSiteType(c *gin.Context) {
 	var req updateSiteTypeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
-		return
-	}
-	if req.SiteType == nil {
-		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "site_type is required", nil))
 		return
 	}
 

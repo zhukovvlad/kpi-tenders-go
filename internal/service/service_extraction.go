@@ -354,18 +354,24 @@ func (s *ExtractionService) OnExtractCompleted(ctx context.Context, task reposit
 		return fmt.Errorf("parse extract payload: %w", err)
 	}
 
-	req, err := s.repo.GetExtractionRequestByID(ctx, requestID)
+	// Detach from the incoming HTTP request context so that a worker disconnect
+	// or client timeout does not cancel the DB writes below. Mirrors the pattern
+	// used in OnResolveKeysCompleted.
+	chainCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), pipelineTimeout)
+	defer cancel()
+
+	req, err := s.repo.GetExtractionRequestByID(chainCtx, requestID)
 	if err != nil {
 		return fmt.Errorf("get extraction request: %w", err)
 	}
 
 	if len(extractedData) > 0 {
-		if err := s.persistExtractedData(ctx, req, extractedData); err != nil {
+		if err := s.persistExtractedData(chainCtx, req, extractedData); err != nil {
 			return fmt.Errorf("persist extracted data: %w", err)
 		}
 	}
 
-	if _, err := s.repo.SetExtractionRequestStatus(ctx, repository.SetExtractionRequestStatusParams{
+	if _, err := s.repo.SetExtractionRequestStatus(chainCtx, repository.SetExtractionRequestStatusParams{
 		ID:     requestID,
 		Status: requestStatusCompleted,
 	}); err != nil {
