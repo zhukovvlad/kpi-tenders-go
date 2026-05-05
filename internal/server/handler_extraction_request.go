@@ -60,16 +60,23 @@ func (s *Server) GetExtractionRequest(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, buildExtractionRequestResponse(req, answers))
+	resp, err := buildExtractionRequestResponse(req, answers)
+	if err != nil {
+		s.respondWithError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
 }
 
 // buildExtractionRequestResponse converts the repository row plus answers
 // into the JSON shape returned to clients. Marshal/unmarshal of JSONB columns
-// happens here so the handler stays thin.
+// happens here so the handler stays thin. Returns an error if the DB-stored
+// JSONB is malformed (should never happen, but surfaces data corruption fast).
 func buildExtractionRequestResponse(
 	req repository.ExtractionRequest,
 	answers []service.ExtractionAnswer,
-) extractionRequestResponse {
+) (extractionRequestResponse, error) {
 	resp := extractionRequestResponse{
 		ID:         req.ID,
 		DocumentID: req.DocumentID,
@@ -81,15 +88,17 @@ func buildExtractionRequestResponse(
 	}
 
 	var questions []string
-	if err := json.Unmarshal(req.Questions, &questions); err == nil {
-		resp.Questions = questions
+	if err := json.Unmarshal(req.Questions, &questions); err != nil {
+		return extractionRequestResponse{}, errs.New(errs.CodeInternalError, "malformed questions in database", err)
 	}
+	resp.Questions = questions
 
 	if len(req.ResolvedSchema) > 0 {
 		var schema []resolvedSchemaItem
-		if err := json.Unmarshal(req.ResolvedSchema, &schema); err == nil {
-			resp.ResolvedSchema = schema
+		if err := json.Unmarshal(req.ResolvedSchema, &schema); err != nil {
+			return extractionRequestResponse{}, errs.New(errs.CodeInternalError, "malformed resolved_schema in database", err)
 		}
+		resp.ResolvedSchema = schema
 	}
 
 	if req.ErrorMessage.Valid {
@@ -97,5 +106,5 @@ func buildExtractionRequestResponse(
 		resp.ErrorMessage = &msg
 	}
 
-	return resp
+	return resp, nil
 }

@@ -145,6 +145,22 @@ func (s *DocumentService) GetPresignedURL(ctx context.Context, docID, orgID uuid
 }
 
 func (s *DocumentService) UpdateMeta(ctx context.Context, id, orgID uuid.UUID, contractKindID, fileRoleID, bundleID *uuid.UUID) (repository.Document, error) {
+	// Validate bundle tenant isolation: the bundle document must belong to the
+	// same organization. A DB-level FK only checks document existence, not org
+	// membership, so we enforce it explicitly here.
+	if bundleID != nil {
+		bundleDoc, err := s.repo.GetDocumentByID(ctx, *bundleID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return repository.Document{}, errs.New(errs.CodeNotFound, "bundle document not found", err)
+			}
+			return repository.Document{}, errs.New(errs.CodeInternalError, "internal server error", err)
+		}
+		if bundleDoc.OrganizationID != orgID {
+			return repository.Document{}, errs.New(errs.CodeValidationFailed, "bundle document belongs to a different organization", nil)
+		}
+	}
+
 	toUUID := func(u *uuid.UUID) pgtype.UUID {
 		if u == nil {
 			return pgtype.UUID{}

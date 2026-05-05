@@ -176,15 +176,20 @@ func (s *WorkerService) HandleStatusUpdate(ctx context.Context, taskID uuid.UUID
 // progressPendingRequests advances every pending/running extraction_request on
 // the given document. Best-effort: errors per request are logged and the loop
 // continues so one failing request does not stall the others.
+// The HTTP request context is detached to prevent a client disconnect from
+// cancelling in-flight pipeline.Progress calls. A hard timeout bounds the work.
 func (s *WorkerService) progressPendingRequests(ctx context.Context, documentID uuid.UUID) {
-	requests, err := s.repo.ListPendingExtractionRequestsByDocument(ctx, documentID)
+	detached, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+
+	requests, err := s.repo.ListPendingExtractionRequestsByDocument(detached, documentID)
 	if err != nil {
 		s.log.Error("worker: list pending extraction_requests",
 			"document_id", documentID, "err", err)
 		return
 	}
 	for _, req := range requests {
-		if err := s.pipeline.Progress(ctx, req); err != nil {
+		if err := s.pipeline.Progress(detached, req); err != nil {
 			s.log.Error("worker: progress extraction_request",
 				"request_id", req.ID, "document_id", documentID, "err", err)
 		}
@@ -195,14 +200,17 @@ func (s *WorkerService) progressPendingRequests(ctx context.Context, documentID 
 // document as failed. Called when a prerequisite task (convert/anonymize) fails
 // so requests don't stay stuck in pending indefinitely. Best-effort.
 func (s *WorkerService) failPendingRequests(ctx context.Context, documentID uuid.UUID, reason string) {
-	requests, err := s.repo.ListPendingExtractionRequestsByDocument(ctx, documentID)
+	detached, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+
+	requests, err := s.repo.ListPendingExtractionRequestsByDocument(detached, documentID)
 	if err != nil {
 		s.log.Error("worker: list pending requests for fail",
 			"document_id", documentID, "err", err)
 		return
 	}
 	for _, req := range requests {
-		s.pipeline.MarkRequestFailed(ctx, req.ID, reason)
+		s.pipeline.MarkRequestFailed(detached, req.ID, reason)
 	}
 }
 

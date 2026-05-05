@@ -113,6 +113,20 @@ BEGIN
         END IF;
     END IF;
 
+    -- bundle_id must reference a document within the same organization.
+    -- The FK only enforces existence; tenant isolation is enforced here.
+    IF NEW.bundle_id IS NOT NULL THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM documents
+            WHERE  id = NEW.bundle_id
+              AND  organization_id = NEW.organization_id
+        ) THEN
+            RAISE EXCEPTION
+                'bundle_id % does not belong to organization %',
+                NEW.bundle_id, NEW.organization_id;
+        END IF;
+    END IF;
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
