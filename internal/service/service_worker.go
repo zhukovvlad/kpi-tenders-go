@@ -112,19 +112,27 @@ func (s *WorkerService) HandleStatusUpdate(ctx context.Context, taskID uuid.UUID
 		return repository.DocumentTask{}, errs.New(errs.CodeInternalError, "failed to update task", err)
 	}
 
-	// Chain: convert completed → trigger anonymize, register artifact, and
+	// Chain: convert completed → register artifact, trigger anonymize, and
 	// progress any pending extraction_requests on the document (anonymize=false
 	// requests can fire resolve_keys as soon as MD is ready).
+	//
+	// Artifact registration happens FIRST, unconditionally, so that the
+	// convert_md Document always exists in the DB. ExtractionService.Progress
+	// discovers artifacts via ListDocumentsByParent — if the artifact is absent
+	// (because we skipped registration while waiting for anonymize), any
+	// anonymize=false extraction_request is permanently blocked.
+	//
+	// Both steps are best-effort: failures are logged but never surface to the
+	// caller (the status callback has already been persisted).
 	if task.ModuleName == moduleConvert && task.Status == statusCompleted {
+		if err := runWithArtifactTimeout(ctx, task, s.registerConvertArtifacts); err != nil {
+			s.log.Error("worker: failed to register convert artifacts", "task_id", task.ID, "err", err)
+		}
+		// triggerAnonymize reads md_storage_path from the in-memory task
+		// (still holds the original convert payload — registerConvertArtifacts
+		// only rewrites the DB row, not the local struct).
 		if err := s.triggerAnonymize(ctx, task); err != nil {
-			// Log but do not fail — the callback has already been persisted.
-			// Intentionally skip artifact registration here to preserve the
-			// original result_payload (md_storage_path) for a future retry.
 			s.log.Error("worker: failed to trigger anonymize", "task_id", task.ID, "err", err)
-		} else {
-			if err := runWithArtifactTimeout(ctx, task, s.registerConvertArtifacts); err != nil {
-				s.log.Error("worker: failed to register convert artifacts", "task_id", task.ID, "err", err)
-			}
 		}
 		s.progressPendingRequests(ctx, task.DocumentID)
 	}

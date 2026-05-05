@@ -279,8 +279,9 @@ func TestWorkerService_HandleStatusUpdate_ResolveKeysFailed_MarksRequestFailed(t
 	pl.AssertExpectations(t)
 }
 
-// pythonClient.Process fails during convert→anonymize chaining — no error
-// surfaced; orphan task gets marked failed.
+// pythonClient.Process fails during convert→anonymize chaining — artifact is
+// still registered (convert_md doc created), no error surfaced; orphan
+// anonymize task gets marked failed.
 func TestWorkerService_HandleStatusUpdate_PythonClientError_NoErrorPropagated(t *testing.T) {
 	ctx := context.Background()
 	ms := new(storemock.MockStore)
@@ -290,12 +291,20 @@ func TestWorkerService_HandleStatusUpdate_PythonClientError_NoErrorPropagated(t 
 	taskID := uuid.New()
 	docID := uuid.New()
 	anonTaskID := uuid.New()
+	artifactID := uuid.New()
 	mdPath := "tenders/docs/test.md"
 
 	returnedTask := makeDocumentTask(taskID, docID, "convert", "completed", convertPayloadJSON(mdPath))
 	anonTask := makeDocumentTask(anonTaskID, docID, "anonymize", "pending", nil)
+	parentDoc := repository.Document{ID: docID, OrganizationID: uuid.New()}
 
 	ms.On("UpdateWorkerTaskStatus", mock.Anything, mock.MatchedBy(func(p repository.UpdateWorkerTaskStatusParams) bool {
+		return p.ID == taskID
+	})).Return(returnedTask, nil)
+	// Artifact registration now happens BEFORE triggerAnonymize.
+	ms.On("GetDocumentByID", mock.Anything, docID).Return(parentDoc, nil)
+	ms.On("CreateArtifactDocument", mock.Anything, mock.Anything).Return(repository.Document{ID: artifactID}, nil)
+	ms.On("UpdateTaskResultPayload", mock.Anything, mock.MatchedBy(func(p repository.UpdateTaskResultPayloadParams) bool {
 		return p.ID == taskID
 	})).Return(returnedTask, nil)
 	ms.On("CreateDocumentTaskSingleton", mock.Anything, mock.Anything).Return(anonTask, nil)
