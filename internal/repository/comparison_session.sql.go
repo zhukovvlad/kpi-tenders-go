@@ -121,11 +121,19 @@ func (q *Queries) GetComparisonSession(ctx context.Context, arg GetComparisonSes
 const listComparisonSessionDocuments = `-- name: ListComparisonSessionDocuments :many
 SELECT session_id, document_id, organization_id, position FROM comparison_session_documents
 WHERE session_id = $1
+  AND organization_id = $2
 ORDER BY position ASC
 `
 
-func (q *Queries) ListComparisonSessionDocuments(ctx context.Context, sessionID uuid.UUID) ([]ComparisonSessionDocument, error) {
-	rows, err := q.db.Query(ctx, listComparisonSessionDocuments, sessionID)
+type ListComparisonSessionDocumentsParams struct {
+	SessionID      uuid.UUID `json:"session_id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+}
+
+// organization_id is included for defense-in-depth even though callers already
+// tenant-scope the parent session via GetComparisonSession.
+func (q *Queries) ListComparisonSessionDocuments(ctx context.Context, arg ListComparisonSessionDocumentsParams) ([]ComparisonSessionDocument, error) {
+	rows, err := q.db.Query(ctx, listComparisonSessionDocuments, arg.SessionID, arg.OrganizationID)
 	if err != nil {
 		return nil, err
 	}

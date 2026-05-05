@@ -30,6 +30,9 @@ WHERE session_id = sqlc.arg(session_id)
   AND organization_id = sqlc.arg(organization_id);
 
 -- name: ListComparisonSessionDocuments :many
+-- organization_id is included for defense-in-depth even though callers already
+-- tenant-scope the parent session via GetComparisonSession.
 SELECT * FROM comparison_session_documents
-WHERE session_id = $1
+WHERE session_id = sqlc.arg(session_id)
+  AND organization_id = sqlc.arg(organization_id)
 ORDER BY position ASC;

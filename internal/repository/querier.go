@@ -108,7 +108,9 @@ type Querier interface {
 	// most one row can ever match. organization_id is intentionally omitted: at the
 	// token-redemption step the caller has no org context and must look up by token alone.
 	GetUserInvitationByTokenHash(ctx context.Context, tokenHash string) (UserInvitation, error)
-	ListComparisonSessionDocuments(ctx context.Context, sessionID uuid.UUID) ([]ComparisonSessionDocument, error)
+	// organization_id is included for defense-in-depth even though callers already
+	// tenant-scope the parent session via GetComparisonSession.
+	ListComparisonSessionDocuments(ctx context.Context, arg ListComparisonSessionDocumentsParams) ([]ComparisonSessionDocument, error)
 	ListComparisonSessionsByOrg(ctx context.Context, organizationID uuid.UUID) ([]ComparisonSession, error)
 	ListConstructionSitesByOrganization(ctx context.Context, organizationID uuid.UUID) ([]ConstructionSite, error)
 	ListConstructionSitesByParent(ctx context.Context, arg ListConstructionSitesByParentParams) ([]ConstructionSite, error)

@@ -32,6 +32,18 @@ func (s *ComparisonSessionService) Create(ctx context.Context, orgID, createdBy 
 		params.Name = pgtype.Text{String: *name, Valid: true}
 	}
 	if contractKindID != nil {
+		// Validate contractKindID belongs to this org (or is system-wide) to
+		// prevent cross-tenant IDOR via a known contract_kind UUID.
+		if _, err := s.repo.GetContractKind(ctx, repository.GetContractKindParams{
+			ID:             *contractKindID,
+			OrganizationID: pgtype.UUID{Bytes: orgID, Valid: true},
+		}); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return repository.ComparisonSession{}, errs.New(errs.CodeValidationFailed, "contract kind not found", err)
+			}
+			s.log.Error("validate contract kind failed", "err", err, "contract_kind_id", contractKindID)
+			return repository.ComparisonSession{}, errs.New(errs.CodeInternalError, "internal server error", err)
+		}
 		params.ContractKindID = pgtype.UUID{Bytes: *contractKindID, Valid: true}
 	}
 
@@ -117,8 +129,11 @@ func (s *ComparisonSessionService) RemoveDocument(ctx context.Context, sessionID
 	return nil
 }
 
-func (s *ComparisonSessionService) ListDocuments(ctx context.Context, sessionID uuid.UUID) ([]repository.ComparisonSessionDocument, error) {
-	docs, err := s.repo.ListComparisonSessionDocuments(ctx, sessionID)
+func (s *ComparisonSessionService) ListDocuments(ctx context.Context, sessionID, orgID uuid.UUID) ([]repository.ComparisonSessionDocument, error) {
+	docs, err := s.repo.ListComparisonSessionDocuments(ctx, repository.ListComparisonSessionDocumentsParams{
+		SessionID:      sessionID,
+		OrganizationID: orgID,
+	})
 	if err != nil {
 		s.log.Error("list comparison session documents failed", "err", err, "session_id", sessionID)
 		return nil, errs.New(errs.CodeInternalError, "internal server error", err)

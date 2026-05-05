@@ -87,7 +87,7 @@ func (s *Server) GetComparisonSession(c *gin.Context) {
 		return
 	}
 
-	docs, err := s.comparisonSessionService.ListDocuments(c.Request.Context(), id)
+	docs, err := s.comparisonSessionService.ListDocuments(c.Request.Context(), id, orgID)
 	if err != nil {
 		s.respondWithError(c, err)
 		return

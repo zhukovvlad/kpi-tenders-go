@@ -1242,9 +1242,9 @@ func (_m *MockQuerier) GetUserInvitationByTokenHash(ctx context.Context, tokenHa
 	return r0, r1
 }
 
-// ListComparisonSessionDocuments provides a mock function with given fields: ctx, sessionID
-func (_m *MockQuerier) ListComparisonSessionDocuments(ctx context.Context, sessionID uuid.UUID) ([]repository.ComparisonSessionDocument, error) {
-	ret := _m.Called(ctx, sessionID)
+// ListComparisonSessionDocuments provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) ListComparisonSessionDocuments(ctx context.Context, arg repository.ListComparisonSessionDocumentsParams) ([]repository.ComparisonSessionDocument, error) {
+	ret := _m.Called(ctx, arg)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListComparisonSessionDocuments")
@@ -1252,19 +1252,19 @@ func (_m *MockQuerier) ListComparisonSessionDocuments(ctx context.Context, sessi
 
 	var r0 []repository.ComparisonSessionDocument
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]repository.ComparisonSessionDocument, error)); ok {
-		return rf(ctx, sessionID)
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListComparisonSessionDocumentsParams) ([]repository.ComparisonSessionDocument, error)); ok {
+		return rf(ctx, arg)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) []repository.ComparisonSessionDocument); ok {
-		r0 = rf(ctx, sessionID)
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListComparisonSessionDocumentsParams) []repository.ComparisonSessionDocument); ok {
+		r0 = rf(ctx, arg)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]repository.ComparisonSessionDocument)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
-		r1 = rf(ctx, sessionID)
+	if rf, ok := ret.Get(1).(func(context.Context, repository.ListComparisonSessionDocumentsParams) error); ok {
+		r1 = rf(ctx, arg)
 	} else {
 		r1 = ret.Error(1)
 	}
