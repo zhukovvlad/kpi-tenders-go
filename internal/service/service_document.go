@@ -183,8 +183,10 @@ func (s *DocumentService) UpdateMeta(ctx context.Context, id, orgID uuid.UUID, c
 			}
 			return repository.Document{}, errs.New(errs.CodeInternalError, "internal server error", err)
 		}
+		// Intentionally return 404 on org mismatch to avoid leaking cross-tenant
+		// document existence (same pattern used in GetPresignedURL and elsewhere).
 		if bundleDoc.OrganizationID != orgID {
-			return repository.Document{}, errs.New(errs.CodeValidationFailed, "bundle document belongs to a different organization", nil)
+			return repository.Document{}, errs.New(errs.CodeNotFound, "bundle document not found", nil)
 		}
 		// A bundle must be a root document (parent_id IS NULL). Pointing to an
 		// artifact breaks UI assumptions and the schema comment.

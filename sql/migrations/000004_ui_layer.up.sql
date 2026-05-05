@@ -218,7 +218,7 @@ CREATE UNIQUE INDEX uq_user_invitations_org_email_active
     WHERE accepted_at IS NULL;
 
 CREATE INDEX idx_user_invitations_organization_id ON user_invitations(organization_id);
-CREATE INDEX idx_user_invitations_token_hash      ON user_invitations(token_hash);
+CREATE UNIQUE INDEX idx_user_invitations_token_hash     ON user_invitations(token_hash);
 
 COMMENT ON TABLE  user_invitations               IS 'Pending-приглашения пользователей в организацию; токен отправляется на email';
 COMMENT ON COLUMN user_invitations.token_hash    IS 'Хэш одноразового токена из письма; сам токен не хранится';

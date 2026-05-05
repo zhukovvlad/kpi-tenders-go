@@ -95,7 +95,7 @@ func (q *Queries) DeleteUserInvitation(ctx context.Context, arg DeleteUserInvita
 }
 
 const getUserInvitationByTokenHash = `-- name: GetUserInvitationByTokenHash :one
-SELECT id, organization_id, email, role, invited_by, token_hash, expires_at, accepted_at, created_at FROM user_invitations WHERE token_hash = $1
+SELECT id, organization_id, email, role, invited_by, token_hash, expires_at, accepted_at, created_at FROM user_invitations WHERE token_hash = $1 LIMIT 1
 `
 
 func (q *Queries) GetUserInvitationByTokenHash(ctx context.Context, tokenHash string) (UserInvitation, error) {

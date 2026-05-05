@@ -30,8 +30,9 @@ type CreateDocumentTaskParams struct {
 }
 
 // Public API: only 'convert' tasks may be created here; the input is always the
-// original document's storage_path. Other modules (e.g. anonymize) read a derived
-// artifact path and must be created internally via CreateDocumentTaskInternal.
+// original document's storage_path. Singleton tasks (convert/anonymize) are created
+// internally via CreateDocumentTaskSingleton; per-request tasks (resolve_keys/extract)
+// via CreateDocumentTaskForRequest.
 // Callers MUST map pgx.ErrNoRows to 404: the INSERT ... SELECT returns no rows
 // when the document is missing or belongs to another organization, and this is
 // intentionally reported as 404 to avoid leaking tenant existence. This is

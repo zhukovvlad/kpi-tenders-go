@@ -4,7 +4,7 @@ VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: GetUserInvitationByTokenHash :one
-SELECT * FROM user_invitations WHERE token_hash = $1;
+SELECT * FROM user_invitations WHERE token_hash = $1 LIMIT 1;
 
 -- name: ListUserInvitationsByOrg :many
 SELECT * FROM user_invitations
