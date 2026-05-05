@@ -1,6 +1,8 @@
 package server
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -190,8 +192,22 @@ func (s *Server) UpdateConstructionSiteCover(c *gin.Context) {
 		return
 	}
 
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
+		return
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
+		return
+	}
+	if _, ok := raw["cover_image_path"]; !ok {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "cover_image_path field is required", nil))
+		return
+	}
 	var req updateSiteCoverRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
 		return
 	}
@@ -221,8 +237,22 @@ func (s *Server) UpdateConstructionSiteType(c *gin.Context) {
 		return
 	}
 
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
+		return
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
+		return
+	}
+	if _, ok := raw["site_type"]; !ok {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "site_type field is required", nil))
+		return
+	}
 	var req updateSiteTypeRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid request", err))
 		return
 	}
