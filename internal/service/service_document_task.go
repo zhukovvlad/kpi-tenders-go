@@ -46,7 +46,7 @@ func (s *DocumentTaskService) Create(ctx context.Context, params repository.Crea
 		if errors.Is(err, pgx.ErrNoRows) {
 			return repository.DocumentTask{}, errs.New(errs.CodeNotFound, "document not found", err)
 		}
-		if pgutil.IsUniqueViolation(err, "uq_document_tasks_document_module") {
+		if pgutil.IsUniqueViolation(err, "uq_document_tasks_doc_singleton") {
 			return repository.DocumentTask{}, errs.New(errs.CodeConflict, "task for this module already exists", err)
 		}
 		return repository.DocumentTask{}, errs.New(errs.CodeInternalError, "internal server error", err)

@@ -63,7 +63,7 @@ func TestDocumentTaskService_Create_DuplicateModule_ReturnsConflict(t *testing.T
 
 	pgErr := &pgconn.PgError{
 		Code:           "23505",
-		ConstraintName: "uq_document_tasks_document_module",
+		ConstraintName: "uq_document_tasks_doc_singleton",
 	}
 	mq.On("CreateDocumentTask", mock.Anything, mock.Anything).Return(repository.DocumentTask{}, pgErr)
 
