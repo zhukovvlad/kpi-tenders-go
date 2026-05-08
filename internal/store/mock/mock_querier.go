@@ -1956,6 +1956,36 @@ func (_m *MockQuerier) ListSiteStatusesByOrg(ctx context.Context, organizationID
 	return r0, r1
 }
 
+// ListSiteStatusesBySiteIds provides a mock function with given fields: ctx, arg
+func (_m *MockQuerier) ListSiteStatusesBySiteIds(ctx context.Context, arg repository.ListSiteStatusesBySiteIdsParams) ([]repository.VSiteStatus, error) {
+	ret := _m.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListSiteStatusesBySiteIds")
+	}
+
+	var r0 []repository.VSiteStatus
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListSiteStatusesBySiteIdsParams) ([]repository.VSiteStatus, error)); ok {
+		return rf(ctx, arg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repository.ListSiteStatusesBySiteIdsParams) []repository.VSiteStatus); ok {
+		r0 = rf(ctx, arg)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.VSiteStatus)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repository.ListSiteStatusesBySiteIdsParams) error); ok {
+		r1 = rf(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // ListStaleTasks provides a mock function with given fields: ctx, arg
 func (_m *MockQuerier) ListStaleTasks(ctx context.Context, arg repository.ListStaleTasksParams) ([]repository.ListStaleTasksRow, error) {
 	ret := _m.Called(ctx, arg)

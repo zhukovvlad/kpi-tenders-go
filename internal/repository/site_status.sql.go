@@ -68,3 +68,42 @@ func (q *Queries) ListSiteStatusesByOrg(ctx context.Context, organizationID uuid
 	}
 	return items, nil
 }
+
+const listSiteStatusesBySiteIds = `-- name: ListSiteStatusesBySiteIds :many
+SELECT site_id, organization_id, status, children_ready, children_processing, children_attention, children_empty FROM v_site_status
+WHERE organization_id = $1
+  AND site_id = ANY($2::uuid[])
+`
+
+type ListSiteStatusesBySiteIdsParams struct {
+	OrganizationID uuid.UUID   `json:"organization_id"`
+	SiteIds        []uuid.UUID `json:"site_ids"`
+}
+
+func (q *Queries) ListSiteStatusesBySiteIds(ctx context.Context, arg ListSiteStatusesBySiteIdsParams) ([]VSiteStatus, error) {
+	rows, err := q.db.Query(ctx, listSiteStatusesBySiteIds, arg.OrganizationID, arg.SiteIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []VSiteStatus{}
+	for rows.Next() {
+		var i VSiteStatus
+		if err := rows.Scan(
+			&i.SiteID,
+			&i.OrganizationID,
+			&i.Status,
+			&i.ChildrenReady,
+			&i.ChildrenProcessing,
+			&i.ChildrenAttention,
+			&i.ChildrenEmpty,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

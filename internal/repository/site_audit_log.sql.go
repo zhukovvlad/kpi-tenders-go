@@ -105,7 +105,7 @@ SELECT
     sal.event_type,
     sal.payload,
     sal.created_at,
-    COALESCE(u.first_name || ' ' || u.last_name, 'Система') AS actor_name
+    COALESCE(u.full_name, 'Система') AS actor_name
 FROM site_audit_log sal
 LEFT JOIN users u ON sal.actor_user_id = u.id
 WHERE sal.site_id = $1
@@ -130,7 +130,7 @@ type ListSiteEventsBySiteRow struct {
 	EventType      string          `json:"event_type"`
 	Payload        json.RawMessage `json:"payload"`
 	CreatedAt      time.Time       `json:"created_at"`
-	ActorName      interface{}     `json:"actor_name"`
+	ActorName      string          `json:"actor_name"`
 }
 
 // Returns audit events with actor_name resolved from users table.

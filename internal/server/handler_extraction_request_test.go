@@ -166,6 +166,8 @@ func TestListExtractionRequestsByDocument_Success(t *testing.T) {
 		repository.ListExtractionRequestsByDocumentParams{
 			DocumentID:     docID,
 			OrganizationID: orgID,
+			Limit:          20,
+			Offset:         0,
 		}).Return(rows, nil)
 
 	s := newServerWithMockExtractionService(t, mq)

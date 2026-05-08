@@ -138,12 +138,14 @@ func (s *ExtractionService) Initiate(
 	return req, nil
 }
 
-// ListRequestsByDocument returns all extraction requests for a document,
-// ordered newest first. Tenant-scoped.
-func (s *ExtractionService) ListRequestsByDocument(ctx context.Context, documentID, orgID uuid.UUID) ([]repository.ExtractionRequest, error) {
+// ListRequestsByDocument returns extraction requests for a document,
+// ordered newest first, paginated. Tenant-scoped.
+func (s *ExtractionService) ListRequestsByDocument(ctx context.Context, documentID, orgID uuid.UUID, limit, offset int32) ([]repository.ExtractionRequest, error) {
 	reqs, err := s.repo.ListExtractionRequestsByDocument(ctx, repository.ListExtractionRequestsByDocumentParams{
 		DocumentID:     documentID,
 		OrganizationID: orgID,
+		Limit:          limit,
+		Offset:         offset,
 	})
 	if err != nil {
 		s.log.Error("list extraction requests by document failed", "err", err, "document_id", documentID)

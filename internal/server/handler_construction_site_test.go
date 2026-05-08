@@ -94,8 +94,11 @@ func TestListRootConstructionSites_Success_ReturnsSiteListItems(t *testing.T) {
 
 	mq.On("ListRootConstructionSites", mock.Anything, orgID).
 		Return([]repository.ConstructionSite{site}, nil)
-	mq.On("ListSiteStatusesByOrg", mock.Anything, orgID).
-		Return([]repository.VSiteStatus{{SiteID: site.ID, Status: "ready"}}, nil)
+	mq.On("ListSiteStatusesBySiteIds", mock.Anything,
+		repository.ListSiteStatusesBySiteIdsParams{
+			OrganizationID: orgID,
+			SiteIds:        []uuid.UUID{site.ID},
+		}).Return([]repository.VSiteStatus{{SiteID: site.ID, Status: "ready"}}, nil)
 	mq.On("ListSiteExtractedCounts", mock.Anything, mock.Anything).
 		Return([]repository.ListSiteExtractedCountsRow{}, nil)
 	mq.On("ListSiteContractKinds", mock.Anything, mock.Anything).
@@ -166,8 +169,11 @@ func TestListConstructionSitesByParent_Success(t *testing.T) {
 		Return([]string{"Root", "Parent"}, nil)
 	mq.On("ListConstructionSitesByParent", mock.Anything, mock.Anything).
 		Return([]repository.ConstructionSite{child}, nil)
-	mq.On("ListSiteStatusesByOrg", mock.Anything, orgID).
-		Return([]repository.VSiteStatus{{SiteID: child.ID, Status: "processing"}}, nil)
+	mq.On("ListSiteStatusesBySiteIds", mock.Anything,
+		repository.ListSiteStatusesBySiteIdsParams{
+			OrganizationID: orgID,
+			SiteIds:        []uuid.UUID{child.ID},
+		}).Return([]repository.VSiteStatus{{SiteID: child.ID, Status: "processing"}}, nil)
 	mq.On("ListSiteExtractedCounts", mock.Anything, mock.Anything).
 		Return([]repository.ListSiteExtractedCountsRow{{SiteID: pgtype.UUID{Bytes: child.ID, Valid: true}, ExtractedCount: 5}}, nil)
 	mq.On("ListSiteContractKinds", mock.Anything, mock.Anything).

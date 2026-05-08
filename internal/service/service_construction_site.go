@@ -208,8 +208,11 @@ func (s *ConstructionSiteService) enrichSites(ctx context.Context, orgID uuid.UU
 		ids[i] = s.ID
 	}
 
-	// Batch-fetch site statuses.
-	statuses, err := s.repo.ListSiteStatusesByOrg(ctx, orgID)
+	// Batch-fetch site statuses (filtered to requested site IDs).
+	statuses, err := s.repo.ListSiteStatusesBySiteIds(ctx, repository.ListSiteStatusesBySiteIdsParams{
+		OrganizationID: orgID,
+		SiteIds:        ids,
+	})
 	if err != nil {
 		s.log.Error("list site statuses failed", "err", err, "org_id", orgID)
 		return nil, errs.New(errs.CodeInternalError, "internal server error", err)

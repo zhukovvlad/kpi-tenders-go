@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -123,7 +124,26 @@ func (s *Server) ListExtractionRequestsByDocument(c *gin.Context) {
 		return
 	}
 
-	reqs, err := s.extractionService.ListRequestsByDocument(c.Request.Context(), docID, orgID)
+	limit := int32(20)
+	offset := int32(0)
+	if l := c.Query("limit"); l != "" {
+		v, err := strconv.ParseInt(l, 10, 32)
+		if err != nil || v < 1 || v > 100 {
+			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "limit must be between 1 and 100", nil))
+			return
+		}
+		limit = int32(v)
+	}
+	if o := c.Query("offset"); o != "" {
+		v, err := strconv.ParseInt(o, 10, 32)
+		if err != nil || v < 0 {
+			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "offset must be non-negative", nil))
+			return
+		}
+		offset = int32(v)
+	}
+
+	reqs, err := s.extractionService.ListRequestsByDocument(c.Request.Context(), docID, orgID, limit, offset)
 	if err != nil {
 		s.respondWithError(c, err)
 		return

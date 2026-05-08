@@ -112,17 +112,26 @@ SELECT id, document_id, organization_id, questions, anonymize, status, resolved_
 WHERE document_id     = $1
   AND organization_id = $2
 ORDER BY created_at DESC
+LIMIT  $4
+OFFSET $3
 `
 
 type ListExtractionRequestsByDocumentParams struct {
 	DocumentID     uuid.UUID `json:"document_id"`
 	OrganizationID uuid.UUID `json:"organization_id"`
+	Offset         int32     `json:"offset_"`
+	Limit          int32     `json:"limit_"`
 }
 
-// Returns all extraction requests for a document, tenant-scoped.
+// Returns extraction requests for a document, tenant-scoped, paginated.
 // Used by GET /documents/:id/extraction-requests.
 func (q *Queries) ListExtractionRequestsByDocument(ctx context.Context, arg ListExtractionRequestsByDocumentParams) ([]ExtractionRequest, error) {
-	rows, err := q.db.Query(ctx, listExtractionRequestsByDocument, arg.DocumentID, arg.OrganizationID)
+	rows, err := q.db.Query(ctx, listExtractionRequestsByDocument,
+		arg.DocumentID,
+		arg.OrganizationID,
+		arg.Offset,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}

@@ -140,7 +140,7 @@ type Querier interface {
 	// Returns all keys visible to the given tenant: org-specific keys AND system
 	// keys (organization_id IS NULL) shared across all tenants.
 	ListExtractionKeysByOrg(ctx context.Context, dollar_1 uuid.UUID) ([]ExtractionKey, error)
-	// Returns all extraction requests for a document, tenant-scoped.
+	// Returns extraction requests for a document, tenant-scoped, paginated.
 	// Used by GET /documents/:id/extraction-requests.
 	ListExtractionRequestsByDocument(ctx context.Context, arg ListExtractionRequestsByDocumentParams) ([]ExtractionRequest, error)
 	// Returns all file roles visible to the given tenant: org-specific AND system roles (organization_id IS NULL).
@@ -161,6 +161,7 @@ type Querier interface {
 	// Returns extracted parameter count per site for a given list of site IDs.
 	ListSiteExtractedCounts(ctx context.Context, arg ListSiteExtractedCountsParams) ([]ListSiteExtractedCountsRow, error)
 	ListSiteStatusesByOrg(ctx context.Context, organizationID uuid.UUID) ([]VSiteStatus, error)
+	ListSiteStatusesBySiteIds(ctx context.Context, arg ListSiteStatusesBySiteIdsParams) ([]VSiteStatus, error)
 	// Watchdog: returns stuck tasks (pending or processing) whose updated_at is older than
 	// sqlc.arg(cutoff). Results are limited by sqlc.arg(batch_size). Uses
 	// dt.input_storage_path so the correct file path is returned for every module:

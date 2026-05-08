@@ -50,9 +50,11 @@ WHERE id = $1
 RETURNING *;
 
 -- name: ListExtractionRequestsByDocument :many
--- Returns all extraction requests for a document, tenant-scoped.
+-- Returns extraction requests for a document, tenant-scoped, paginated.
 -- Used by GET /documents/:id/extraction-requests.
 SELECT * FROM extraction_requests
 WHERE document_id     = sqlc.arg(document_id)
   AND organization_id = sqlc.arg(organization_id)
-ORDER BY created_at DESC;
+ORDER BY created_at DESC
+LIMIT  sqlc.arg(limit_)
+OFFSET sqlc.arg(offset_);

@@ -219,7 +219,7 @@ internal/server/handler_document_task_test.go      — GET /api/v1/tasks: no aut
 internal/server/handler_comparison_session_test.go — ListComparisonSessions, GetComparisonSession, CreateComparisonSession, DeleteComparisonSession, AddDocumentToSession, RemoveDocumentFromSession: no auth, 400/404, success, DB error (19 кейсов)
 internal/server/handler_contract_kind_test.go      — ListContractKinds, CreateContractKind, GetContractKind, DeleteContractKind, UpdateContractKind: no auth, 400/404/409, success (13 кейсов)
 internal/server/handler_invitation_test.go         — CreateInvitation: no auth, non-admin (403), invalid email/role (400), conflict (409), local-env includes token, production omits token (7 кейсов)
-internal/server/handler_extraction_request_test.go — GET /api/v1/extraction-requests/:id: no auth, invalid UUID, not found, DB error, success pending (empty schema → no DB call) (5 кейсов)
+internal/server/handler_extraction_request_test.go — GET /api/v1/extraction-requests/:id: no auth, invalid UUID, not found, DB error, success pending (empty schema → no DB call); ListExtractionRequestsByDocument: no auth, invalid id, success (Limit:20 Offset:0), empty array (8 кейсов)
 internal/server/handler_extraction_key_test.go      — List, Get (404), Create (409 на дупликат), Update (partial PATCH), Delete: no auth, 400/404/409, success (13 кейсов)
 internal/server/handler_construction_site_test.go   — ListRoot (empty, SiteListItem с meta), ListChildren (breadcrumbs, extracted_count), ListSiteEvents (actor, kind, message, empty, 404): no auth, 400/404, success (11 кейсов)
 internal/service/service_contract_kind_test.go     — ContractKindService: List, Get (404), Create (unique 409), Update (404/409), Delete (0 rows 404) (14 кейсов)
