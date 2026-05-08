@@ -118,6 +118,7 @@ func TestListRootConstructionSites_Success_ReturnsSiteListItems(t *testing.T) {
 	assert.Nil(t, resp[0]["inflation_pct"])
 	assert.NotNil(t, resp[0]["breadcrumbs"])
 	assert.NotNil(t, resp[0]["contract_kinds"])
+	mq.AssertExpectations(t)
 }
 
 // ── GET /api/v1/sites/:id/children ───────────────────────────────────────────
@@ -194,6 +195,7 @@ func TestListConstructionSitesByParent_Success(t *testing.T) {
 	breadcrumbs, ok := resp[0]["breadcrumbs"].([]interface{})
 	require.True(t, ok)
 	assert.Equal(t, 2, len(breadcrumbs))
+	mq.AssertExpectations(t)
 }
 
 // ── GET /api/v1/sites/:id/events ─────────────────────────────────────────────

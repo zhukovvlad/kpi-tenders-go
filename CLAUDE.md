@@ -148,7 +148,7 @@ PATCH            /internal/worker/tasks/:id/status  (worker callback, ServiceBea
 POST/GET         /api/v1/sites
 GET              /api/v1/sites/root         (корневые объекты; → []SiteListItem с breadcrumbs, contract_kinds, aggregate_status, extracted_count)
 GET/PATCH/DELETE /api/v1/sites/:id
-GET              /api/v1/sites/:id/children (дочерние объекты; → []SiteListItem с breadcrumbs предков)
+GET              /api/v1/sites/:id/children (дочерние объекты; → []SiteListItem с полями: breadcrumbs []string, contract_kinds []SiteContractKindSummary{id,display_name,is_active}, aggregate_status string (enum: ready/processing/failed/empty), extracted_count int64; inflation_pct *float64 опционально)
 PATCH            /api/v1/sites/:id/cover    ({ cover_image_path })
 PATCH            /api/v1/sites/:id/type     ({ site_type })
 GET              /api/v1/sites/:id/audit-log (?limit=50&offset=0)

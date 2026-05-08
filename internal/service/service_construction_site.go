@@ -204,8 +204,8 @@ func (s *ConstructionSiteService) enrichSites(ctx context.Context, orgID uuid.UU
 	}
 
 	ids := make([]uuid.UUID, len(sites))
-	for i, s := range sites {
-		ids[i] = s.ID
+	for i, site := range sites {
+		ids[i] = site.ID
 	}
 
 	// Batch-fetch site statuses (filtered to requested site IDs).

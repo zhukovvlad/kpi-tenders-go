@@ -111,7 +111,7 @@ const listExtractionRequestsByDocument = `-- name: ListExtractionRequestsByDocum
 SELECT id, document_id, organization_id, questions, anonymize, status, resolved_schema, error_message, created_at, updated_at FROM extraction_requests
 WHERE document_id     = $1
   AND organization_id = $2
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 LIMIT  $4
 OFFSET $3
 `

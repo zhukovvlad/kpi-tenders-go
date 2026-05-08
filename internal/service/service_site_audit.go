@@ -88,7 +88,10 @@ func (s *SiteAuditService) ListEventsBySite(ctx context.Context, siteID, orgID u
 
 	result := make([]SiteEvent, len(rows))
 	for i, r := range rows {
-		actorName := fmt.Sprintf("%v", r.ActorName)
+		actorName := r.ActorName
+		if actorName == "" {
+			actorName = "Система"
+		}
 		result[i] = SiteEvent{
 			ID:         r.ID,
 			SiteID:     r.SiteID,

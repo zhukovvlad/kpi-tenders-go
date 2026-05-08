@@ -108,6 +108,7 @@ WITH RECURSIVE ancestry AS (
     SELECT p.id, p.name, p.parent_id, a.depth + 1
     FROM construction_sites p
     JOIN ancestry a ON p.id = a.parent_id
+    WHERE p.organization_id = a.organization_id
 )
 SELECT name FROM ancestry ORDER BY depth DESC
 `
