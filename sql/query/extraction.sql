@@ -5,6 +5,36 @@ SELECT * FROM extraction_keys
 WHERE organization_id = $1::uuid OR organization_id IS NULL
 ORDER BY organization_id NULLS LAST, key_name;
 
+-- name: GetExtractionKey :one
+-- Tenant-scoped lookup; returns org-specific or system key by id.
+-- Callers should map pgx.ErrNoRows to 404.
+SELECT * FROM extraction_keys
+WHERE id = sqlc.arg(id)
+  AND (organization_id = sqlc.arg(organization_id)::uuid OR organization_id IS NULL);
+
+-- name: CreateExtractionKey :one
+-- Creates an org-specific extraction key. Fails on duplicate (org, key_name).
+INSERT INTO extraction_keys (organization_id, key_name, source_query, data_type, display_name)
+VALUES (sqlc.arg(organization_id)::uuid, sqlc.arg(key_name), sqlc.arg(source_query), sqlc.arg(data_type), sqlc.narg(display_name))
+RETURNING *;
+
+-- name: UpdateExtractionKey :one
+-- Partial update for org-specific extraction keys; system keys (org IS NULL) are read-only.
+-- Uses COALESCE for patch semantics: NULL arguments preserve the existing value.
+UPDATE extraction_keys
+SET source_query = COALESCE(sqlc.narg(source_query), source_query),
+    data_type    = COALESCE(sqlc.narg(data_type), data_type),
+    display_name = COALESCE(sqlc.narg(display_name), display_name)
+WHERE id              = sqlc.arg(id)
+  AND organization_id = sqlc.arg(organization_id)::uuid
+RETURNING *;
+
+-- name: DeleteExtractionKey :execrows
+-- Deletes an org-specific extraction key. System keys (org IS NULL) cannot be deleted via this query.
+DELETE FROM extraction_keys
+WHERE id              = sqlc.arg(id)
+  AND organization_id = sqlc.arg(organization_id)::uuid;
+
 -- name: UpsertExtractionKey :one
 -- Idempotent upsert: on conflict (org, key_name), updates source_query and
 -- data_type so that RETURNING always yields the current row.
@@ -65,3 +95,23 @@ SELECT sqlc.arg(organization_id)::uuid,
        unnest(sqlc.arg(extracted_values)::text[])
 ON CONFLICT ON CONSTRAINT uq_extracted_data_doc_key DO UPDATE
     SET extracted_value = EXCLUDED.extracted_value;
+
+-- name: ListExtractedDataByDocument :many
+-- Returns all extracted data for a document joined with key metadata.
+-- Tenant-scoped: only data belonging to the given org is returned.
+-- Used by GET /documents/:id/answers.
+SELECT ded.id,
+       ded.document_id,
+       ded.extracted_value,
+       k.id              AS key_id,
+       k.organization_id AS key_organization_id,
+       k.key_name,
+       k.source_query,
+       k.data_type,
+       k.display_name,
+       k.created_at      AS key_created_at
+FROM document_extracted_data ded
+JOIN extraction_keys k ON k.id = ded.key_id
+WHERE ded.document_id     = sqlc.arg(document_id)::uuid
+  AND ded.organization_id = sqlc.arg(organization_id)::uuid
+ORDER BY k.key_name;

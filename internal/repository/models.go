@@ -226,7 +226,7 @@ type User struct {
 	Email          string      `json:"email"`
 	PasswordHash   string      `json:"password_hash"`
 	FullName       string      `json:"full_name"`
-	// Роль: admin — полный доступ к тенанту, member — работа с документами, owner — суперпользователь с кросс-тенантным доступом
+	// Роль: admin — полный доступ к тенанту, member — работа с документами, owner — глобальная роль, не привязанная к организации
 	Role string `json:"role"`
 	// false — пользователь деактивирован, вход заблокирован
 	IsActive  bool      `json:"is_active"`

@@ -107,6 +107,51 @@ func (q *Queries) GetExtractionRequestByID(ctx context.Context, id uuid.UUID) (E
 	return i, err
 }
 
+const listExtractionRequestsByDocument = `-- name: ListExtractionRequestsByDocument :many
+SELECT id, document_id, organization_id, questions, anonymize, status, resolved_schema, error_message, created_at, updated_at FROM extraction_requests
+WHERE document_id     = $1
+  AND organization_id = $2
+ORDER BY created_at DESC
+`
+
+type ListExtractionRequestsByDocumentParams struct {
+	DocumentID     uuid.UUID `json:"document_id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+}
+
+// Returns all extraction requests for a document, tenant-scoped.
+// Used by GET /documents/:id/extraction-requests.
+func (q *Queries) ListExtractionRequestsByDocument(ctx context.Context, arg ListExtractionRequestsByDocumentParams) ([]ExtractionRequest, error) {
+	rows, err := q.db.Query(ctx, listExtractionRequestsByDocument, arg.DocumentID, arg.OrganizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExtractionRequest{}
+	for rows.Next() {
+		var i ExtractionRequest
+		if err := rows.Scan(
+			&i.ID,
+			&i.DocumentID,
+			&i.OrganizationID,
+			&i.Questions,
+			&i.Anonymize,
+			&i.Status,
+			&i.ResolvedSchema,
+			&i.ErrorMessage,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPendingExtractionRequestsByDocument = `-- name: ListPendingExtractionRequestsByDocument :many
 SELECT id, document_id, organization_id, questions, anonymize, status, resolved_schema, error_message, created_at, updated_at FROM extraction_requests
 WHERE document_id = $1

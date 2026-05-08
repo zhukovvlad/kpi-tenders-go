@@ -138,6 +138,85 @@ func (s *ExtractionService) Initiate(
 	return req, nil
 }
 
+// ListRequestsByDocument returns all extraction requests for a document,
+// ordered newest first. Tenant-scoped.
+func (s *ExtractionService) ListRequestsByDocument(ctx context.Context, documentID, orgID uuid.UUID) ([]repository.ExtractionRequest, error) {
+	reqs, err := s.repo.ListExtractionRequestsByDocument(ctx, repository.ListExtractionRequestsByDocumentParams{
+		DocumentID:     documentID,
+		OrganizationID: orgID,
+	})
+	if err != nil {
+		s.log.Error("list extraction requests by document failed", "err", err, "document_id", documentID)
+		return nil, errs.New(errs.CodeInternalError, "internal server error", err)
+	}
+	return reqs, nil
+}
+
+// ExtractedDataItem is the JSON shape for a single extracted value with its key metadata.
+type ExtractedDataItem struct {
+	ID             uuid.UUID   `json:"id"`
+	DocumentID     uuid.UUID   `json:"document_id"`
+	ExtractedValue *string     `json:"extracted_value"`
+	Key            ExtractedKeyMeta `json:"key"`
+}
+
+// ExtractedKeyMeta holds the metadata for a single extraction key as returned by /answers.
+type ExtractedKeyMeta struct {
+	ID             uuid.UUID    `json:"id"`
+	OrganizationID *uuid.UUID   `json:"organization_id"`
+	KeyName        string       `json:"key_name"`
+	SourceQuery    string       `json:"source_query"`
+	DataType       string       `json:"data_type"`
+	DisplayName    *string      `json:"display_name"`
+	CreatedAt      time.Time    `json:"created_at"`
+}
+
+// ListAnswersByDocument returns all extracted values for a document joined with
+// their key metadata. Tenant-scoped.
+func (s *ExtractionService) ListAnswersByDocument(ctx context.Context, documentID, orgID uuid.UUID) ([]ExtractedDataItem, error) {
+	rows, err := s.repo.ListExtractedDataByDocument(ctx, repository.ListExtractedDataByDocumentParams{
+		DocumentID:     documentID,
+		OrganizationID: orgID,
+	})
+	if err != nil {
+		s.log.Error("list extracted data by document failed", "err", err, "document_id", documentID)
+		return nil, errs.New(errs.CodeInternalError, "internal server error", err)
+	}
+	out := make([]ExtractedDataItem, 0, len(rows))
+	for _, r := range rows {
+		var val *string
+		if r.ExtractedValue.Valid {
+			v := r.ExtractedValue.String
+			val = &v
+		}
+		var orgID *uuid.UUID
+		if r.KeyOrganizationID.Valid {
+			id := uuid.UUID(r.KeyOrganizationID.Bytes)
+			orgID = &id
+		}
+		var displayName *string
+		if r.DisplayName.Valid {
+			dn := r.DisplayName.String
+			displayName = &dn
+		}
+		out = append(out, ExtractedDataItem{
+			ID:             r.ID,
+			DocumentID:     r.DocumentID,
+			ExtractedValue: val,
+			Key: ExtractedKeyMeta{
+				ID:             r.KeyID,
+				OrganizationID: orgID,
+				KeyName:        r.KeyName,
+				SourceQuery:    r.SourceQuery,
+				DataType:       r.DataType,
+				DisplayName:    displayName,
+				CreatedAt:      r.KeyCreatedAt,
+			},
+		})
+	}
+	return out, nil
+}
+
 // GetRequest returns an extraction_request scoped to the calling tenant.
 // Maps pgx.ErrNoRows to errs.CodeNotFound.
 func (s *ExtractionService) GetRequest(ctx context.Context, id, orgID uuid.UUID) (repository.ExtractionRequest, error) {

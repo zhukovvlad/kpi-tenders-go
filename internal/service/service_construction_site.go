@@ -13,6 +13,23 @@ import (
 	"go-kpi-tenders/pkg/errs"
 )
 
+// SiteContractKindSummary is a lightweight view of a contract kind attached to a site.
+type SiteContractKindSummary struct {
+	ID          uuid.UUID `json:"id"`
+	DisplayName string    `json:"display_name"`
+	IsActive    bool      `json:"is_active"`
+}
+
+// SiteListItem extends ConstructionSite with aggregated fields expected by the frontend.
+type SiteListItem struct {
+	repository.ConstructionSite
+	Breadcrumbs     []string                  `json:"breadcrumbs"`
+	ContractKinds   []SiteContractKindSummary `json:"contract_kinds"`
+	AggregateStatus string                    `json:"aggregate_status"`
+	ExtractedCount  int64                     `json:"extracted_count"`
+	InflationPct    *float64                  `json:"inflation_pct"`
+}
+
 type ConstructionSiteService struct {
 	repo repository.Querier
 	log  *slog.Logger
@@ -141,4 +158,117 @@ func (s *ConstructionSiteService) UpdateType(ctx context.Context, id, orgID uuid
 		return repository.ConstructionSite{}, errs.New(errs.CodeInternalError, "internal server error", err)
 	}
 	return site, nil
+}
+
+// ListRootWithMeta returns root sites enriched with aggregated metadata for the frontend.
+func (s *ConstructionSiteService) ListRootWithMeta(ctx context.Context, orgID uuid.UUID) ([]SiteListItem, error) {
+	sites, err := s.repo.ListRootConstructionSites(ctx, orgID)
+	if err != nil {
+		s.log.Error("list root construction sites failed", "err", err, "org_id", orgID)
+		return nil, errs.New(errs.CodeInternalError, "internal server error", err)
+	}
+	return s.enrichSites(ctx, orgID, sites, nil)
+}
+
+// ListChildrenWithMeta returns children of a parent site enriched with aggregated metadata.
+func (s *ConstructionSiteService) ListChildrenWithMeta(ctx context.Context, orgID, parentID uuid.UUID) ([]SiteListItem, error) {
+	breadcrumbs, err := s.repo.GetSiteAncestors(ctx, repository.GetSiteAncestorsParams{
+		SiteID:         parentID,
+		OrganizationID: orgID,
+	})
+	if err != nil {
+		s.log.Error("get site ancestors failed", "err", err, "parent_id", parentID)
+		return nil, errs.New(errs.CodeInternalError, "internal server error", err)
+	}
+
+	sites, err := s.repo.ListConstructionSitesByParent(ctx, repository.ListConstructionSitesByParentParams{
+		OrganizationID: orgID,
+		ParentID:       pgtype.UUID{Bytes: parentID, Valid: true},
+	})
+	if err != nil {
+		s.log.Error("list construction sites by parent failed", "err", err, "org_id", orgID, "parent_id", parentID)
+		return nil, errs.New(errs.CodeInternalError, "internal server error", err)
+	}
+	return s.enrichSites(ctx, orgID, sites, breadcrumbs)
+}
+
+// enrichSites assembles SiteListItem from raw sites + batch-fetched metadata.
+func (s *ConstructionSiteService) enrichSites(ctx context.Context, orgID uuid.UUID, sites []repository.ConstructionSite, breadcrumbs []string) ([]SiteListItem, error) {
+	if breadcrumbs == nil {
+		breadcrumbs = []string{}
+	}
+
+	result := make([]SiteListItem, len(sites))
+	if len(sites) == 0 {
+		return result, nil
+	}
+
+	ids := make([]uuid.UUID, len(sites))
+	for i, s := range sites {
+		ids[i] = s.ID
+	}
+
+	// Batch-fetch site statuses.
+	statuses, err := s.repo.ListSiteStatusesByOrg(ctx, orgID)
+	if err != nil {
+		s.log.Error("list site statuses failed", "err", err, "org_id", orgID)
+		return nil, errs.New(errs.CodeInternalError, "internal server error", err)
+	}
+	statusMap := make(map[uuid.UUID]string, len(statuses))
+	for _, st := range statuses {
+		statusMap[st.SiteID] = st.Status
+	}
+
+	// Batch-fetch extracted counts.
+	counts, err := s.repo.ListSiteExtractedCounts(ctx, repository.ListSiteExtractedCountsParams{
+		OrganizationID: orgID,
+		SiteIds:        ids,
+	})
+	if err != nil {
+		s.log.Error("list site extracted counts failed", "err", err, "org_id", orgID)
+		return nil, errs.New(errs.CodeInternalError, "internal server error", err)
+	}
+	countMap := make(map[uuid.UUID]int64, len(counts))
+	for _, c := range counts {
+		countMap[c.SiteID.Bytes] = c.ExtractedCount
+	}
+
+	// Batch-fetch contract kinds.
+	kinds, err := s.repo.ListSiteContractKinds(ctx, repository.ListSiteContractKindsParams{
+		OrganizationID: orgID,
+		SiteIds:        ids,
+	})
+	if err != nil {
+		s.log.Error("list site contract kinds failed", "err", err, "org_id", orgID)
+		return nil, errs.New(errs.CodeInternalError, "internal server error", err)
+	}
+	kindsMap := make(map[uuid.UUID][]SiteContractKindSummary)
+	for _, k := range kinds {
+		siteID := k.SiteID.Bytes
+		kindsMap[siteID] = append(kindsMap[siteID], SiteContractKindSummary{
+			ID:          k.ID,
+			DisplayName: k.DisplayName,
+			IsActive:    k.IsActive,
+		})
+	}
+
+	for i, site := range sites {
+		contractKinds := kindsMap[site.ID]
+		if contractKinds == nil {
+			contractKinds = []SiteContractKindSummary{}
+		}
+		status := statusMap[site.ID]
+		if status == "" {
+			status = "empty"
+		}
+		result[i] = SiteListItem{
+			ConstructionSite: site,
+			Breadcrumbs:      breadcrumbs,
+			ContractKinds:    contractKinds,
+			AggregateStatus:  status,
+			ExtractedCount:   countMap[site.ID],
+			InflationPct:     nil,
+		}
+	}
+	return result, nil
 }

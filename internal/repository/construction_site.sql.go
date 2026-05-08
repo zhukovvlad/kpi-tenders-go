@@ -99,6 +99,45 @@ func (q *Queries) GetConstructionSite(ctx context.Context, arg GetConstructionSi
 	return i, err
 }
 
+const getSiteAncestors = `-- name: GetSiteAncestors :many
+WITH RECURSIVE ancestry AS (
+    SELECT cs.id, cs.name, cs.parent_id, 0 AS depth
+    FROM construction_sites cs
+    WHERE cs.id = $1 AND cs.organization_id = $2
+    UNION ALL
+    SELECT p.id, p.name, p.parent_id, a.depth + 1
+    FROM construction_sites p
+    JOIN ancestry a ON p.id = a.parent_id
+)
+SELECT name FROM ancestry ORDER BY depth DESC
+`
+
+type GetSiteAncestorsParams struct {
+	SiteID         uuid.UUID `json:"site_id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+}
+
+// Returns ancestors of a site ordered from root to the site itself.
+func (q *Queries) GetSiteAncestors(ctx context.Context, arg GetSiteAncestorsParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, getSiteAncestors, arg.SiteID, arg.OrganizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listConstructionSitesByOrganization = `-- name: ListConstructionSitesByOrganization :many
 SELECT id, organization_id, parent_id, name, status, created_by, created_at, updated_at, cover_image_path, cover_image_uploaded_at, site_type, last_activity_at FROM construction_sites
 WHERE organization_id = $1
@@ -211,6 +250,97 @@ func (q *Queries) ListRootConstructionSites(ctx context.Context, organizationID 
 			&i.SiteType,
 			&i.LastActivityAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSiteContractKinds = `-- name: ListSiteContractKinds :many
+SELECT d.site_id, ck.id, ck.display_name, ck.is_active
+FROM documents d
+JOIN document_contract_kinds ck ON ck.id = d.contract_kind_id
+WHERE d.organization_id = $1
+  AND d.site_id = ANY($2::uuid[])
+  AND d.parent_id IS NULL
+  AND d.contract_kind_id IS NOT NULL
+GROUP BY d.site_id, ck.id, ck.display_name, ck.is_active
+`
+
+type ListSiteContractKindsParams struct {
+	OrganizationID uuid.UUID   `json:"organization_id"`
+	SiteIds        []uuid.UUID `json:"site_ids"`
+}
+
+type ListSiteContractKindsRow struct {
+	SiteID      pgtype.UUID `json:"site_id"`
+	ID          uuid.UUID   `json:"id"`
+	DisplayName string      `json:"display_name"`
+	IsActive    bool        `json:"is_active"`
+}
+
+// Returns distinct contract kinds for documents in each of the given sites.
+func (q *Queries) ListSiteContractKinds(ctx context.Context, arg ListSiteContractKindsParams) ([]ListSiteContractKindsRow, error) {
+	rows, err := q.db.Query(ctx, listSiteContractKinds, arg.OrganizationID, arg.SiteIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSiteContractKindsRow{}
+	for rows.Next() {
+		var i ListSiteContractKindsRow
+		if err := rows.Scan(
+			&i.SiteID,
+			&i.ID,
+			&i.DisplayName,
+			&i.IsActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSiteExtractedCounts = `-- name: ListSiteExtractedCounts :many
+SELECT d.site_id, COUNT(ded.id)::bigint AS extracted_count
+FROM documents d
+JOIN document_extracted_data ded
+    ON ded.document_id = d.id AND ded.organization_id = d.organization_id
+WHERE d.organization_id = $1
+  AND d.site_id = ANY($2::uuid[])
+  AND d.parent_id IS NULL
+GROUP BY d.site_id
+`
+
+type ListSiteExtractedCountsParams struct {
+	OrganizationID uuid.UUID   `json:"organization_id"`
+	SiteIds        []uuid.UUID `json:"site_ids"`
+}
+
+type ListSiteExtractedCountsRow struct {
+	SiteID         pgtype.UUID `json:"site_id"`
+	ExtractedCount int64       `json:"extracted_count"`
+}
+
+// Returns extracted parameter count per site for a given list of site IDs.
+func (q *Queries) ListSiteExtractedCounts(ctx context.Context, arg ListSiteExtractedCountsParams) ([]ListSiteExtractedCountsRow, error) {
+	rows, err := q.db.Query(ctx, listSiteExtractedCounts, arg.OrganizationID, arg.SiteIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSiteExtractedCountsRow{}
+	for rows.Next() {
+		var i ListSiteExtractedCountsRow
+		if err := rows.Scan(&i.SiteID, &i.ExtractedCount); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

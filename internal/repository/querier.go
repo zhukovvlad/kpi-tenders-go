@@ -53,6 +53,8 @@ type Querier interface {
 	// extraction_request_id is intentionally NULL; convert/anonymize artifacts are
 	// per-document and reused across all extraction_requests on the same document.
 	CreateDocumentTaskSingleton(ctx context.Context, arg CreateDocumentTaskSingletonParams) (DocumentTask, error)
+	// Creates an org-specific extraction key. Fails on duplicate (org, key_name).
+	CreateExtractionKey(ctx context.Context, arg CreateExtractionKeyParams) (ExtractionKey, error)
 	// Creates a new extraction request for a document. Tenant isolation is enforced
 	// by the composite FK (document_id, organization_id) → documents.
 	// Returns the created request including generated id and timestamps.
@@ -67,6 +69,8 @@ type Querier interface {
 	DeleteContractKind(ctx context.Context, arg DeleteContractKindParams) (int64, error)
 	DeleteDocument(ctx context.Context, arg DeleteDocumentParams) (int64, error)
 	DeleteDocumentTask(ctx context.Context, arg DeleteDocumentTaskParams) (int64, error)
+	// Deletes an org-specific extraction key. System keys (org IS NULL) cannot be deleted via this query.
+	DeleteExtractionKey(ctx context.Context, arg DeleteExtractionKeyParams) (int64, error)
 	DeleteFileRole(ctx context.Context, arg DeleteFileRoleParams) (int64, error)
 	DeleteOrganization(ctx context.Context, id uuid.UUID) (int64, error)
 	DeleteUserInvitation(ctx context.Context, arg DeleteUserInvitationParams) (int64, error)
@@ -79,6 +83,9 @@ type Querier interface {
 	// Prefer GetDocument when organization-scoped access is required.
 	GetDocumentByID(ctx context.Context, id uuid.UUID) (Document, error)
 	GetDocumentTask(ctx context.Context, arg GetDocumentTaskParams) (DocumentTask, error)
+	// Tenant-scoped lookup; returns org-specific or system key by id.
+	// Callers should map pgx.ErrNoRows to 404.
+	GetExtractionKey(ctx context.Context, arg GetExtractionKeyParams) (ExtractionKey, error)
 	// Lookup extraction keys by key_name for a tenant. Returns org-specific keys
 	// and system keys (organization_id IS NULL) that match the given names.
 	// When both a tenant key and a system key share the same key_name, the tenant
@@ -98,6 +105,8 @@ type Querier interface {
 	// Used to inspect the current state of prerequisite tasks before deciding
 	// what to enqueue next for an extraction_request.
 	GetSingletonTaskByDocument(ctx context.Context, arg GetSingletonTaskByDocumentParams) (DocumentTask, error)
+	// Returns ancestors of a site ordered from root to the site itself.
+	GetSiteAncestors(ctx context.Context, arg GetSiteAncestorsParams) ([]string, error)
 	GetSiteStatus(ctx context.Context, arg GetSiteStatusParams) (VSiteStatus, error)
 	// Returns a per-request task (resolve_keys/extract) for the given extraction_request.
 	GetTaskForExtractionRequest(ctx context.Context, arg GetTaskForExtractionRequestParams) (DocumentTask, error)
@@ -118,6 +127,10 @@ type Querier interface {
 	ListContractKindsByOrg(ctx context.Context, organizationID pgtype.UUID) ([]DocumentContractKind, error)
 	// Все артефакты, порождённые данным документом; scoped by organization_id for tenant isolation.
 	ListDocumentsByParent(ctx context.Context, arg ListDocumentsByParentParams) ([]Document, error)
+	// Returns all extracted data for a document joined with key metadata.
+	// Tenant-scoped: only data belonging to the given org is returned.
+	// Used by GET /documents/:id/answers.
+	ListExtractedDataByDocument(ctx context.Context, arg ListExtractedDataByDocumentParams) ([]ListExtractedDataByDocumentRow, error)
 	// Returns extracted values for a document filtered to the given extraction
 	// keys, joined with key metadata. Tenant-scoped: only data and keys visible
 	// to the given organization (org-specific keys + system keys) are returned.
@@ -127,6 +140,9 @@ type Querier interface {
 	// Returns all keys visible to the given tenant: org-specific keys AND system
 	// keys (organization_id IS NULL) shared across all tenants.
 	ListExtractionKeysByOrg(ctx context.Context, dollar_1 uuid.UUID) ([]ExtractionKey, error)
+	// Returns all extraction requests for a document, tenant-scoped.
+	// Used by GET /documents/:id/extraction-requests.
+	ListExtractionRequestsByDocument(ctx context.Context, arg ListExtractionRequestsByDocumentParams) ([]ExtractionRequest, error)
 	// Returns all file roles visible to the given tenant: org-specific AND system roles (organization_id IS NULL).
 	ListFileRolesByOrg(ctx context.Context, organizationID pgtype.UUID) ([]DocumentFileRole, error)
 	// Returns extraction requests for a document that are still in flight
@@ -138,6 +154,12 @@ type Querier interface {
 	ListRootDocumentsByOrganization(ctx context.Context, organizationID uuid.UUID) ([]Document, error)
 	ListRootDocumentsBySite(ctx context.Context, arg ListRootDocumentsBySiteParams) ([]Document, error)
 	ListSiteAuditLogBySite(ctx context.Context, arg ListSiteAuditLogBySiteParams) ([]SiteAuditLog, error)
+	// Returns distinct contract kinds for documents in each of the given sites.
+	ListSiteContractKinds(ctx context.Context, arg ListSiteContractKindsParams) ([]ListSiteContractKindsRow, error)
+	// Returns audit events with actor_name resolved from users table.
+	ListSiteEventsBySite(ctx context.Context, arg ListSiteEventsBySiteParams) ([]ListSiteEventsBySiteRow, error)
+	// Returns extracted parameter count per site for a given list of site IDs.
+	ListSiteExtractedCounts(ctx context.Context, arg ListSiteExtractedCountsParams) ([]ListSiteExtractedCountsRow, error)
 	ListSiteStatusesByOrg(ctx context.Context, organizationID uuid.UUID) ([]VSiteStatus, error)
 	// Watchdog: returns stuck tasks (pending or processing) whose updated_at is older than
 	// sqlc.arg(cutoff). Results are limited by sqlc.arg(batch_size). Uses
@@ -180,6 +202,9 @@ type Querier interface {
 	// Restricted to root documents (parent_id IS NULL); artifacts cannot be updated via this query.
 	UpdateDocumentMeta(ctx context.Context, arg UpdateDocumentMetaParams) (Document, error)
 	UpdateDocumentTaskStatus(ctx context.Context, arg UpdateDocumentTaskStatusParams) (DocumentTask, error)
+	// Partial update for org-specific extraction keys; system keys (org IS NULL) are read-only.
+	// Uses COALESCE for patch semantics: NULL arguments preserve the existing value.
+	UpdateExtractionKey(ctx context.Context, arg UpdateExtractionKeyParams) (ExtractionKey, error)
 	UpdateFileRole(ctx context.Context, arg UpdateFileRoleParams) (DocumentFileRole, error)
 	UpdateOrganization(ctx context.Context, arg UpdateOrganizationParams) (Organization, error)
 	// Internal: no org-check; callers must be authenticated via SERVICE_TOKEN.

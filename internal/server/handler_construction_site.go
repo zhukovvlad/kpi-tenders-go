@@ -272,7 +272,7 @@ func (s *Server) ListRootConstructionSites(c *gin.Context) {
 		return
 	}
 
-	sites, err := s.constructionSiteService.ListRoot(c.Request.Context(), orgID)
+	sites, err := s.constructionSiteService.ListRootWithMeta(c.Request.Context(), orgID)
 	if err != nil {
 		s.respondWithError(c, err)
 		return
@@ -293,7 +293,7 @@ func (s *Server) ListConstructionSitesByParent(c *gin.Context) {
 		return
 	}
 
-	sites, err := s.constructionSiteService.ListByParent(c.Request.Context(), orgID, parentID)
+	sites, err := s.constructionSiteService.ListChildrenWithMeta(c.Request.Context(), orgID, parentID)
 	if err != nil {
 		s.respondWithError(c, err)
 		return

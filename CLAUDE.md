@@ -136,6 +136,8 @@ GET              /api/v1/documents                  (?parent_id=uuid → спи�
 GET/DELETE       /api/v1/documents/:id
 GET              /api/v1/documents/:id/url   (?download=true|false → presigned URL, TTL 15 мин)
 PATCH            /api/v1/documents/:id/meta  (contract_kind_id, file_role_id, bundle_id)
+GET              /api/v1/documents/:id/extraction-requests  (?limit=20&offset=0 → список запросов экстракции)
+GET              /api/v1/documents/:id/answers              (все ответы по всем extraction_requests документа)
 
 POST             /api/v1/tasks
 GET              /api/v1/tasks          (?document_id=uuid → задачи одного документа; ?document_ids=uuid,uuid,… → батч до 100 документов)
@@ -144,15 +146,19 @@ GET/PATCH/DELETE /api/v1/tasks/:id      (status update)
 PATCH            /internal/worker/tasks/:id/status  (worker callback, ServiceBearerAuth)
 
 POST/GET         /api/v1/sites
-GET              /api/v1/sites/root         (корневые объекты, parent_id IS NULL)
+GET              /api/v1/sites/root         (корневые объекты; → []SiteListItem с breadcrumbs, contract_kinds, aggregate_status, extracted_count)
 GET/PATCH/DELETE /api/v1/sites/:id
-GET              /api/v1/sites/:id/children (дочерние объекты)
+GET              /api/v1/sites/:id/children (дочерние объекты; → []SiteListItem с breadcrumbs предков)
 PATCH            /api/v1/sites/:id/cover    ({ cover_image_path })
 PATCH            /api/v1/sites/:id/type     ({ site_type })
 GET              /api/v1/sites/:id/audit-log (?limit=50&offset=0)
+GET              /api/v1/sites/:id/events   (человекочитаемые события; → []SiteEvent с kind, actor_name, message)
 
 POST             /api/v1/documents/:id/extract       (создаёт extraction_request; body: { questions, anonymize? }, default anonymize=true; → 201 { extraction_request_id, status })
 GET              /api/v1/extraction-requests/:id     (status + resolved_schema + answers; tenant-scoped)
+
+GET/POST         /api/v1/extraction-keys              (CRUD ключей экстракции; системные org_id=NULL шарятся между тенантами; UNIQUE NULLS NOT DISTINCT)
+GET/PATCH/DELETE /api/v1/extraction-keys/:id
 
 GET/POST         /api/v1/contract-kinds
 GET/PATCH/DELETE /api/v1/contract-kinds/:id
@@ -214,6 +220,8 @@ internal/server/handler_comparison_session_test.go — ListComparisonSessions, G
 internal/server/handler_contract_kind_test.go      — ListContractKinds, CreateContractKind, GetContractKind, DeleteContractKind, UpdateContractKind: no auth, 400/404/409, success (13 кейсов)
 internal/server/handler_invitation_test.go         — CreateInvitation: no auth, non-admin (403), invalid email/role (400), conflict (409), local-env includes token, production omits token (7 кейсов)
 internal/server/handler_extraction_request_test.go — GET /api/v1/extraction-requests/:id: no auth, invalid UUID, not found, DB error, success pending (empty schema → no DB call) (5 кейсов)
+internal/server/handler_extraction_key_test.go      — List, Get (404), Create (409 на дупликат), Update (partial PATCH), Delete: no auth, 400/404/409, success (13 кейсов)
+internal/server/handler_construction_site_test.go   — ListRoot (empty, SiteListItem с meta), ListChildren (breadcrumbs, extracted_count), ListSiteEvents (actor, kind, message, empty, 404): no auth, 400/404, success (11 кейсов)
 internal/service/service_contract_kind_test.go     — ContractKindService: List, Get (404), Create (unique 409), Update (404/409), Delete (0 rows 404) (14 кейсов)
 internal/storage/client_test.go                     — PresignedURL, Upload, Delete error wrapping + TestSafeExt (10 кейсов)
 internal/pythonworker/client_test.go                — buildCeleryMessage: поля, маршрутизация модулей, kwargs passthrough, nil kwargs, неизвестный модуль (5 кейсов)

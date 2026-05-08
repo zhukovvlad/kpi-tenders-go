@@ -101,6 +101,214 @@ func TestGetExtractionRequest_DBError_Returns500(t *testing.T) {
 	mq.AssertExpectations(t)
 }
 
+// ── ListExtractionRequestsByDocument ─────────────────────────────────────────
+
+func documentExtractionRequestsURL(docID uuid.UUID) string {
+	return "/api/v1/documents/" + docID.String() + "/extraction-requests"
+}
+
+func documentAnswersURL(docID uuid.UUID) string {
+	return "/api/v1/documents/" + docID.String() + "/answers"
+}
+
+func TestListExtractionRequestsByDocument_NoAuth_Returns401(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	mq := new(storemock.MockQuerier)
+	s := newServerWithMockExtractionService(t, mq)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+		documentExtractionRequestsURL(uuid.New()), nil)
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	mq.AssertNotCalled(t, "ListExtractionRequestsByDocument")
+}
+
+func TestListExtractionRequestsByDocument_InvalidID_Returns400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	mq := new(storemock.MockQuerier)
+	s := newServerWithMockExtractionService(t, mq)
+
+	access, _, err := s.authService.GenerateTokens(uuid.New(), uuid.New(), "member")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+		"/api/v1/documents/not-a-uuid/extraction-requests", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	mq.AssertNotCalled(t, "ListExtractionRequestsByDocument")
+}
+
+func TestListExtractionRequestsByDocument_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	orgID := uuid.New()
+	docID := uuid.New()
+	mq := new(storemock.MockQuerier)
+
+	questions, _ := json.Marshal([]string{"Цена?"})
+	rows := []repository.ExtractionRequest{
+		{
+			ID:             uuid.New(),
+			DocumentID:     docID,
+			OrganizationID: orgID,
+			Questions:      questions,
+			Anonymize:      true,
+			Status:         "completed",
+			CreatedAt:      time.Now(),
+			UpdatedAt:      time.Now(),
+		},
+	}
+	mq.On("ListExtractionRequestsByDocument", mock.Anything,
+		repository.ListExtractionRequestsByDocumentParams{
+			DocumentID:     docID,
+			OrganizationID: orgID,
+		}).Return(rows, nil)
+
+	s := newServerWithMockExtractionService(t, mq)
+	access, _, err := s.authService.GenerateTokens(uuid.New(), orgID, "member")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+		documentExtractionRequestsURL(docID), nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp []map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Len(t, resp, 1)
+	mq.AssertExpectations(t)
+}
+
+func TestListExtractionRequestsByDocument_Empty_ReturnsEmptyArray(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	orgID := uuid.New()
+	docID := uuid.New()
+	mq := new(storemock.MockQuerier)
+
+	mq.On("ListExtractionRequestsByDocument", mock.Anything, mock.Anything).
+		Return([]repository.ExtractionRequest{}, nil)
+
+	s := newServerWithMockExtractionService(t, mq)
+	access, _, err := s.authService.GenerateTokens(uuid.New(), orgID, "member")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+		documentExtractionRequestsURL(docID), nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.JSONEq(t, `[]`, w.Body.String())
+}
+
+// ── ListAnswersByDocument ─────────────────────────────────────────────────────
+
+func TestListAnswersByDocument_NoAuth_Returns401(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	mq := new(storemock.MockQuerier)
+	s := newServerWithMockExtractionService(t, mq)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+		documentAnswersURL(uuid.New()), nil)
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	mq.AssertNotCalled(t, "ListExtractedDataByDocument")
+}
+
+func TestListAnswersByDocument_InvalidID_Returns400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	mq := new(storemock.MockQuerier)
+	s := newServerWithMockExtractionService(t, mq)
+
+	access, _, err := s.authService.GenerateTokens(uuid.New(), uuid.New(), "member")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+		"/api/v1/documents/not-a-uuid/answers", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	mq.AssertNotCalled(t, "ListExtractedDataByDocument")
+}
+
+func TestListAnswersByDocument_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	orgID := uuid.New()
+	docID := uuid.New()
+	mq := new(storemock.MockQuerier)
+
+	rows := []repository.ListExtractedDataByDocumentRow{
+		{
+			ID:          uuid.New(),
+			DocumentID:  docID,
+			KeyID:       uuid.New(),
+			KeyName:     "total_price",
+			SourceQuery: "Total price?",
+			DataType:    "number",
+			KeyCreatedAt: time.Now(),
+		},
+	}
+	mq.On("ListExtractedDataByDocument", mock.Anything,
+		repository.ListExtractedDataByDocumentParams{
+			DocumentID:     docID,
+			OrganizationID: orgID,
+		}).Return(rows, nil)
+
+	s := newServerWithMockExtractionService(t, mq)
+	access, _, err := s.authService.GenerateTokens(uuid.New(), orgID, "member")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+		documentAnswersURL(docID), nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp []map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Len(t, resp, 1)
+	mq.AssertExpectations(t)
+}
+
+func TestListAnswersByDocument_Empty_ReturnsEmptyArray(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	orgID := uuid.New()
+	docID := uuid.New()
+	mq := new(storemock.MockQuerier)
+
+	mq.On("ListExtractedDataByDocument", mock.Anything, mock.Anything).
+		Return([]repository.ListExtractedDataByDocumentRow{}, nil)
+
+	s := newServerWithMockExtractionService(t, mq)
+	access, _, err := s.authService.GenerateTokens(uuid.New(), orgID, "member")
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+		documentAnswersURL(docID), nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.JSONEq(t, `[]`, w.Body.String())
+}
+
+// ── Success: no resolved_schema → GetAnswers returns empty without DB call ────
+
 // Success: no resolved_schema → GetAnswers returns empty without DB call.
 func TestGetExtractionRequest_Success_PendingStatus(t *testing.T) {
 	gin.SetMode(gin.TestMode)
