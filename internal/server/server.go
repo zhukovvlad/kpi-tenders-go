@@ -36,6 +36,7 @@ type Server struct {
 	invitationService        *service.InvitationService
 	siteAuditService         *service.SiteAuditService
 	comparisonSessionService *service.ComparisonSessionService
+	extractionKeyService     *service.ExtractionKeyService
 }
 
 func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) (*Server, error) {
@@ -91,6 +92,7 @@ func NewServer(cfg *config.Config, log *slog.Logger, pool *pgxpool.Pool) (*Serve
 		invitationService:        service.NewInvitationService(db, log),
 		siteAuditService:         service.NewSiteAuditService(db, log),
 		comparisonSessionService: service.NewComparisonSessionService(db, log),
+		extractionKeyService:     service.NewExtractionKeyService(db, log),
 	}
 
 	// pythonClient publishes Celery tasks directly to Redis, shared by both
@@ -209,6 +211,7 @@ func (s *Server) setupRouter() {
 				sites.PATCH("/:id/type", s.UpdateConstructionSiteType)
 				sites.DELETE("/:id", s.DeleteConstructionSite)
 				sites.GET("/:id/audit-log", s.ListSiteAuditLog)
+				sites.GET("/:id/events", s.ListSiteEvents)
 			}
 
 			documents := protected.Group("/documents")
@@ -222,6 +225,8 @@ func (s *Server) setupRouter() {
 				documents.PATCH("/:id/meta", s.UpdateDocumentMeta)
 				documents.DELETE("/:id", s.DeleteDocument)
 				documents.POST("/:id/extract", s.InitiateExtraction)
+				documents.GET("/:id/extraction-requests", s.ListExtractionRequestsByDocument)
+				documents.GET("/:id/answers", s.ListAnswersByDocument)
 			}
 
 			tasks := protected.Group("/tasks")
@@ -238,6 +243,16 @@ func (s *Server) setupRouter() {
 			extractionRequests.Use(s.TenantScopedOnly())
 			{
 				extractionRequests.GET("/:id", s.GetExtractionRequest)
+			}
+
+			extractionKeys := protected.Group("/extraction-keys")
+			extractionKeys.Use(s.TenantScopedOnly())
+			{
+				extractionKeys.GET("", s.ListExtractionKeys)
+				extractionKeys.POST("", s.CreateExtractionKey)
+				extractionKeys.GET("/:id", s.GetExtractionKey)
+				extractionKeys.PATCH("/:id", s.UpdateExtractionKey)
+				extractionKeys.DELETE("/:id", s.DeleteExtractionKey)
 			}
 
 			contractKinds := protected.Group("/contract-kinds")

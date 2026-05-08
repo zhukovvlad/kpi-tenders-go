@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -107,4 +108,79 @@ func buildExtractionRequestResponse(
 	}
 
 	return resp, nil
+}
+
+// ListExtractionRequestsByDocument handles GET /api/v1/documents/:id/extraction-requests.
+// Returns all extraction requests for a document, newest first.
+func (s *Server) ListExtractionRequestsByDocument(c *gin.Context) {
+	orgID, ok := s.orgIDFromContext(c)
+	if !ok {
+		return
+	}
+
+	docID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid document id", err))
+		return
+	}
+
+	limit := int32(20)
+	offset := int32(0)
+	if l := c.Query("limit"); l != "" {
+		v, err := strconv.ParseInt(l, 10, 32)
+		if err != nil || v < 1 || v > 100 {
+			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "limit must be between 1 and 100", nil))
+			return
+		}
+		limit = int32(v)
+	}
+	if o := c.Query("offset"); o != "" {
+		v, err := strconv.ParseInt(o, 10, 32)
+		if err != nil || v < 0 {
+			s.respondWithError(c, errs.New(errs.CodeValidationFailed, "offset must be non-negative", nil))
+			return
+		}
+		offset = int32(v)
+	}
+
+	reqs, err := s.extractionService.ListRequestsByDocument(c.Request.Context(), docID, orgID, limit, offset)
+	if err != nil {
+		s.respondWithError(c, err)
+		return
+	}
+
+	out := make([]extractionRequestResponse, 0, len(reqs))
+	for _, req := range reqs {
+		resp, buildErr := buildExtractionRequestResponse(req, nil)
+		if buildErr != nil {
+			s.respondWithError(c, buildErr)
+			return
+		}
+		out = append(out, resp)
+	}
+
+	c.JSON(http.StatusOK, out)
+}
+
+// ListAnswersByDocument handles GET /api/v1/documents/:id/answers.
+// Returns all extracted data for a document joined with key metadata.
+func (s *Server) ListAnswersByDocument(c *gin.Context) {
+	orgID, ok := s.orgIDFromContext(c)
+	if !ok {
+		return
+	}
+
+	docID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		s.respondWithError(c, errs.New(errs.CodeValidationFailed, "invalid document id", err))
+		return
+	}
+
+	items, err := s.extractionService.ListAnswersByDocument(c.Request.Context(), docID, orgID)
+	if err != nil {
+		s.respondWithError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, items)
 }

@@ -8,6 +8,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -84,6 +85,78 @@ func (q *Queries) ListSiteAuditLogBySite(ctx context.Context, arg ListSiteAuditL
 			&i.EventType,
 			&i.Payload,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSiteEventsBySite = `-- name: ListSiteEventsBySite :many
+SELECT
+    sal.id,
+    sal.site_id,
+    sal.organization_id,
+    sal.actor_user_id,
+    sal.event_type,
+    sal.payload,
+    sal.created_at,
+    COALESCE(u.full_name, 'Система') AS actor_name
+FROM site_audit_log sal
+LEFT JOIN users u ON sal.actor_user_id = u.id
+WHERE sal.site_id = $1
+  AND sal.organization_id = $2
+ORDER BY sal.created_at DESC, sal.id DESC
+LIMIT $4
+OFFSET $3
+`
+
+type ListSiteEventsBySiteParams struct {
+	SiteID         uuid.UUID `json:"site_id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+	Offset         int32     `json:"offset_"`
+	Limit          int32     `json:"limit_"`
+}
+
+type ListSiteEventsBySiteRow struct {
+	ID             uuid.UUID       `json:"id"`
+	SiteID         uuid.UUID       `json:"site_id"`
+	OrganizationID uuid.UUID       `json:"organization_id"`
+	ActorUserID    pgtype.UUID     `json:"actor_user_id"`
+	EventType      string          `json:"event_type"`
+	Payload        json.RawMessage `json:"payload"`
+	CreatedAt      time.Time       `json:"created_at"`
+	ActorName      string          `json:"actor_name"`
+}
+
+// Returns audit events with actor_name resolved from users table.
+func (q *Queries) ListSiteEventsBySite(ctx context.Context, arg ListSiteEventsBySiteParams) ([]ListSiteEventsBySiteRow, error) {
+	rows, err := q.db.Query(ctx, listSiteEventsBySite,
+		arg.SiteID,
+		arg.OrganizationID,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSiteEventsBySiteRow{}
+	for rows.Next() {
+		var i ListSiteEventsBySiteRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SiteID,
+			&i.OrganizationID,
+			&i.ActorUserID,
+			&i.EventType,
+			&i.Payload,
+			&i.CreatedAt,
+			&i.ActorName,
 		); err != nil {
 			return nil, err
 		}

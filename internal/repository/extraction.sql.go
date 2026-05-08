@@ -7,6 +7,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -45,6 +46,94 @@ func (q *Queries) BatchUpsertExtractedData(ctx context.Context, arg BatchUpsertE
 	return err
 }
 
+const createExtractionKey = `-- name: CreateExtractionKey :one
+INSERT INTO extraction_keys (organization_id, key_name, source_query, data_type, display_name)
+VALUES ($1::uuid, $2, $3, $4, $5)
+RETURNING id, organization_id, key_name, source_query, data_type, created_at, display_name, is_active, category
+`
+
+type CreateExtractionKeyParams struct {
+	OrganizationID uuid.UUID   `json:"organization_id"`
+	KeyName        string      `json:"key_name"`
+	SourceQuery    string      `json:"source_query"`
+	DataType       string      `json:"data_type"`
+	DisplayName    pgtype.Text `json:"display_name"`
+}
+
+// Creates an org-specific extraction key. Fails on duplicate (org, key_name).
+func (q *Queries) CreateExtractionKey(ctx context.Context, arg CreateExtractionKeyParams) (ExtractionKey, error) {
+	row := q.db.QueryRow(ctx, createExtractionKey,
+		arg.OrganizationID,
+		arg.KeyName,
+		arg.SourceQuery,
+		arg.DataType,
+		arg.DisplayName,
+	)
+	var i ExtractionKey
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.KeyName,
+		&i.SourceQuery,
+		&i.DataType,
+		&i.CreatedAt,
+		&i.DisplayName,
+		&i.IsActive,
+		&i.Category,
+	)
+	return i, err
+}
+
+const deleteExtractionKey = `-- name: DeleteExtractionKey :execrows
+DELETE FROM extraction_keys
+WHERE id              = $1
+  AND organization_id = $2::uuid
+`
+
+type DeleteExtractionKeyParams struct {
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+}
+
+// Deletes an org-specific extraction key. System keys (org IS NULL) cannot be deleted via this query.
+func (q *Queries) DeleteExtractionKey(ctx context.Context, arg DeleteExtractionKeyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExtractionKey, arg.ID, arg.OrganizationID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getExtractionKey = `-- name: GetExtractionKey :one
+SELECT id, organization_id, key_name, source_query, data_type, created_at, display_name, is_active, category FROM extraction_keys
+WHERE id = $1
+  AND (organization_id = $2::uuid OR organization_id IS NULL)
+`
+
+type GetExtractionKeyParams struct {
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+}
+
+// Tenant-scoped lookup; returns org-specific or system key by id.
+// Callers should map pgx.ErrNoRows to 404.
+func (q *Queries) GetExtractionKey(ctx context.Context, arg GetExtractionKeyParams) (ExtractionKey, error) {
+	row := q.db.QueryRow(ctx, getExtractionKey, arg.ID, arg.OrganizationID)
+	var i ExtractionKey
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.KeyName,
+		&i.SourceQuery,
+		&i.DataType,
+		&i.CreatedAt,
+		&i.DisplayName,
+		&i.IsActive,
+		&i.Category,
+	)
+	return i, err
+}
+
 const getExtractionKeysByNames = `-- name: GetExtractionKeysByNames :many
 SELECT DISTINCT ON (key_name) id, organization_id, key_name, source_query, data_type, created_at, display_name, is_active, category FROM extraction_keys
 WHERE key_name = ANY($1::text[])
@@ -81,6 +170,76 @@ func (q *Queries) GetExtractionKeysByNames(ctx context.Context, arg GetExtractio
 			&i.DisplayName,
 			&i.IsActive,
 			&i.Category,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listExtractedDataByDocument = `-- name: ListExtractedDataByDocument :many
+SELECT ded.id,
+       ded.document_id,
+       ded.extracted_value,
+       k.id              AS key_id,
+       k.organization_id AS key_organization_id,
+       k.key_name,
+       k.source_query,
+       k.data_type,
+       k.display_name,
+       k.created_at      AS key_created_at
+FROM document_extracted_data ded
+JOIN extraction_keys k ON k.id = ded.key_id
+WHERE ded.document_id     = $1::uuid
+  AND ded.organization_id = $2::uuid
+ORDER BY k.key_name
+`
+
+type ListExtractedDataByDocumentParams struct {
+	DocumentID     uuid.UUID `json:"document_id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+}
+
+type ListExtractedDataByDocumentRow struct {
+	ID                uuid.UUID   `json:"id"`
+	DocumentID        uuid.UUID   `json:"document_id"`
+	ExtractedValue    pgtype.Text `json:"extracted_value"`
+	KeyID             uuid.UUID   `json:"key_id"`
+	KeyOrganizationID pgtype.UUID `json:"key_organization_id"`
+	KeyName           string      `json:"key_name"`
+	SourceQuery       string      `json:"source_query"`
+	DataType          string      `json:"data_type"`
+	DisplayName       pgtype.Text `json:"display_name"`
+	KeyCreatedAt      time.Time   `json:"key_created_at"`
+}
+
+// Returns all extracted data for a document joined with key metadata.
+// Tenant-scoped: only data belonging to the given org is returned.
+// Used by GET /documents/:id/answers.
+func (q *Queries) ListExtractedDataByDocument(ctx context.Context, arg ListExtractedDataByDocumentParams) ([]ListExtractedDataByDocumentRow, error) {
+	rows, err := q.db.Query(ctx, listExtractedDataByDocument, arg.DocumentID, arg.OrganizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListExtractedDataByDocumentRow{}
+	for rows.Next() {
+		var i ListExtractedDataByDocumentRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DocumentID,
+			&i.ExtractedValue,
+			&i.KeyID,
+			&i.KeyOrganizationID,
+			&i.KeyName,
+			&i.SourceQuery,
+			&i.DataType,
+			&i.DisplayName,
+			&i.KeyCreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -177,6 +336,49 @@ func (q *Queries) ListExtractionKeysByOrg(ctx context.Context, dollar_1 uuid.UUI
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateExtractionKey = `-- name: UpdateExtractionKey :one
+UPDATE extraction_keys
+SET source_query = COALESCE($1, source_query),
+    data_type    = COALESCE($2, data_type),
+    display_name = COALESCE($3, display_name)
+WHERE id              = $4
+  AND organization_id = $5::uuid
+RETURNING id, organization_id, key_name, source_query, data_type, created_at, display_name, is_active, category
+`
+
+type UpdateExtractionKeyParams struct {
+	SourceQuery    pgtype.Text `json:"source_query"`
+	DataType       pgtype.Text `json:"data_type"`
+	DisplayName    pgtype.Text `json:"display_name"`
+	ID             uuid.UUID   `json:"id"`
+	OrganizationID uuid.UUID   `json:"organization_id"`
+}
+
+// Partial update for org-specific extraction keys; system keys (org IS NULL) are read-only.
+// Uses COALESCE for patch semantics: NULL arguments preserve the existing value.
+func (q *Queries) UpdateExtractionKey(ctx context.Context, arg UpdateExtractionKeyParams) (ExtractionKey, error) {
+	row := q.db.QueryRow(ctx, updateExtractionKey,
+		arg.SourceQuery,
+		arg.DataType,
+		arg.DisplayName,
+		arg.ID,
+		arg.OrganizationID,
+	)
+	var i ExtractionKey
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.KeyName,
+		&i.SourceQuery,
+		&i.DataType,
+		&i.CreatedAt,
+		&i.DisplayName,
+		&i.IsActive,
+		&i.Category,
+	)
+	return i, err
 }
 
 const upsertExtractedDatum = `-- name: UpsertExtractedDatum :exec
