@@ -164,4 +164,3 @@ func (s *Server) ListAnswersByDocument(c *gin.Context) {
 
 	c.JSON(http.StatusOK, items)
 }
-

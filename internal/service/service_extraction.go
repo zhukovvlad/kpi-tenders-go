@@ -154,21 +154,21 @@ func (s *ExtractionService) ListRequestsByDocument(ctx context.Context, document
 
 // ExtractedDataItem is the JSON shape for a single extracted value with its key metadata.
 type ExtractedDataItem struct {
-	ID             uuid.UUID   `json:"id"`
-	DocumentID     uuid.UUID   `json:"document_id"`
-	ExtractedValue *string     `json:"extracted_value"`
+	ID             uuid.UUID        `json:"id"`
+	DocumentID     uuid.UUID        `json:"document_id"`
+	ExtractedValue *string          `json:"extracted_value"`
 	Key            ExtractedKeyMeta `json:"key"`
 }
 
 // ExtractedKeyMeta holds the metadata for a single extraction key as returned by /answers.
 type ExtractedKeyMeta struct {
-	ID             uuid.UUID    `json:"id"`
-	OrganizationID *uuid.UUID   `json:"organization_id"`
-	KeyName        string       `json:"key_name"`
-	SourceQuery    string       `json:"source_query"`
-	DataType       string       `json:"data_type"`
-	DisplayName    *string      `json:"display_name"`
-	CreatedAt      time.Time    `json:"created_at"`
+	ID             uuid.UUID  `json:"id"`
+	OrganizationID *uuid.UUID `json:"organization_id"`
+	KeyName        string     `json:"key_name"`
+	SourceQuery    string     `json:"source_query"`
+	DataType       string     `json:"data_type"`
+	DisplayName    *string    `json:"display_name"`
+	CreatedAt      time.Time  `json:"created_at"`
 }
 
 // ListAnswersByDocument returns all extracted values for a document joined with

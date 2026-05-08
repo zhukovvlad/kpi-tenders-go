@@ -251,12 +251,12 @@ func TestListAnswersByDocument_Success(t *testing.T) {
 
 	rows := []repository.ListExtractedDataByDocumentRow{
 		{
-			ID:          uuid.New(),
-			DocumentID:  docID,
-			KeyID:       uuid.New(),
-			KeyName:     "total_price",
-			SourceQuery: "Total price?",
-			DataType:    "number",
+			ID:           uuid.New(),
+			DocumentID:   docID,
+			KeyID:        uuid.New(),
+			KeyName:      "total_price",
+			SourceQuery:  "Total price?",
+			DataType:     "number",
 			KeyCreatedAt: time.Now(),
 		},
 	}
